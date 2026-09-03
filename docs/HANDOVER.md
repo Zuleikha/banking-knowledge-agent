@@ -4,7 +4,53 @@
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-03**
+Last updated: **2026-09-03** · Session ended cleanly at this checkpoint.
+
+---
+
+## ⏱️ SESSION CHECKPOINT — start here
+
+**Session ended:** 2026-09-03, immediately after Stage 1 was approved, committed and pushed.
+**Nothing is in progress.** No half-finished work, no uncommitted changes, no blockers.
+
+### State at checkpoint
+
+| | |
+|---|---|
+| Last approved stage | **Stage 1 — Project Foundation** |
+| `HEAD` | `d7f2619` (= `origin/main`, verified) |
+| Working tree | Clean |
+| Tests | 20 passed · ruff clean · mypy strict clean |
+| Next stage | **Stage 2 — Domain Knowledge** (not started) |
+
+### To resume
+
+```bash
+cd D:/PROJECTS/banking-knowledge-agent
+
+# 1. Confirm the state matches this file before trusting it
+git log --oneline -3          # expect d7f2619 on top
+git status                    # expect clean
+
+# 2. The venv already exists and is git-ignored. If it is missing, recreate it:
+#    (system `python -m venv` is BROKEN on this machine -- see Problems §4)
+#    uv venv .venv --python 3.12
+#    uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
+
+# 3. Re-establish the baseline
+./.venv/Scripts/python.exe -m pytest        # expect 20 passed
+./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
+./.venv/Scripts/python.exe -m mypy          # expect Success: no issues found
+
+# 4. Then read "Next Action" at the bottom of this file and begin Stage 2.
+```
+
+### Local files that are NOT in the remote (deliberately)
+
+`prompt.md` · `ccp.txt` · `docs/decisions/auto-changes.log` · `.venv/` · `logs/` · caches.
+
+A fresh clone will not contain `prompt.md` — the project brief lives only on this
+machine. Keep it; the stage definitions come from it.
 
 ---
 
