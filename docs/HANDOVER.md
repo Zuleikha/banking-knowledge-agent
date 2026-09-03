@@ -15,7 +15,7 @@ Last updated: **2026-09-03**
 | **Stage number** | 1 |
 | **Stage name** | Project Foundation |
 | **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Stage 1 approved 2026-09-03; verified, committed, pushed to `origin/main` |
+| **Last completed step** | Stage 1 approved 2026-09-03; committed `d448cc1` and pushed to `origin/main` |
 | **Next step** | **Begin Stage 2 — Domain Knowledge** (synthetic banking documentation + loader) |
 
 > ⛔ Stage 2 must STOP after implementation and testing, and wait for explicit approval
@@ -192,7 +192,14 @@ middleware in Stage 10, which is the correct layer for it anyway. The constraint
 documented in `app/core/tracing.py`, `app/api/routes/health.py` and
 `architecture-guide.html` §13.
 
-### 3. Broken system Python `venv` — WORKED AROUND
+### 3. Stale `.git/HEAD.lock` blocked the first commit attempt — RESOLVED
+
+`git commit` failed with *"cannot lock ref 'HEAD'"*. A zero-byte `.git/HEAD.lock` dated
+12:50 — predating this session's work — was left behind by an earlier crashed git
+process. Confirmed no `git.exe` was running, then removed the stale lock. The commit
+succeeded immediately after. If this recurs, check for a running git process **first**.
+
+### 4. Broken system Python `venv` — WORKED AROUND
 
 `python -m venv` fails on this machine: `No module named venv` (system Python at
 `D:\Python\Python312` is a partial install). A `virtualenv`-created environment was
@@ -212,7 +219,7 @@ healthy install.
   functions, with three documented exceptions: FastAPI route handlers (§2 above),
   `tracing._emit` (would recurse infinitely), and trivial Pydantic property accessors.
 
-### 4. Unexpected file: `docs/decisions/auto-changes.log` — RESOLVED
+### 5. Unexpected file: `docs/decisions/auto-changes.log` — RESOLVED
 
 A user-configured Claude Code hook appends every file edit to
 `docs/decisions/auto-changes.log`. It was **not** created by Stage 1 work and contains no
@@ -247,8 +254,8 @@ None.
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
 | **Previous commit** | `a2bd8e5` — "initial commit" (contained only `.gitignore`) |
-| **Stage 1 commit** | ✅ Created — `feat(stage-1): project foundation …` (hash recorded below) |
-| **Push status** | ✅ Pushed to `origin/main` |
+| **Stage 1 commit** | `d448cc1` — `feat(stage-1): project foundation — config, logging, tracing, health` |
+| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD` (`d448cc1`) |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 1** | 23 files: 22 added, `.gitignore` modified |
 | **Deliberately not committed** | `prompt.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, caches |
