@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banking Knowledge Agent — Architecture Guide</title>
+<style>
+  :root{
+    --ink:#16202b; --muted:#5b6b7c; --line:#dfe6ee; --bg:#f6f8fb; --card:#fff;
+    --done:#0f9d58; --done-bg:#e7f6ee;
+    --todo:#8a94a0; --todo-bg:#eef1f5;
+    --accent:#1a5fb4; --accent-bg:#e8f0fb;
+    --warn:#b35309; --warn-bg:#fdf2e3;
+    --code:#f2f5f9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       color:var(--ink);background:var(--bg)}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px 80px}
+  header{background:linear-gradient(135deg,#16202b,#1a5fb4);color:#fff;padding:44px 24px 36px;margin-bottom:32px}
+  header .wrap{padding-bottom:0}
+  header h1{margin:0 0 8px;font-size:30px;letter-spacing:-.3px}
+  header p{margin:0;opacity:.85;max-width:640px}
+  .pill{display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;
+        padding:3px 12px;font-size:13px;margin-top:14px}
+  h2{margin:44px 0 14px;font-size:22px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{margin:26px 0 10px;font-size:17px}
+  section{scroll-margin-top:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin:16px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;background:var(--card)}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#eef2f7;font-weight:600}
+  tr:last-child td{border-bottom:none}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:13.5px;
+       font-family:"SF Mono",Consolas,Menlo,monospace}
+  pre{background:#16202b;color:#e6edf3;padding:16px 18px;border-radius:8px;overflow-x:auto;
+      font-size:13.5px;line-height:1.55;font-family:"SF Mono",Consolas,Menlo,monospace}
+  pre.plain{background:var(--code);color:var(--ink);border:1px solid var(--line)}
+  .tag{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px;white-space:nowrap}
+  .t-done{background:var(--done-bg);color:var(--done)}
+  .t-todo{background:var(--todo-bg);color:var(--todo)}
+  .note{background:var(--accent-bg);border-left:4px solid var(--accent);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
+  .warn{background:var(--warn-bg);border-left:4px solid var(--warn);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 22px}
+  nav.toc ol{margin:8px 0 0;padding-left:22px;columns:2;column-gap:32px}
+  nav.toc li{margin:3px 0;break-inside:avoid}
+  a{color:var(--accent)}
+  ul{padding-left:22px}
+  li{margin:4px 0}
+  .muted{color:var(--muted);font-size:14px}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Banking Knowledge Agent — Architecture Guide</h1>
+    <p>A personal technical reference for the system: what each component does, why each
+       technology is here, and how data flows through it. This is developer documentation,
+       <strong>not</strong> the application's user interface.</p>
+    <div class="pill">Stage 1 — Project Foundation &nbsp;·&nbsp; Last updated 2026-09-03</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#overview">System overview</a></li>
+    <li><a href="#structure">Repository structure</a></li>
+    <li><a href="#stack">Technology stack &amp; why</a></li>
+    <li><a href="#components">Components</a></li>
+    <li><a href="#dataflow">Data flow</a></li>
+    <li><a href="#rag">RAG flow</a></li>
+    <li><a href="#agent">Agent flow</a></li>
+    <li><a href="#mcp">MCP flow</a></li>
+    <li><a href="#llm">LLM interaction</a></li>
+    <li><a href="#vector">Vector database</a></li>
+    <li><a href="#api">API layer</a></li>
+    <li><a href="#config">Configuration</a></li>
+    <li><a href="#observability">Observability</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#docker">Docker</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#deployment">Deployment</a></li>
+    <li><a href="#extension">Extension points</a></li>
+    <li><a href="#decisions">Design decisions</a></li>
+  </ol>
+</nav>
+
+<div class="note">
+  <strong>How to read this guide.</strong> Sections tagged
+  <span class="tag t-done">BUILT</span> describe code that exists today.
+  Sections tagged <span class="tag t-todo">PLANNED</span> describe the intended design
+  for a later stage — they are the plan, not a description of working code.
+  Update this file whenever the architecture changes.
+</div>
+
+<!-- ================================================================== -->
+<section id="overview">
+<h2>1. System overview</h2>
+
+<p>The Banking Knowledge Agent answers technical questions about a banking platform —
+ATM and self-service banking, digital banking, cards, payments, APIs, integrations,
+configuration and incident troubleshooting — and backs every answer with sources.</p>
+
+<p>The objective is not a chatbot. It is a demonstration of production-oriented AI
+engineering: retrieval, an agent loop, tool use, guardrails, testing, observability and
+containerisation, each behind a clean boundary.</p>
+
+<pre class="plain">          User
+            │
+            ▼
+   ┌──────────────────┐
+   │  Web Interface   │   Stage 9
+   └────────┬─────────┘
+            ▼
+   ┌──────────────────┐
+   │   API (FastAPI)  │   Stage 1  ✅
+   └────────┬─────────┘
+            ▼
+   ┌──────────────────┐
+   │   Agent / LLM    │   Stages 4, 5, 7
+   └────────┬─────────┘
+            │
+            ├──▶ RAG Knowledge Retrieval    Stages 2, 3
+            ├──▶ MCP Tools                  Stage 6
+            ├──▶ Conversation Context       Stage 8
+            └──▶ Guardrails                 Stage 13
+            │
+            ▼
+   Source-backed Answer</pre>
+
+<h3>Build stages</h3>
+<table>
+  <tr><th style="width:70px">Stage</th><th>Name</th><th style="width:110px">Status</th></tr>
+  <tr><td>1</td><td>Project foundation — config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>2</td><td>Domain knowledge — synthetic banking documents + loader</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>3</td><td>RAG pipeline — chunking, embeddings, vector store, retrieval</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>4</td><td>LLM abstraction — provider-agnostic prompt &amp; response layer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>5</td><td>Knowledge agent — retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>6</td><td>MCP tools — synthetic banking support tools</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>7</td><td>Agent decision &amp; tool selection</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>8</td><td>Conversation context</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>9</td><td>Web interface</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>10</td><td>Observability</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>11</td><td>Testing &amp; evaluation framework</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>12</td><td>Containerisation</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>13</td><td>Security &amp; production readiness</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>14</td><td>Production architecture</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>15</td><td>Final engineering review</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+</table>
+
+<div class="warn">
+  <strong>Synthetic data only.</strong> Every banking document, error code, component name
+  and tool response in this repository is invented for this project. No proprietary,
+  confidential or copyrighted material from any vendor is used, copied or referenced.
+</div>
+</section>
+
+<!-- ================================================================== -->
+<section id="structure">
+<h2>2. Repository structure</h2>
+<span class="tag t-done">BUILT</span>
+
+<pre class="plain">banking-knowledge-agent/          ← repository root IS the project root
+├── app/                          Application source
+│   ├── __init__.py
+│   ├── main.py                   FastAPI factory + entry point
+│   ├── api/                      HTTP layer — thin, no business logic
+│   │   ├── dependencies.py       Shared FastAPI dependencies
+│   │   └── routes/
+│   │       └── health.py         GET /health
+│   └── core/                     Cross-cutting concerns
+│       ├── config.py             Typed settings from the environment
+│       ├── logging.py            structlog config + on-disk sinks
+│       └── tracing.py            @traced / @traced_async
+├── tests/                        Mirrors app/ structure
+│   ├── conftest.py               Fixtures: settings, app, client
+│   ├── test_config.py
+│   ├── test_health.py
+│   └── test_logging.py
+├── docs/
+│   ├── HANDOVER.md               Session recovery point
+│   └── architecture-guide.html   ← this file
+├── .env.example                  Documented configuration template
+├── .gitignore
+├── pyproject.toml                pytest / ruff / mypy configuration
+├── requirements.txt              Runtime dependencies (pinned)
+├── requirements-dev.txt          + test and tooling dependencies
+└── README.md</pre>
+
+<p><strong>Directories added in later stages:</strong>
+<code>data/knowledge/</code> (Stage 2), <code>app/knowledge/</code> (2–3),
+<code>app/llm/</code> (4), <code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6),
+<code>app/web/</code> (9), <code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
+
+<div class="warn">
+  <strong>Never</strong> create <code>banking-knowledge-agent/banking-knowledge-agent/</code>.
+  The repository root is the project root. Verify after every structural change.
+</div>
+</section>
+
+<!-- ================================================================== -->
+<section id="stack">
+<h2>3. Technology stack &amp; why</h2>
+
+<p>Each technology has one architectural job. Nothing is here because it is fashionable.</p>
+
+<table>
+  <tr><th style="width:170px">Technology</th><th>Job</th><th style="width:90px">Stage</th></tr>
+  <tr><td><strong>Python 3.12</strong></td><td>The language with the mature LLM, embedding and vector-store ecosystem.</td><td>1</td></tr>
+  <tr><td><strong>FastAPI</strong></td><td>Async HTTP API with typed models, dependency injection and OpenAPI documentation generated from the code — the schema can never drift from the implementation.</td><td>1</td></tr>
+  <tr><td><strong>Pydantic v2</strong></td><td>Validation at the system boundary. Malformed input fails at the edge with a clear 422 instead of propagating into the agent.</td><td>1</td></tr>
+  <tr><td><strong>pydantic-settings</strong></td><td>Typed, environment-based configuration. Invalid config fails at startup, not at 3am. Keeps secrets out of source.</td><td>1</td></tr>
+  <tr><td><strong>structlog</strong></td><td>Logs are structured <em>events with fields</em>, not formatted prose. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code>, <code>request_id</code> as queryable fields — that is only possible if logging is structured from day one.</td><td>1</td></tr>
+  <tr><td><strong>uvicorn</strong></td><td>ASGI server for FastAPI's async request handling.</td><td>1</td></tr>
+  <tr><td><strong>pytest</strong></td><td>Test suite, including async API tests via <code>httpx</code> + <code>TestClient</code>.</td><td>1</td></tr>
+  <tr><td><strong>ruff</strong></td><td>Formatter and linter in one fast tool.</td><td>1</td></tr>
+  <tr><td><strong>mypy (strict)</strong></td><td>Static type checking. Catches interface drift between layers before runtime.</td><td>1</td></tr>
+  <tr><td><strong>Vector store</strong></td><td>Similarity search over document chunks. Behind an interface so the implementation can be swapped.</td><td>3</td></tr>
+  <tr><td><strong>Embedding model</strong></td><td>Turns text into vectors so questions can be matched to documents by meaning, not keywords.</td><td>3</td></tr>
+  <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction — the app is never coupled to one vendor.</td><td>4</td></tr>
+  <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
+  <tr><td><strong>Docker</strong></td><td>Reproducible local runtime; the same image everywhere.</td><td>12</td></tr>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section id="components">
+<h2>4. Components</h2>
+
+<h3>Built today</h3>
+
+<table>
+  <tr><th style="width:230px">Component</th><th>What it does</th></tr>
+  <tr>
+    <td><code>app/main.py</code><br><span class="muted">create_app()</span></td>
+    <td>Application factory. Loads settings, configures logging, builds the
+        <code>FastAPI</code> instance, stores settings on <code>app.state</code>,
+        mounts routers, and logs startup/shutdown through a lifespan handler.
+        A factory (rather than a bare module-level singleton) is what makes the
+        app testable with overridden configuration.</td>
+  </tr>
+  <tr>
+    <td><code>app/core/config.py</code><br><span class="muted">Settings</span></td>
+    <td>All configuration as one typed, frozen, validated object read from
+        <code>BKA_*</code> environment variables. <code>get_settings()</code> is
+        <code>lru_cache</code>d so the environment is parsed once.</td>
+  </tr>
+  <tr>
+    <td><code>app/core/logging.py</code></td>
+    <td>Configures structlog + the stdlib bridge. Writes human-readable output to
+        stdout locally, JSON in production, and rotating JSON files to
+        <code>logs/</code>. Sets up a <em>separate</em> <code>bka.trace</code> logger
+        with <code>propagate = False</code>.</td>
+  </tr>
+  <tr>
+    <td><code>app/core/tracing.py</code><br><span class="muted">@traced, @traced_async</span></td>
+    <td>Wraps a function so each call emits a structured trace event —
+        qualified name, duration in ms, ok/error outcome — to
+        <code>logs/traces.log</code>. Arguments are deliberately never recorded.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/dependencies.py</code></td>
+    <td><code>SettingsDep</code> resolves settings from <code>request.app.state</code>
+        rather than the cached global, so the app factory stays the single source
+        of truth.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/routes/health.py</code></td>
+    <td><code>GET /health</code> — a pure liveness check returning status, service
+        name, version and environment. It touches no downstream system.</td>
+  </tr>
+</table>
+
+<h3>Planned</h3>
+<table>
+  <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
+  <tr><td><code>app/knowledge/loader.py</code></td><td>Load synthetic documents and attach metadata (document, domain, component, version, type).</td><td>2</td></tr>
+  <tr><td><code>app/knowledge/chunker.py</code></td><td>Split documents into retrievable chunks, carrying metadata through.</td><td>3</td></tr>
+  <tr><td><code>app/knowledge/embeddings.py</code></td><td>Embedding provider behind an interface.</td><td>3</td></tr>
+  <tr><td><code>app/knowledge/vectorstore.py</code></td><td><code>VectorStore</code> protocol + a local implementation.</td><td>3</td></tr>
+  <tr><td><code>app/knowledge/retriever.py</code></td><td>Question → embedding → similarity search → ranked chunks + sources. Independently testable.</td><td>3</td></tr>
+  <tr><td><code>app/llm/base.py</code></td><td><code>LLMProvider</code> protocol: the seam that keeps the app vendor-agnostic.</td><td>4</td></tr>
+  <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions and context-injection templates.</td><td>4</td></tr>
+  <tr><td><code>app/agent/agent.py</code></td><td>Orchestrates retrieve → ground → answer, and refuses when evidence is thin.</td><td>5, 7</td></tr>
+  <tr><td><code>app/mcp/tools/</code></td><td>Synthetic support tools: config lookup, transaction status, component status, error codes, versions, service health.</td><td>6</td></tr>
+  <tr><td><code>app/agent/context.py</code></td><td>Session handling and bounded conversation history.</td><td>8</td></tr>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section id="dataflow">
+<h2>5. Data flow</h2>
+
+<h3>Today (Stage 1)</h3>
+<pre class="plain">HTTP GET /health
+   │
+   ▼
+FastAPI router  ──▶ SettingsDep reads request.app.state.settings
+   │
+   ▼
+HealthResponse (validated by Pydantic)
+   │
+   ├──▶ logs/app.log      structured application event
+   └──▶ HTTP 200 JSON</pre>
+
+<h3>Target (Stage 9 complete)</h3>
+<pre class="plain">Question
+   │
+   ▼
+Web UI ──▶ POST /api/chat ──▶ Guardrails (input validation, injection checks)
+                                   │
+                                   ▼
+                              Agent decides
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+   RAG retrieval             MCP tool call            Answer directly
+   (knowledge base)          (live system state)      / refuse
+        │                          │                          │
+        └──────────────┬───────────┘                          │
+                       ▼                                      │
+              Context assembled  ◀───────────────────────────┘
+                       │
+                       ▼
+                LLM generation
+                       │
+                       ▼
+        Answer + sources + tool activity  ──▶  Web UI
+                       │
+                       └──▶ logs/app.log (request_id, latencies, docs, tools)</pre>
+
+<p class="muted">Note the deliberate separation: knowledge retrieved from documents and
+live data returned by tools are presented as distinct kinds of evidence, never blended
+into an undifferentiated blob.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="rag">
+<h2>6. RAG flow</h2>
+<span class="tag t-todo">PLANNED — Stages 2 &amp; 3</span>
+
+<p><strong>Why RAG at all?</strong> An LLM does not know this platform, and fine-tuning
+is the wrong tool for documentation that changes. Retrieval keeps the knowledge base
+editable, makes every answer citable, and constrains the model to material we control.</p>
+
+<h3>Indexing (offline, once per document change)</h3>
+<pre class="plain">Synthetic banking documents (data/knowledge/)
+   │
+   ▼  loader — attach metadata
+{document, domain, component, version, doc_type}
+   │
+   ▼  chunker — split, preserving metadata on every chunk
+Chunks
+   │
+   ▼  embedding model
+Vectors
+   │
+   ▼
+Vector store</pre>
+
+<h3>Retrieval (per question)</h3>
+<pre class="plain">Question
+   │
+   ▼  same embedding model  ← must match indexing, or search is meaningless
+Query vector
+   │
+   ▼  similarity search (top-k)
+Relevant chunks
+   │
+   ▼
+Sources: document, domain, component, version, score</pre>
+
+<p>Metadata is not decoration. It is what lets the system say
+<em>"per ATM Transaction Processing v2.1, §Authentication"</em> instead of
+<em>"somewhere in the docs"</em>, and it enables filtered retrieval later
+(e.g. restrict to <code>domain = payments</code>).</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="agent">
+<h2>7. Agent flow</h2>
+<span class="tag t-todo">PLANNED — Stages 5 &amp; 7</span>
+
+<pre class="plain">Question
+   │
+   ▼
+Does this need knowledge, live data, both, or neither?
+   │
+   ├── knowledge ────▶ RAG retrieval
+   ├── live data ────▶ MCP tool call
+   ├── both ─────────▶ retrieval + tool call
+   └── insufficient ─▶ say so explicitly
+   │
+   ▼
+Assemble context (retrieved chunks + tool results + bounded history)
+   │
+   ▼
+LLM generation, grounded in that context only
+   │
+   ▼
+Answer + sources + tool activity</pre>
+
+<h3>The grounding rule</h3>
+<p>The agent must not invent technical facts. When the knowledge base does not contain
+enough evidence, the correct output is an explicit statement to that effect — not a
+plausible guess. In a banking support context a confident wrong answer is worse than
+"I don't have that documented."</p>
+
+<h3>What is exposed</h3>
+<p>Execution information is surfaced — retrieval performed, documents used, tool called,
+tool result, final answer. Hidden chain-of-thought is <strong>not</strong> exposed.</p>
+
+<h3>Example questions the agent must handle</h3>
+<ul>
+  <li>Why would an ATM transaction fail after card authentication?</li>
+  <li>What component handles card authentication?</li>
+  <li>Which API is used for payment authorisation?</li>
+  <li>How would I troubleshoot a failed cash withdrawal?</li>
+  <li>What configuration controls transaction limits?</li>
+</ul>
+</section>
+
+<!-- ================================================================== -->
+<section id="mcp">
+<h2>8. MCP flow</h2>
+<span class="tag t-todo">PLANNED — Stage 6</span>
+
+<p><strong>Why MCP?</strong> RAG answers "what do the documents say?". Tools answer
+"what is the system doing right now?". MCP makes those tools a declared, versioned,
+transport-agnostic contract instead of ad-hoc functions bolted to the agent.</p>
+
+<pre class="plain">          Agent
+            │
+            ▼
+        ┌────────┐
+        │  MCP   │
+        └───┬────┘
+            │
+   ┌────────┼─────────┬──────────────┬───────────────┐
+   ▼        ▼         ▼              ▼               ▼
+get_system  check_    get_component  lookup_error_   check_service_
+_config     transaction_status       code            health
+                                     get_system_version
+   │        │         │              │               │
+   └────────┴─────────┴──────────────┴───────────────┘
+            │
+            ▼
+      Tool result (synthetic data)</pre>
+
+<div class="warn">
+  <strong>Knowledge vs. live data.</strong> A document says how a component
+  <em>should</em> behave; a tool says how it <em>is</em> behaving. The answer must keep
+  these distinguishable so an engineer can tell documentation from observation.
+</div>
+</section>
+
+<!-- ================================================================== -->
+<section id="llm">
+<h2>9. LLM interaction</h2>
+<span class="tag t-todo">PLANNED — Stage 4</span>
+
+<pre class="plain">app/agent  ──▶  LLMProvider (protocol)  ──▶  concrete provider
+                      ▲                          │
+                      │                          ▼
+              app depends on this          vendor SDK, API key
+              interface only               from the environment</pre>
+
+<p><strong>The rule:</strong> the LLM receives the <em>retrieved context</em>, never the
+whole knowledge base. That is what keeps cost, latency and prompt-injection surface
+bounded — and it is the difference between RAG and stuffing a prompt.</p>
+
+<p>The abstraction covers prompt management, system instructions, question handling,
+context injection, response generation, error handling (timeouts, rate limits, malformed
+responses) and environment-based configuration. Tests use a mock provider, so the suite
+runs offline, deterministically, and at zero API cost.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="vector">
+<h2>10. Vector database</h2>
+<span class="tag t-todo">PLANNED — Stage 3</span>
+
+<p>Accessed through a <code>VectorStore</code> protocol —
+<code>add(chunks)</code>, <code>search(query_vector, k, filters)</code> — so the
+implementation is replaceable. Local development uses an embedded store requiring no
+server; the same interface admits a managed vector database in production without
+touching the agent or API layers.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="api">
+<h2>11. API layer</h2>
+<span class="tag t-done">BUILT (health) · <span class="tag t-todo">chat endpoints planned</span></span>
+
+<table>
+  <tr><th style="width:200px">Endpoint</th><th>Purpose</th><th style="width:110px">Status</th></tr>
+  <tr><td><code>GET /health</code></td><td>Liveness — process is up and configured</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td><code>GET /docs</code></td><td>Interactive OpenAPI documentation</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td><code>GET /openapi.json</code></td><td>Generated OpenAPI schema</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td><code>GET /ready</code></td><td>Readiness — vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
+  <tr><td><code>POST /api/chat</code></td><td>Ask the agent a question</td><td><span class="tag t-todo">Stage 5</span></td></tr>
+</table>
+
+<p>The API layer stays thin: validate, delegate to a service, serialise the result.
+Business logic lives in <code>app/agent/</code> and <code>app/knowledge/</code> so it is
+testable without HTTP.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="config">
+<h2>12. Configuration</h2>
+<span class="tag t-done">BUILT</span>
+
+<p>One typed <code>Settings</code> object, read from <code>BKA_*</code> environment
+variables (optionally seeded from a local <code>.env</code>), validated by Pydantic and
+frozen. Invalid configuration fails loudly at startup.</p>
+
+<pre>BKA_ENVIRONMENT=local        # local | test | production
+BKA_HOST=127.0.0.1
+BKA_PORT=8000
+BKA_LOG_LEVEL=INFO
+BKA_LOG_FORMAT=console       # console locally, json in Docker
+BKA_LOG_DIR=logs
+BKA_LOG_TO_FILE=true</pre>
+
+<p><code>.env.example</code> is committed and documented. <code>.env</code> is
+git-ignored and must never be committed. Secrets come from the environment only —
+never hardcoded, never defaulted to a real value.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="observability">
+<h2>13. Observability</h2>
+<span class="tag t-done">BUILT (foundation) · <span class="tag t-todo">request tracking Stage 10</span></span>
+
+<h3>Two sinks, deliberately separate</h3>
+<table>
+  <tr><th style="width:180px">Sink</th><th>Contents</th></tr>
+  <tr><td><code>logs/app.log</code></td><td>Application events — startup, shutdown, requests, errors. JSON lines, size-rotated.</td></tr>
+  <tr><td><code>logs/traces.log</code></td><td><code>@traced</code> function traces via the <code>bka.trace</code> logger, which has <code>propagate = False</code> so traces never leak into the application stream.</td></tr>
+</table>
+
+<h3>A trace event</h3>
+<pre>{"event": "trace",
+ "function": "app.main.create_app",
+ "duration_ms": 12.481,
+ "outcome": "ok",
+ "level": "info",
+ "timestamp": "2026-09-03T12:30:20.303038Z"}</pre>
+
+<div class="warn">
+  <strong>Arguments are never logged.</strong> A traced function may receive a card
+  number, a customer identifier or an API key. Only the qualified name, duration and
+  outcome are recorded.
+</div>
+
+<h3>Planned for Stage 10</h3>
+<p>Request ID propagated through <code>structlog.contextvars</code>; question, retrieval
+latency, retrieved documents, LLM latency, tool calls, tool latency, errors, and overall
+response latency — all as queryable fields.</p>
+
+<h3>Known constraint: tracing and FastAPI</h3>
+<p><code>@traced</code> must <strong>not</strong> decorate FastAPI route handlers.
+FastAPI resolves a handler's postponed annotations against that function's
+<code>__globals__</code>; a wrapper defined in <code>app/core/tracing.py</code> resolves
+them against the tracing module instead, so dependency annotations silently degrade into
+query parameters and requests fail with <code>422</code>. This was caught by the test
+suite in Stage 1. Route handlers are traced by request middleware in Stage 10 — which is
+the architecturally correct layer for it anyway.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="testing">
+<h2>14. Testing</h2>
+<span class="tag t-done">BUILT · <span class="tag t-todo">evaluation framework Stage 11</span></span>
+
+<table>
+  <tr><th style="width:200px">File</th><th>Covers</th></tr>
+  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client.</td></tr>
+  <tr><td><code>tests/test_config.py</code></td><td>Defaults, environment overrides, rejection of invalid port and environment, caching, immutability.</td></tr>
+  <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
+  <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
+</table>
+
+<pre>.venv/Scripts/python.exe -m pytest          # 20 tests
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m mypy</pre>
+
+<p><strong>Stage 11</strong> adds an evaluation framework over a small dataset of
+realistic banking questions with expected evidence, measuring retrieval accuracy, answer
+grounding, hallucination resistance and tool selection — because "the tests pass" and
+"the answers are correct" are different claims.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="docker">
+<h2>15. Docker</h2>
+<span class="tag t-todo">PLANNED — Stage 12</span>
+
+<p>A Dockerfile and Compose setup so the whole system runs locally with one command, no
+cloud infrastructure required. Container config comes from environment variables
+(<code>BKA_LOG_FORMAT=json</code>), health checks use <code>/health</code>, and synthetic
+knowledge data stays available inside the image or a mounted volume.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="security">
+<h2>16. Security</h2>
+<span class="tag t-done">BUILT (foundations) · <span class="tag t-todo">full review Stage 13</span></span>
+
+<h3>In place today</h3>
+<ul>
+  <li>Secrets from environment variables only — never hardcoded, never a real default.</li>
+  <li><code>.env</code>, <code>*.pem</code>, <code>*.key</code>, <code>secrets/</code> and <code>logs/</code> are git-ignored.</li>
+  <li>Traced function arguments are never logged.</li>
+  <li>Pydantic validates every request and response at the boundary.</li>
+  <li>Server binds to <code>127.0.0.1</code> by default, not <code>0.0.0.0</code>.</li>
+</ul>
+
+<h3>To be assessed and documented in Stage 13</h3>
+<p>Authentication, authorisation, secrets management, input validation, prompt-injection
+risk, MCP tool security, data privacy, rate limiting, LLM and tool failure handling,
+logging risks, and dependency security. Lightweight protections where practical — no
+unnecessary enterprise infrastructure for a portfolio project.</p>
+
+<div class="warn">
+  <strong>Prompt injection is the live risk for this class of system.</strong> Retrieved
+  documents and tool results are untrusted input to the model. They must be treated as
+  data, never as instructions.
+</div>
+</section>
+
+<!-- ================================================================== -->
+<section id="deployment">
+<h2>17. Deployment</h2>
+
+<table>
+  <tr><th style="width:180px"></th><th>Local development</th><th>Production (design only)</th></tr>
+  <tr><td>Runtime</td><td>uvicorn with <code>--reload</code></td><td>Container behind a reverse proxy</td></tr>
+  <tr><td>Logs</td><td>Console + <code>logs/*.log</code></td><td>JSON to a log aggregator</td></tr>
+  <tr><td>Vector store</td><td>Embedded, on disk</td><td>Managed vector database</td></tr>
+  <tr><td>Secrets</td><td><code>.env</code> (git-ignored)</td><td>Secret manager injected as env vars</td></tr>
+  <tr><td>Scale</td><td>Single process</td><td>Horizontal — the API is stateless</td></tr>
+</table>
+
+<p>Stage 14 documents the production architecture in full and keeps the boundary between
+<strong>local development</strong> and <strong>production design</strong> explicit. No
+infrastructure is built that the portfolio project does not need.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="extension">
+<h2>18. Extension points</h2>
+
+<p>The point of the seams: each of these should be an additive change, not a redesign.</p>
+
+<table>
+  <tr><th style="width:230px">To add…</th><th>Touch…</th></tr>
+  <tr><td>A new knowledge source</td><td>A loader implementation. Chunking, embedding and retrieval are unchanged.</td></tr>
+  <tr><td>A new banking domain</td><td>Documents + metadata. No code change.</td></tr>
+  <tr><td>A new MCP tool</td><td>One tool module + registration. The agent discovers it.</td></tr>
+  <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>. Nothing else.</td></tr>
+  <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code>.</td></tr>
+  <tr><td>A different embedding model</td><td>One class implementing the embedder interface (re-index required).</td></tr>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section id="decisions">
+<h2>19. Design decisions</h2>
+
+<table>
+  <tr><th style="width:250px">Decision</th><th>Reasoning</th></tr>
+  <tr><td><strong>App factory</strong> (<code>create_app()</code>) rather than only a module-level app</td>
+      <td>Tests can build an application with overridden settings. A bare singleton would force tests to mutate global state.</td></tr>
+  <tr><td><strong>Settings from <code>app.state</code></strong>, not the cached global</td>
+      <td>The factory stays the single source of truth. The first version used <code>Depends(get_settings)</code> and the health test caught it immediately — the endpoint reported <code>local</code> while the app was configured as <code>test</code>.</td></tr>
+  <tr><td><strong>structlog from Stage 1</strong>, not Stage 10</td>
+      <td>Retrofitting structured logging over string logs means rewriting every call site. The cost now is near zero.</td></tr>
+  <tr><td><strong>Separate trace sink</strong> with <code>propagate = False</code></td>
+      <td>Per-function traces are high volume. Mixed into the application log they would bury the events that matter operationally.</td></tr>
+  <tr><td><strong>Trace arguments are never recorded</strong></td>
+      <td>A traced function may receive card data, customer identifiers or API keys. Name, duration and outcome are enough to diagnose latency and failure.</td></tr>
+  <tr><td><strong><code>@traced</code> is not applied to route handlers</strong></td>
+      <td>It breaks FastAPI's annotation resolution (see §13). Request tracing belongs in middleware, which is the correct layer regardless.</td></tr>
+  <tr><td><strong>Frozen settings</strong></td>
+      <td>Configuration that mutates at runtime is a debugging trap.</td></tr>
+  <tr><td><strong>Pinned dependencies</strong></td>
+      <td>Local, CI and Docker builds resolve to identical versions.</td></tr>
+  <tr><td><strong>mypy strict</strong></td>
+      <td>With many interfaces (LLM, vector store, tools), static checking catches contract drift between layers before runtime does.</td></tr>
+  <tr><td><strong><code>uv</code> for the virtual environment</strong></td>
+      <td>Practical, not architectural: the stdlib <code>venv</code> module is missing from the system Python on this machine, and a <code>virtualenv</code>-created environment segfaulted on importing <code>structlog</code> and <code>httpx</code>. A <code>uv</code>-created environment works.</td></tr>
+</table>
+</section>
+
+<footer>
+  <strong>Banking Knowledge Agent</strong> — architecture guide ·
+  Stage 1 (Project Foundation) · Last updated 2026-09-03<br>
+  Keep this document updated whenever the architecture changes.
+  Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
+</footer>
+
+</div>
+</body>
+</html>

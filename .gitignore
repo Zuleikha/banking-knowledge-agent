@@ -1,5 +1,45 @@
-node_modules/
-.env
+# --- Python --------------------------------------------------------------
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ------------------------------------------------
+.venv/
+venv/
+env/
+
+# --- Secrets and local config -- NEVER commit ----------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Runtime artefacts ---------------------------------------------------
+logs/
+*.log
+data/vectorstore/
+*.sqlite3
+*.db
+
+# --- Editors and OS ------------------------------------------------------
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# --- Node (web interface, Stage 9) ---------------------------------------
+node_modules/
+
+# --- Local working files -- not part of the project ----------------------
+# Project brief and workflow rules, supplied by the developer.
+prompt.md
+ccp.txt
+# Written by a local Claude Code hook, not by the application.
+docs/decisions/auto-changes.log
