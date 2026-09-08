@@ -18,7 +18,7 @@ Last updated: **2026-09-08** · Stage 2 approved, committed and pushed.
 | | |
 |---|---|
 | Last approved stage | **Stage 2 — Domain Knowledge** |
-| `HEAD` | *(recorded in the follow-up docs commit)* (= `origin/main`, verified) |
+| `HEAD` | the `docs(stage-2)` commit sitting on top of `cca70af` (= `origin/main`, verified) |
 | Working tree | Clean |
 | Tests | 72 passed · ruff clean · mypy strict clean |
 | Next stage | **Stage 3 — RAG Pipeline** (not started) |
@@ -29,7 +29,7 @@ Last updated: **2026-09-08** · Stage 2 approved, committed and pushed.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the state matches this file before trusting it
-git log --oneline -3          # expect the stage-2 docs commit on top
+git log --oneline -3          # expect docs(stage-2) on top of cca70af
 git status                    # expect clean
 
 # 2. The venv already exists and is git-ignored. If it is missing, recreate it:
@@ -61,7 +61,7 @@ machine. Keep it; the stage definitions come from it.
 | **Stage number** | 2 |
 | **Stage name** | Domain Knowledge |
 | **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Stage 2 approved 2026-09-08; committed *(hash in the follow-up docs commit)* and pushed to `origin/main` |
+| **Last completed step** | Stage 2 approved 2026-09-08; committed `cca70af` and pushed to `origin/main` |
 | **Next step** | **Begin Stage 3 — RAG Pipeline** (chunking, embeddings, vector store, retrieval) |
 
 > ⛔ Stage 3 must STOP after implementation and testing, and wait for explicit approval
@@ -370,8 +370,8 @@ digit runs; no matches.
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
 | **Stage 1 commit** | `d448cc1` — `feat(stage-1): project foundation — config, logging, tracing, health` |
-| **Stage 2 commit** | *(recorded in the follow-up docs commit)* — `feat(stage-2): synthetic banking knowledge base and document loader` |
-| **Stage 2 docs commit** | *(this commit's successor)* — `docs(stage-2): record commit hash and push result in handover` |
+| **Stage 2 commit** | `cca70af` — `feat(stage-2): synthetic banking knowledge base and document loader` |
+| **Stage 2 docs commit** | `docs(stage-2): record commit hash and push result in handover` — this file's own commit, directly on top of `cca70af` |
 | **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD` |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 2** | 28 files: 19 added, 9 modified |
