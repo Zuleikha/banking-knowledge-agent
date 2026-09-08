@@ -17,9 +17,9 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 1 — Project Foundation |
-| **Implemented** | Config, structured logging, tracing, health endpoint, tests |
-| **Not yet implemented** | Knowledge base, RAG, LLM, agent, MCP, web UI, Docker |
+| **Current stage** | Stage 2 — Domain Knowledge |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, tests |
+| **Not yet implemented** | RAG, LLM, agent, MCP, web UI, Docker |
 
 Detailed progress and the exact next action live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md).
@@ -157,15 +157,21 @@ banking-knowledge-agent/
 │   │   ├── dependencies.py  # Shared FastAPI dependencies
 │   │   └── routes/
 │   │       └── health.py    # GET /health
-│   └── core/
-│       ├── config.py        # Typed, environment-based settings
-│       ├── logging.py       # structlog configuration + on-disk sinks
-│       └── tracing.py       # @traced / @traced_async decorators
+│   ├── core/
+│   │   ├── config.py        # Typed, environment-based settings
+│   │   ├── logging.py       # structlog configuration + on-disk sinks
+│   │   └── tracing.py       # @traced / @traced_async decorators
+│   └── knowledge/
+│       ├── models.py        # DocumentMetadata, KnowledgeDocument
+│       └── loader.py        # Markdown + YAML front-matter loader
+├── data/
+│   └── knowledge/           # 15 synthetic banking documents, by domain
 ├── tests/
-│   ├── conftest.py          # Shared fixtures (settings, app, client)
+│   ├── conftest.py          # Shared fixtures (settings, app, client, knowledge_root)
 │   ├── test_config.py
 │   ├── test_health.py
-│   └── test_logging.py
+│   ├── test_logging.py
+│   └── test_loader.py
 ├── docs/
 │   ├── HANDOVER.md          # Session recovery point — read this first
 │   └── architecture-guide.html
@@ -186,12 +192,62 @@ All settings are read from the environment with the `BKA_` prefix. See
 |---|---|---|
 | `BKA_ENVIRONMENT` | `local` | `local` / `test` / `production` |
 | `BKA_HOST` / `BKA_PORT` | `127.0.0.1` / `8000` | Bind address |
+| `BKA_KNOWLEDGE_DIR` | `data/knowledge/` | Synthetic banking documents |
 | `BKA_LOG_LEVEL` | `INFO` | Log verbosity |
 | `BKA_LOG_FORMAT` | `console` | `console` locally, `json` in Docker |
 | `BKA_LOG_DIR` | `logs/` | Where log and trace files are written |
 
 Secrets come from the environment only. They are never hardcoded, never
 committed, and never written to logs or traces.
+
+---
+
+## Knowledge base
+
+`data/knowledge/` holds 15 synthetic banking documents (~7,800 words) describing
+a fictional *Meridian* banking platform, organised by domain: `atm`, `cards`,
+`payments`, `digital-banking`, `api`, `configuration`, `operations`, `platform`.
+
+All content is written specifically for this project. No vendor documentation,
+branding or confidential material is reproduced.
+
+Each document is Markdown with a YAML front-matter header:
+
+```markdown
+---
+document_id: atm-transaction-lifecycle
+title: ATM Transaction Lifecycle
+domain: atm
+component: TransactionSwitch
+version: "4.2"
+doc_type: reference
+tags: [atm, withdrawal]
+---
+
+# ATM Transaction Lifecycle
+...
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `document_id` | yes | Lowercase slug; **must match the filename** |
+| `title` | yes | Human-readable name used in citations |
+| `domain` | yes | One of the eight domains above |
+| `component` | yes | Platform component the document describes |
+| `version` | yes | Component version |
+| `doc_type` | yes | `reference` / `api` / `configuration` / `runbook` / `troubleshooting` |
+| `tags` | no | Free-form keywords |
+
+Load the corpus:
+
+```bash
+.venv/Scripts/python.exe -c "from app.knowledge import load_knowledge_base; print(len(load_knowledge_base()), 'documents')"
+```
+
+The loader is strict on purpose: malformed front matter, an unknown domain, an
+unrecognised key, a `document_id` that disagrees with its filename, a duplicate
+id, an empty body or an empty knowledge directory all raise. A silently skipped
+document would become an answer the agent cannot ground.
 
 ---
 

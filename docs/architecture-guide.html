@@ -9,6 +9,7 @@
     --ink:#16202b; --muted:#5b6b7c; --line:#dfe6ee; --bg:#f6f8fb; --card:#fff;
     --done:#0f9d58; --done-bg:#e7f6ee;
     --todo:#8a94a0; --todo-bg:#eef1f5;
+    --part:#b06000; --part-bg:#fdf0e0;
     --accent:#1a5fb4; --accent-bg:#e8f0fb;
     --warn:#b35309; --warn-bg:#fdf2e3;
     --code:#f2f5f9;
@@ -39,6 +40,7 @@
   .tag{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px;white-space:nowrap}
   .t-done{background:var(--done-bg);color:var(--done)}
   .t-todo{background:var(--todo-bg);color:var(--todo)}
+  .t-part{background:var(--part-bg);color:var(--part)}
   .note{background:var(--accent-bg);border-left:4px solid var(--accent);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
   .warn{background:var(--warn-bg);border-left:4px solid var(--warn);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
   nav.toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 22px}
@@ -137,7 +139,7 @@ containerisation, each behind a clean boundary.</p>
 <table>
   <tr><th style="width:70px">Stage</th><th>Name</th><th style="width:110px">Status</th></tr>
   <tr><td>1</td><td>Project foundation — config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>2</td><td>Domain knowledge — synthetic banking documents + loader</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>2</td><td>Domain knowledge — synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>3</td><td>RAG pipeline — chunking, embeddings, vector store, retrieval</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>4</td><td>LLM abstraction — provider-agnostic prompt &amp; response layer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>5</td><td>Knowledge agent — retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -173,15 +175,23 @@ containerisation, each behind a clean boundary.</p>
 │   │   ├── dependencies.py       Shared FastAPI dependencies
 │   │   └── routes/
 │   │       └── health.py         GET /health
-│   └── core/                     Cross-cutting concerns
-│       ├── config.py             Typed settings from the environment
-│       ├── logging.py            structlog config + on-disk sinks
-│       └── tracing.py            @traced / @traced_async
+│   ├── core/                     Cross-cutting concerns
+│   │   ├── config.py             Typed settings from the environment
+│   │   ├── logging.py            structlog config + on-disk sinks
+│   │   └── tracing.py            @traced / @traced_async
+│   └── knowledge/                Knowledge base sourcing
+│       ├── models.py             DocumentMetadata, KnowledgeDocument
+│       └── loader.py             Markdown + front-matter loader
+├── data/
+│   └── knowledge/                Synthetic banking documents (15 .md files)
+│       ├── api/  atm/  cards/  configuration/
+│       └── digital-banking/  operations/  payments/  platform/
 ├── tests/                        Mirrors app/ structure
-│   ├── conftest.py               Fixtures: settings, app, client
+│   ├── conftest.py               Fixtures: settings, app, client, knowledge_root
 │   ├── test_config.py
 │   ├── test_health.py
-│   └── test_logging.py
+│   ├── test_logging.py
+│   └── test_loader.py
 ├── docs/
 │   ├── HANDOVER.md               Session recovery point
 │   └── architecture-guide.html   ← this file
@@ -193,9 +203,11 @@ containerisation, each behind a clean boundary.</p>
 └── README.md</pre>
 
 <p><strong>Directories added in later stages:</strong>
-<code>data/knowledge/</code> (Stage 2), <code>app/knowledge/</code> (2–3),
-<code>app/llm/</code> (4), <code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6),
-<code>app/web/</code> (9), <code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
+<code>app/rag/</code> (Stage 3), <code>app/llm/</code> (4),
+<code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6),
+<code>app/web/</code> (9), <code>evals/</code> (11), <code>Dockerfile</code> (12).
+The vector index lands in <code>data/vectorstore/</code>, which is git-ignored —
+it is a build artefact of <code>data/knowledge/</code>, not a source.</p>
 
 <div class="warn">
   <strong>Never</strong> create <code>banking-knowledge-agent/banking-knowledge-agent/</code>.
@@ -224,6 +236,7 @@ containerisation, each behind a clean boundary.</p>
   <tr><td><strong>Embedding model</strong></td><td>Turns text into vectors so questions can be matched to documents by meaning, not keywords.</td><td>3</td></tr>
   <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction — the app is never coupled to one vendor.</td><td>4</td></tr>
   <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
+  <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only — front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
   <tr><td><strong>Docker</strong></td><td>Reproducible local runtime; the same image everywhere.</td><td>12</td></tr>
 </table>
 </section>
@@ -274,16 +287,31 @@ containerisation, each behind a clean boundary.</p>
     <td><code>GET /health</code> — a pure liveness check returning status, service
         name, version and environment. It touches no downstream system.</td>
   </tr>
+  <tr>
+    <td><code>app/knowledge/models.py</code><br><span class="muted">DocumentMetadata, KnowledgeDocument</span></td>
+    <td>The document contract. Every document carries <em>document, domain,
+        component, version and type</em>, validated at load time.
+        <code>Domain</code> and <code>DocType</code> are closed <code>Literal</code>
+        sets and unknown front-matter keys are rejected, so a typo fails the load
+        instead of silently creating a domain nothing filters on.</td>
+  </tr>
+  <tr>
+    <td><code>app/knowledge/loader.py</code><br><span class="muted">load_knowledge_base()</span></td>
+    <td>Reads Markdown + YAML front matter from <code>data/knowledge/</code> into
+        validated <code>KnowledgeDocument</code> objects. Strict by design: a
+        malformed, mislabelled, duplicated or empty document raises rather than
+        being skipped. Returns documents in sorted order so indexing runs are
+        reproducible.</td>
+  </tr>
 </table>
 
 <h3>Planned</h3>
 <table>
   <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
-  <tr><td><code>app/knowledge/loader.py</code></td><td>Load synthetic documents and attach metadata (document, domain, component, version, type).</td><td>2</td></tr>
-  <tr><td><code>app/knowledge/chunker.py</code></td><td>Split documents into retrievable chunks, carrying metadata through.</td><td>3</td></tr>
-  <tr><td><code>app/knowledge/embeddings.py</code></td><td>Embedding provider behind an interface.</td><td>3</td></tr>
-  <tr><td><code>app/knowledge/vectorstore.py</code></td><td><code>VectorStore</code> protocol + a local implementation.</td><td>3</td></tr>
-  <tr><td><code>app/knowledge/retriever.py</code></td><td>Question → embedding → similarity search → ranked chunks + sources. Independently testable.</td><td>3</td></tr>
+  <tr><td><code>app/rag/chunker.py</code></td><td>Split documents into retrievable chunks, carrying metadata through.</td><td>3</td></tr>
+  <tr><td><code>app/rag/embeddings.py</code></td><td>Embedding provider behind an interface.</td><td>3</td></tr>
+  <tr><td><code>app/rag/vectorstore.py</code></td><td><code>VectorStore</code> protocol + a local implementation.</td><td>3</td></tr>
+  <tr><td><code>app/rag/retriever.py</code></td><td>Question → embedding → similarity search → ranked chunks + sources. Independently testable.</td><td>3</td></tr>
   <tr><td><code>app/llm/base.py</code></td><td><code>LLMProvider</code> protocol: the seam that keeps the app vendor-agnostic.</td><td>4</td></tr>
   <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions and context-injection templates.</td><td>4</td></tr>
   <tr><td><code>app/agent/agent.py</code></td><td>Orchestrates retrieve → ground → answer, and refuses when evidence is thin.</td><td>5, 7</td></tr>
@@ -342,19 +370,21 @@ into an undifferentiated blob.</p>
 <!-- ================================================================== -->
 <section id="rag">
 <h2>6. RAG flow</h2>
-<span class="tag t-todo">PLANNED — Stages 2 &amp; 3</span>
+<span class="tag t-part">PART BUILT — loading done (Stage 2), retrieval next (Stage 3)</span>
 
 <p><strong>Why RAG at all?</strong> An LLM does not know this platform, and fine-tuning
 is the wrong tool for documentation that changes. Retrieval keeps the knowledge base
 editable, makes every answer citable, and constrains the model to material we control.</p>
 
 <h3>Indexing (offline, once per document change)</h3>
-<pre class="plain">Synthetic banking documents (data/knowledge/)
+<pre class="plain">Synthetic banking documents (data/knowledge/)   ← BUILT (Stage 2)
    │
-   ▼  loader — attach metadata
-{document, domain, component, version, doc_type}
+   ▼  loader — parse front matter, validate metadata
+{document_id, title, domain, component, version, doc_type, tags}
    │
-   ▼  chunker — split, preserving metadata on every chunk
+   ▼  KnowledgeDocument (metadata + body + source_path)
+   │
+   ▼  chunker — split, preserving metadata on every chunk   ← Stage 3
 Chunks
    │
    ▼  embedding model
@@ -362,6 +392,41 @@ Vectors
    │
    ▼
 Vector store</pre>
+
+<h3>The knowledge base (Stage 2, built)</h3>
+
+<p>15 synthetic Markdown documents, ~7,800 words, describing a fictional
+<em>Meridian</em> banking platform. They are written specifically for this project:
+no vendor documentation, branding or confidential material is reproduced.</p>
+
+<table>
+  <tr><th style="width:130px">Domain</th><th style="width:210px">Components covered</th><th>Documents</th></tr>
+  <tr><td><code>atm</code></td><td>TransactionSwitch, DeviceManager</td><td>3</td></tr>
+  <tr><td><code>cards</code></td><td>AuthorizationService, CardSecurityModule</td><td>2</td></tr>
+  <tr><td><code>payments</code></td><td>PaymentEngine</td><td>2</td></tr>
+  <tr><td><code>api</code></td><td>Platform, CoreBankingAdapter</td><td>2</td></tr>
+  <tr><td><code>configuration</code></td><td>LimitService, ConfigurationStore</td><td>2</td></tr>
+  <tr><td><code>operations</code></td><td>Platform (error codes, incidents)</td><td>2</td></tr>
+  <tr><td><code>digital-banking</code></td><td>DigitalGateway</td><td>1</td></tr>
+  <tr><td><code>platform</code></td><td>Platform (component overview)</td><td>1</td></tr>
+</table>
+
+<p><strong>Why Markdown + YAML front matter</strong> rather than JSON or a database:
+the body is exactly the text that gets chunked and embedded, it stays readable and
+reviewable in a diff, and the metadata travels with the content it describes.</p>
+
+<p><strong>Why the loader is strict.</strong> A silently skipped document becomes an
+answer the agent cannot ground — a far harder fault to diagnose than a failed load.
+So missing front matter, invalid YAML, an unknown domain, an unrecognised key, a
+<code>document_id</code> that disagrees with its filename, a duplicate id, an empty
+body, or an empty knowledge directory all raise.</p>
+
+<div class="warn">
+  <strong>Documents are data, not instructions.</strong> From Stage 5 their text is
+  fed to an LLM, which makes them an untrusted input surface. The corpus is written as
+  pure technical reference prose, and the test suite scans it for secret-shaped values
+  and card-number-shaped digit runs on every run.
+</div>
 
 <h3>Retrieval (per question)</h3>
 <pre class="plain">Question
@@ -376,9 +441,12 @@ Relevant chunks
 Sources: document, domain, component, version, score</pre>
 
 <p>Metadata is not decoration. It is what lets the system say
-<em>"per ATM Transaction Processing v2.1, §Authentication"</em> instead of
+<em>"per ATM Transaction Lifecycle (TransactionSwitch v4.2)"</em> instead of
 <em>"somewhere in the docs"</em>, and it enables filtered retrieval later
-(e.g. restrict to <code>domain = payments</code>).</p>
+(e.g. restrict to <code>domain = payments</code>). Citations are addressed by
+<code>document_id</code>, which is why the loader insists it match the filename, and
+<code>source_path</code> is normalised to POSIX so a citation reads identically on
+Windows and inside a container.</p>
 </section>
 
 <!-- ================================================================== -->
@@ -523,6 +591,7 @@ frozen. Invalid configuration fails loudly at startup.</p>
 <pre>BKA_ENVIRONMENT=local        # local | test | production
 BKA_HOST=127.0.0.1
 BKA_PORT=8000
+BKA_KNOWLEDGE_DIR=data/knowledge
 BKA_LOG_LEVEL=INFO
 BKA_LOG_FORMAT=console       # console locally, json in Docker
 BKA_LOG_DIR=logs
@@ -581,13 +650,14 @@ the architecturally correct layer for it anyway.</p>
 
 <table>
   <tr><th style="width:200px">File</th><th>Covers</th></tr>
-  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client.</td></tr>
+  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root.</td></tr>
   <tr><td><code>tests/test_config.py</code></td><td>Defaults, environment overrides, rejection of invalid port and environment, caching, immutability.</td></tr>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
+  <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud — missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest          # 20 tests
+<pre>.venv/Scripts/python.exe -m pytest          # 72 tests
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
 
@@ -620,6 +690,12 @@ knowledge data stays available inside the image or a mounted volume.</p>
   <li>Traced function arguments are never logged.</li>
   <li>Pydantic validates every request and response at the boundary.</li>
   <li>Server binds to <code>127.0.0.1</code> by default, not <code>0.0.0.0</code>.</li>
+  <li>Front matter is parsed with <code>yaml.safe_load</code>, so a document cannot
+      construct arbitrary Python objects.</li>
+  <li>The test suite scans the whole corpus on every run for secret-shaped values
+      (private keys, assigned passwords or API keys) and card-number-shaped digit runs.</li>
+  <li>Knowledge documents are treated as untrusted data, not instructions — they become
+      LLM input in Stage 5.</li>
 </ul>
 
 <h3>To be assessed and documented in Stage 13</h3>

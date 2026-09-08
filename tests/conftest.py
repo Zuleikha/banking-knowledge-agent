@@ -39,3 +39,9 @@ def client(app: FastAPI) -> Iterator[TestClient]:
     """HTTP client bound to the test application."""
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def knowledge_root() -> Path:
+    """The real synthetic knowledge base shipped with the repository."""
+    return Settings().knowledge_dir

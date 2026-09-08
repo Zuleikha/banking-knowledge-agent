@@ -6,3 +6,6 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 structlog==24.4.0
+
+# Knowledge document front matter (Stage 2). safe_load only -- see loader.py.
+PyYAML==6.0.2

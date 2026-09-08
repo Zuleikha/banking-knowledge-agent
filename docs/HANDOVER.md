@@ -4,24 +4,24 @@
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-03** · Session ended cleanly at this checkpoint.
+Last updated: **2026-09-08** · Stage 2 approved, committed and pushed.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session ended:** 2026-09-03, immediately after Stage 1 was approved, committed and pushed.
+**Session ended:** 2026-09-08, immediately after Stage 2 was approved, committed and pushed.
 **Nothing is in progress.** No half-finished work, no uncommitted changes, no blockers.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last approved stage | **Stage 1 — Project Foundation** |
-| `HEAD` | `d7f2619` (= `origin/main`, verified) |
+| Last approved stage | **Stage 2 — Domain Knowledge** |
+| `HEAD` | *(recorded in the follow-up docs commit)* (= `origin/main`, verified) |
 | Working tree | Clean |
-| Tests | 20 passed · ruff clean · mypy strict clean |
-| Next stage | **Stage 2 — Domain Knowledge** (not started) |
+| Tests | 72 passed · ruff clean · mypy strict clean |
+| Next stage | **Stage 3 — RAG Pipeline** (not started) |
 
 ### To resume
 
@@ -29,7 +29,7 @@ Last updated: **2026-09-03** · Session ended cleanly at this checkpoint.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the state matches this file before trusting it
-git log --oneline -3          # expect d7f2619 on top
+git log --oneline -3          # expect the stage-2 docs commit on top
 git status                    # expect clean
 
 # 2. The venv already exists and is git-ignored. If it is missing, recreate it:
@@ -38,11 +38,11 @@ git status                    # expect clean
 #    uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 
 # 3. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 20 passed
+./.venv/Scripts/python.exe -m pytest        # expect 72 passed
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
 ./.venv/Scripts/python.exe -m mypy          # expect Success: no issues found
 
-# 4. Then read "Next Action" at the bottom of this file and begin Stage 2.
+# 4. Then read "Next Action" at the bottom of this file.
 ```
 
 ### Local files that are NOT in the remote (deliberately)
@@ -58,46 +58,53 @@ machine. Keep it; the stage definitions come from it.
 
 | | |
 |---|---|
-| **Stage number** | 1 |
-| **Stage name** | Project Foundation |
+| **Stage number** | 2 |
+| **Stage name** | Domain Knowledge |
 | **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Stage 1 approved 2026-09-03; committed `d448cc1` and pushed to `origin/main` |
-| **Next step** | **Begin Stage 2 — Domain Knowledge** (synthetic banking documentation + loader) |
+| **Last completed step** | Stage 2 approved 2026-09-08; committed *(hash in the follow-up docs commit)* and pushed to `origin/main` |
+| **Next step** | **Begin Stage 3 — RAG Pipeline** (chunking, embeddings, vector store, retrieval) |
 
-> ⛔ Stage 2 must STOP after implementation and testing, and wait for explicit approval
+> ⛔ Stage 3 must STOP after implementation and testing, and wait for explicit approval
 > before any commit or push.
+
+### Previous stage
+
+| | |
+|---|---|
+| **Stage 1** | Project Foundation |
+| **Status** | ✅ Complete, approved 2026-09-03, committed `d448cc1`, pushed |
 
 ---
 
 ## Current Work
 
-### Implemented
+### Implemented in Stage 2
 
-- Clean repository structure (`app/`, `tests/`, `docs/`) — no nested project directory
-- `requirements.txt` (runtime) and `requirements-dev.txt` (test/tooling), all pinned
-- `.gitignore` — covers `.env`, secrets, keys, venvs, caches, `logs/`, build artefacts
-- `.env.example` — every setting documented; no real secret values
-- `README.md` — setup, run, test, layout, configuration
-- `pyproject.toml` — pytest, ruff and mypy(strict) configuration
-- **Application entry point** — `app/main.py` with a `create_app()` factory and lifespan logging
-- **Configuration management** — `app/core/config.py`, typed/frozen `Settings` from `BKA_*` env vars
-- **Structured logging** — `app/core/logging.py`, structlog → stdout + rotating JSON files
-- **Tracing** — `app/core/tracing.py`, `@traced` / `@traced_async` → dedicated on-disk sink
-- **Health endpoint** — `GET /health`
-- **Test structure** — `tests/` with shared fixtures; 20 tests
-- `docs/HANDOVER.md` (this file)
-- `docs/architecture-guide.html` — full personal architecture reference
+- **Synthetic knowledge corpus** — `data/knowledge/`, 15 Markdown documents,
+  ~7,800 words, across all eight domains. Describes a fictional *Meridian*
+  banking platform invented for this project.
+- **Document metadata schema** — `app/knowledge/models.py`.
+  `DocumentMetadata` carries the five required fields (document, domain,
+  component, version, doc_type) plus optional tags. `Domain` and `DocType` are
+  closed `Literal` sets; unknown front-matter keys are rejected.
+- **Document loader** — `app/knowledge/loader.py`. Parses Markdown + YAML front
+  matter into validated `KnowledgeDocument` objects, deterministically ordered.
+- **Typed error hierarchy** — `KnowledgeLoadError` and five specific subclasses,
+  so callers can distinguish a malformed document from a missing directory.
+- **Configuration** — `BKA_KNOWLEDGE_DIR` added to `Settings` and `.env.example`.
+- **Tests** — `tests/test_loader.py`, 52 new tests (20 → 72 total).
+- **Docs** — `README.md` and `docs/architecture-guide.html` updated.
 
 ### Currently being worked on
 
-Nothing. Stage 1 is approved and pushed. Stage 2 has not been started.
+Nothing. Stage 2 is approved and pushed. Stage 3 has not been started.
 
 ### Not yet implemented (later stages)
 
-Knowledge base and loader (2) · RAG pipeline (3) · LLM abstraction (4) · Knowledge agent (5) ·
-MCP tools (6) · Tool selection (7) · Conversation context (8) · Web interface (9) ·
-Request observability (10) · Evaluation framework (11) · Docker (12) · Security review (13) ·
-Production architecture (14) · Final review (15)
+RAG pipeline (3) · LLM abstraction (4) · Knowledge agent (5) · MCP tools (6) ·
+Tool selection (7) · Conversation context (8) · Web interface (9) ·
+Request observability (10) · Evaluation framework (11) · Docker (12) ·
+Security review (13) · Production architecture (14) · Final review (15)
 
 ---
 
@@ -106,20 +113,33 @@ Production architecture (14) · Final review (15)
 ### Current
 
 ```
+data/knowledge/**/*.md         Markdown + YAML front matter
+   │
+   ▼  loader.split_front_matter
+(front matter, body)
+   │
+   ▼  loader.parse_metadata  → yaml.safe_load → DocumentMetadata (validated)
+   │
+   ▼  loader.load_document   → id/filename check, empty-body check
+KnowledgeDocument(metadata, content, source_path)
+   │
+   ▼  loader.load_knowledge_base → sorted, duplicate-id checked
+tuple[KnowledgeDocument, ...]        ← Stage 3 chunks and embeds this
+   │
+   ├──▶ logs/app.log      "knowledge.loaded" event
+   └──▶ logs/traces.log   @traced function traces (separate sink)
+
 HTTP request
    │
    ▼
 FastAPI app  (app/main.py — create_app factory)
-   │   settings stored on app.state
-   ▼
-Router  (app/api/routes/health.py)
-   │   SettingsDep reads request.app.state.settings
-   ▼
-Pydantic-validated response
    │
-   ├──▶ logs/app.log      structured application events
-   └──▶ logs/traces.log   @traced function traces (separate sink)
+   ▼
+Router  (app/api/routes/health.py)  →  Pydantic-validated response
 ```
+
+The knowledge layer is deliberately **not** wired into the API yet. Stage 2 owns
+document sourcing only; retrieval is Stage 3 and the agent is Stage 5.
 
 ### Components implemented
 
@@ -131,47 +151,72 @@ Pydantic-validated response
 | `app/core/tracing.py` | `@traced` / `@traced_async` structured trace decorators |
 | `app/api/dependencies.py` | `SettingsDep` — resolves settings from `app.state` |
 | `app/api/routes/health.py` | `GET /health` liveness endpoint |
+| `app/knowledge/models.py` | `DocumentMetadata`, `KnowledgeDocument`, `Domain`, `DocType` |
+| `app/knowledge/loader.py` | Front-matter parsing, validation, corpus loading, errors |
 
-### Important design decisions
+### Important design decisions (Stage 2)
 
 | Decision | Reasoning |
 |---|---|
-| App **factory** (`create_app()`) | Tests build an app with overridden settings instead of mutating globals |
-| Settings from **`app.state`**, not cached global | Factory is the single source of truth (see Problems §1) |
-| **structlog from Stage 1** | Stage 10 needs queryable fields; retrofitting means rewriting every call site |
-| **Separate trace sink**, `propagate = False` | High-volume traces would bury operational events in the app log |
-| **Never log traced arguments** | They may carry card data, customer IDs or API keys |
-| **`@traced` not on route handlers** | Breaks FastAPI annotation resolution (see Problems §2) |
-| **Frozen settings** | Config mutating at runtime is a debugging trap |
-| **Pinned dependencies** | Local, CI and Docker resolve identically |
-| **mypy strict** | Catches contract drift across the many interfaces coming in Stages 3–6 |
+| **Markdown + YAML front matter** | The body *is* the text Stage 3 chunks and embeds; it stays readable in a diff; metadata travels with the content it describes |
+| **`yaml.safe_load`, never `load`** | Front matter must not be able to construct arbitrary Python objects |
+| **Closed `Literal` sets for domain and doc_type** | A typo should fail the load, not silently create a domain nothing filters on |
+| **`extra="forbid"` on metadata** | A misspelled `compnent:` would otherwise be dropped and the document would lose the field retrieval filters on |
+| **Loader raises instead of skipping** | A silently skipped document becomes an answer the agent cannot ground — much harder to diagnose than a failed load |
+| **Empty knowledge dir is an error** | Otherwise it surfaces as an agent that answers nothing, with no signal as to why |
+| **`document_id` must equal the filename stem** | Citations are addressed by id; the two disagreeing makes a citation unresolvable |
+| **`source_path` normalised to POSIX** | A citation must read identically on Windows and inside a Linux container |
+| **Deterministic (sorted) ordering** | Indexing runs and test assertions stay reproducible |
+| **Frozen models** | A retrieved document must not be mutable by the code that consumes it |
+| **Corpus scanned for secrets in the test suite** | A banking corpus is exactly where a fake-looking-but-real credential would hide |
+| **Documents kept free of instruction-like prose** | From Stage 5 they are untrusted LLM input |
 
 ---
 
 ## Files
 
+### Added in Stage 2
+
 | File | Purpose |
 |---|---|
-| `app/main.py` | FastAPI application factory and entry point (`uvicorn app.main:app`) |
-| `app/core/config.py` | All configuration, from `BKA_*` environment variables |
-| `app/core/logging.py` | Structured logging setup; `configure_logging`, `reset_logging`, `get_logger` |
-| `app/core/tracing.py` | `traced`, `traced_async` — structured function tracing to disk |
-| `app/api/dependencies.py` | Shared FastAPI dependencies (`SettingsDep`) |
-| `app/api/routes/health.py` | `GET /health` + `HealthResponse` model |
-| `tests/conftest.py` | Fixtures: `settings` (logs → `tmp_path`), `app`, `client` |
-| `tests/test_config.py` | Configuration behaviour and validation |
-| `tests/test_health.py` | Health endpoint, OpenAPI, 404, settings wiring |
-| `tests/test_logging.py` | Log/trace files, sink separation, secret-safety, tracing errors |
-| `pyproject.toml` | pytest / ruff / mypy configuration |
-| `requirements.txt` | Pinned runtime dependencies |
-| `requirements-dev.txt` | Pinned test and tooling dependencies |
-| `.env.example` | Documented configuration template (no secrets) |
-| `.gitignore` | Excludes secrets, venvs, caches, logs, and local working files |
-| `README.md` | Developer setup and usage |
-| `docs/HANDOVER.md` | This recovery file |
-| `docs/architecture-guide.html` | Personal architecture reference |
-| `prompt.md`, `ccp.txt` | Project brief and workflow rules — **local only, git-ignored** |
-| `docs/decisions/auto-changes.log` | Written by a local Claude Code hook — **git-ignored** |
+| `app/knowledge/__init__.py` | Package exports (models, loader, error types) |
+| `app/knowledge/models.py` | `DocumentMetadata`, `KnowledgeDocument`, `Domain`, `DocType` |
+| `app/knowledge/loader.py` | `load_document`, `load_knowledge_base`, error hierarchy |
+| `tests/test_loader.py` | 52 tests: loader behaviour, failure modes, corpus validity, corpus security |
+| `data/knowledge/atm/atm-transaction-lifecycle.md` | Eight-stage lifecycle; why a transaction fails *after* authentication |
+| `data/knowledge/atm/atm-cash-withdrawal-troubleshooting.md` | Six-step withdrawal diagnosis procedure |
+| `data/knowledge/atm/atm-device-states.md` | Terminal states, cassettes, dispense outcomes |
+| `data/knowledge/cards/card-authentication.md` | AuthorizationService: identification, verification, decisions |
+| `data/knowledge/cards/card-pin-verification.md` | CardSecurityModule, HSM pool, PIN and cryptogram errors |
+| `data/knowledge/payments/payment-authorisation-api.md` | `POST /v1/payments/authorise`, idempotency, statuses, errors |
+| `data/knowledge/payments/payment-processing-overview.md` | Authorise → capture → clear → settle; reversals |
+| `data/knowledge/digital-banking/digital-channel-overview.md` | DigitalGateway: sessions, step-up, rate limits |
+| `data/knowledge/api/api-integration-guide.md` | Shared API conventions: auth, headers, errors, retries |
+| `data/knowledge/api/core-banking-integration.md` | CoreBankingAdapter: operations, balances, timeouts |
+| `data/knowledge/configuration/transaction-limits-configuration.md` | Limit keys, precedence, account-not-card scope |
+| `data/knowledge/configuration/configuration-reference.md` | ConfigurationStore, timeout and channel keys |
+| `data/knowledge/operations/error-code-reference.md` | Every error code by component, with fault class |
+| `data/knowledge/operations/incident-response-runbook.md` | Severity, blast radius, component checks |
+| `data/knowledge/platform/platform-component-overview.md` | The nine components and the request paths |
+
+### Modified in Stage 2
+
+| File | Change |
+|---|---|
+| `app/core/config.py` | Added `knowledge_dir` setting |
+| `.env.example` | Documented `BKA_KNOWLEDGE_DIR` |
+| `requirements.txt` | Pinned `PyYAML==6.0.2` (was only an implicit uvicorn extra) |
+| `requirements-dev.txt` | Added `types-PyYAML` for mypy strict |
+| `tests/conftest.py` | Added `knowledge_root` fixture |
+| `.gitignore` | Added `.pytest_tmp/` (see Problems §9) |
+| `README.md` | Status, layout, configuration table, new "Knowledge base" section |
+| `docs/architecture-guide.html` | §1 stages, §2 structure, §3 stack, §4 components, §6 RAG, §12 config, §14 testing, §16 security |
+
+### From Stage 1 (unchanged)
+
+`app/main.py` · `app/core/logging.py` · `app/core/tracing.py` ·
+`app/api/dependencies.py` · `app/api/routes/health.py` · `tests/test_config.py` ·
+`tests/test_health.py` · `tests/test_logging.py` · `pyproject.toml` · `.gitignore`
 
 ---
 
@@ -179,107 +224,128 @@ Pydantic-validated response
 
 ### Result
 
-**20 passed, 0 failed.** `ruff check .` → *All checks passed!*
-`mypy` (strict) → *Success: no issues found in 10 source files*
-Live `uvicorn` startup verified: `/health` 200, `/openapi.json` 200, `/docs` 200;
-both log sinks written and correctly separated.
+**72 passed, 0 failed** (20 from Stage 1, 52 new).
+`ruff check .` → *All checks passed!*
+`mypy` (strict) → *Success: no issues found in 13 source files*
+Manual corpus load verified: 15 documents, 8 domains, 9 components, ~7,800 words,
+`knowledge.loaded` event written to the app sink and traces to the separate sink.
 
 | Test file | Tests | Covers |
 |---|---|---|
-| `tests/test_config.py` | 6 | Defaults, env overrides, invalid port/environment rejected, caching, immutability |
+| `tests/test_config.py` | 6 | Defaults, env overrides, invalid port/environment, caching, immutability |
 | `tests/test_health.py` | 5 | 200 + payload, exact schema, OpenAPI, 404, settings wiring |
-| `tests/test_logging.py` | 9 | Log to disk, trace sink separation, sync/async trace ok+error paths, arguments never logged, metadata preserved, idempotent config |
+| `tests/test_logging.py` | 9 | Log to disk, trace sink separation, sync/async ok+error paths, arguments never logged |
+| `tests/test_loader.py` | 52 | See breakdown below |
+
+### `tests/test_loader.py` breakdown
+
+| Group | Tests | Covers |
+|---|---|---|
+| Valid loading | 8 | Metadata parsed, front matter stripped, POSIX relative path, tags, BOM tolerated, citation, immutability |
+| Front-matter failures | 6 | Missing, unterminated, invalid YAML, scalar, empty file, split helper |
+| Metadata failures | 11 | Each of the 5 required fields missing, unknown domain, unknown doc_type, unrecognised key, id/filename mismatch, non-slug id, empty body |
+| Directory loading | 7 | Nested dirs, deterministic order, missing dir, empty dir, duplicate ids, one bad doc fails the load, default from settings |
+| Corpus validity | 14 | Document count, all 8 domains, complete metadata, unique ids, substantial content, doc types, components, 8 seed-question phrases |
+| Corpus security | 3 | No secret-shaped values, no card-number-shaped digit runs, no vendor names |
+| Type contracts | 3 | Closed `Domain`/`DocType` sets, blank component rejected |
 
 ### Commands used
 
 ```bash
-uv venv .venv --python 3.12
-uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
-./.venv/Scripts/python.exe -m pytest -q
-./.venv/Scripts/python.exe -m ruff check .
-./.venv/Scripts/python.exe -m mypy
-./.venv/Scripts/python.exe -m uvicorn app.main:app --reload   # manual startup check
-curl http://127.0.0.1:8000/health
+./.venv/Scripts/python.exe -m pytest        # 72 passed
+./.venv/Scripts/python.exe -m ruff check .  # All checks passed!
+./.venv/Scripts/python.exe -m mypy          # Success: no issues found in 13 source files
+
+# Manual corpus check
+./.venv/Scripts/python.exe -c "from app.knowledge import load_knowledge_base; print(len(load_knowledge_base()), 'documents')"
 ```
 
-### Stage 1 required test coverage
+### Stage 2 required coverage (prompt.md §10)
 
 | Requirement | Status |
 |---|---|
-| Virtual environment setup | ✅ Verified (see Problems §3) |
-| Dependency installation | ✅ Verified — all imports succeed |
-| Application startup | ✅ Verified via `TestClient` **and** a live `uvicorn` run |
-| Health endpoint | ✅ 5 tests + live `curl` returning 200 |
-| Test suite | ✅ 20 tests passing; lint and strict types clean |
+| Synthetic docs: ATM transactions | ✅ `atm-transaction-lifecycle` |
+| Synthetic docs: card authentication | ✅ `card-authentication`, `card-pin-verification` |
+| Synthetic docs: payment processing | ✅ `payment-processing-overview`, `payment-authorisation-api` |
+| Synthetic docs: digital banking | ✅ `digital-channel-overview` |
+| Synthetic docs: API integration | ✅ `api-integration-guide`, `core-banking-integration` |
+| Synthetic docs: configuration | ✅ `transaction-limits-configuration`, `configuration-reference` |
+| Synthetic docs: common errors | ✅ `error-code-reference` |
+| Synthetic docs: incident troubleshooting | ✅ `incident-response-runbook`, `atm-cash-withdrawal-troubleshooting` |
+| Synthetic docs: system components | ✅ `platform-component-overview`, `atm-device-states` |
+| Enough content for meaningful retrieval | ✅ 15 documents, ~7,800 words, min 431 words each |
+| Document loading implemented | ✅ `app/knowledge/loader.py` |
+| Metadata: document, domain, component, version, doc type | ✅ All five required and validated |
+| No real vendor documentation | ✅ All synthetic; asserted by test |
+| Document-loading tests | ✅ 52 tests |
+| Handover updated | ✅ This file |
 
 ---
 
 ## Problems and Decisions
 
-### 1. Health endpoint ignored the app's settings — FIXED
+### 6. `PyYAML` was an undeclared transitive dependency — RESOLVED
 
-`GET /health` used `Depends(get_settings)`, the cached global, so it reported the
-process-wide environment rather than the settings the app was actually built with.
-The test suite caught it (`assert 'local' == 'test'`).
+The loader needs YAML. `PyYAML` was already importable because
+`uvicorn[standard]` pulls it in, so the tests would have passed before it was
+declared. That is a trap: a change to uvicorn's extras would break the loader
+with no prior signal.
 
-**Fix:** `app/api/dependencies.py` resolves settings from `request.app.state.settings`,
-making the app factory the single source of truth.
+**Fix:** `PyYAML==6.0.2` pinned in `requirements.txt` as a direct dependency, and
+`types-PyYAML` added to `requirements-dev.txt` for mypy strict.
 
-### 2. `@traced` cannot decorate FastAPI route handlers — RESOLVED, CONSTRAINT DOCUMENTED
+### 7. `pip` is unavailable inside the uv-created venv — WORKED AROUND
 
-Wrapping a handler in `@traced_async` caused `422` responses and OpenAPI generation
-failures. Cause: with `from __future__ import annotations`, FastAPI resolves a handler's
-postponed annotations against that function's `__globals__`. A wrapper defined in
-`app/core/tracing.py` resolves them against the tracing module, where `SettingsDep` does
-not exist — so the dependency silently degraded into a query parameter.
+`./.venv/Scripts/python.exe -m pip` fails with *No module named pip*: `uv venv`
+does not install pip by default. Use
+`uv pip install --python .venv/Scripts/python.exe <package>` instead. Consistent
+with Problems §4.
 
-**Decision:** route handlers are **not** decorated. Request-level tracing is added as
-middleware in Stage 10, which is the correct layer for it anyway. The constraint is
-documented in `app/core/tracing.py`, `app/api/routes/health.py` and
-`architecture-guide.html` §13.
+### 8. `pytest.raises(Exception)` rejected by ruff `B017` — RESOLVED
 
-### 3. Stale `.git/HEAD.lock` blocked the first commit attempt — RESOLVED
+Two tests asserted immutability and validation with a bare `Exception`. Ruff's
+`B017` flagged them as too broad, correctly: they would pass on an unrelated
+failure. Replaced with `pydantic.ValidationError`, which is what both cases
+actually raise. Warnings were fixed rather than suppressed, per the global rules.
 
-`git commit` failed with *"cannot lock ref 'HEAD'"*. A zero-byte `.git/HEAD.lock` dated
-12:50 — predating this session's work — was left behind by an earlier crashed git
-process. Confirmed no `git.exe` was running, then removed the stale lock. The commit
-succeeded immediately after. If this recurs, check for a running git process **first**.
+### 9. `.pytest_tmp/` almost got committed — RESOLVED
 
-### 4. Broken system Python `venv` — WORKED AROUND
+During the pre-commit review, `git add -An` listed 33 pytest temporary fixture
+files under a `.pytest_tmp/` directory in the repository root. It was not
+git-ignored, so it would have been committed alongside Stage 2.
 
-`python -m venv` fails on this machine: `No module named venv` (system Python at
-`D:\Python\Python312` is a partial install). A `virtualenv`-created environment was
-worse — it segfaulted on `import structlog` and `import httpx`.
+The directory could not be reproduced afterwards: deleting it and re-running the
+suite from both Git Bash and PowerShell did not recreate it, and nothing in
+`pyproject.toml`, `.claude/` or the environment configures a project-local
+pytest basetemp. It appears to have been a one-off from a shell invocation where
+the temp root did not resolve.
 
-**Decision:** use `uv venv .venv --python 3.12` (CPython 3.12.13). All imports and the
-full suite work. Documented in `README.md`; plain `python -m venv` remains correct on a
-healthy install.
+**Fix:** `.pytest_tmp/` added to `.gitignore`. The cause is unexplained, so the
+lesson is the process rather than the directory: **always list the exact file set
+`git add` would stage before committing**, rather than trusting `git status`
+summary lines, which collapse untracked directories into a single entry.
+
+### Carried forward from Stage 1
+
+- **§1** Health endpoint settings resolution — fixed, `SettingsDep` reads `app.state`.
+- **§2** `@traced` cannot decorate FastAPI route handlers — constraint documented;
+  request tracing arrives as middleware in Stage 10.
+- **§3** Stale `.git/HEAD.lock` blocked a commit — if it recurs, check for a
+  running `git.exe` **first**, then remove the lock.
+- **§4** System `python -m venv` is broken on this machine — use `uv venv`.
+- **§5** `docs/decisions/auto-changes.log` is written by a local hook — git-ignored.
 
 ### Assumptions
 
-- `prompt.md` is authoritative over `ccp.txt` where they differ (`ccp.txt` says
-  "Phase 0"; `prompt.md` defines Stage 1 as the first stage). Started at Stage 1.
-- `prompt.md` and `ccp.txt` are user-provided briefs kept local and git-ignored. They
-  exist on disk in the repository root but will never appear in the remote.
-- Global engineering rules require `@traced` on new functions. Applied to application
-  functions, with three documented exceptions: FastAPI route handlers (§2 above),
-  `tracing._emit` (would recurse infinitely), and trivial Pydantic property accessors.
-
-### 5. Unexpected file: `docs/decisions/auto-changes.log` — RESOLVED
-
-A user-configured Claude Code hook appends every file edit to
-`docs/decisions/auto-changes.log`. It was **not** created by Stage 1 work and contains no
-secrets — only timestamps and file paths.
-
-**Decision (user, 2026-09-03):** git-ignored. The file stays on disk for the hook to
-append to, but is never committed.
-
-### Resolved questions
-
-| Question | User's decision (2026-09-03) |
-|---|---|
-| Commit `prompt.md` and `ccp.txt`? | **No — keep local.** Both are git-ignored. |
-| Commit `docs/decisions/auto-changes.log`? | **No — git-ignored.** |
+- `prompt.md` is authoritative over `ccp.txt` where they differ.
+- `prompt.md` and `ccp.txt` are local, git-ignored briefs; they will never appear
+  in the remote.
+- Global rules require `@traced` on new functions. Applied to every new loader
+  function, with the documented exceptions: FastAPI route handlers, `tracing._emit`,
+  and trivial Pydantic property accessors (`KnowledgeDocument.citation`).
+- The platform described in the corpus (*Meridian*, its components, error codes,
+  API paths and configuration keys) is entirely invented for this project and is
+  internally consistent so that cross-document retrieval is meaningful.
 
 ### Open questions for the user
 
@@ -290,6 +356,10 @@ None.
 ✅ No secrets, keys, tokens or credentials anywhere in the repository.
 ✅ No real `.env` file exists. `.env` and `.env.*` are git-ignored (`.env.example` excepted).
 ✅ `logs/` is git-ignored. Traced function arguments are never logged.
+✅ Corpus scanned by the test suite for secret-shaped values and card-number-shaped
+digit runs; no matches.
+✅ `yaml.safe_load` only — front matter cannot construct arbitrary Python objects.
+✅ No nested `banking-knowledge-agent/` directory.
 
 ---
 
@@ -299,35 +369,38 @@ None.
 |---|---|
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
-| **Previous commit** | `a2bd8e5` — "initial commit" (contained only `.gitignore`) |
 | **Stage 1 commit** | `d448cc1` — `feat(stage-1): project foundation — config, logging, tracing, health` |
-| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD` (`d448cc1`) |
+| **Stage 2 commit** | *(recorded in the follow-up docs commit)* — `feat(stage-2): synthetic banking knowledge base and document loader` |
+| **Stage 2 docs commit** | *(this commit's successor)* — `docs(stage-2): record commit hash and push result in handover` |
+| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD` |
 | **Working tree** | Clean, apart from git-ignored local files |
-| **Committed in Stage 1** | 23 files: 22 added, `.gitignore` modified |
+| **Committed in Stage 2** | 28 files: 19 added, 9 modified |
 | **Deliberately not committed** | `prompt.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, caches |
 
 ---
 
 ## Next Action
 
-**Begin Stage 2 — Domain Knowledge.** Stage 1 is approved, committed and pushed.
+**Begin Stage 3 — RAG Pipeline.** Stage 2 is approved, committed and pushed.
 
-Stage 2 scope (from `prompt.md` §10):
+### Stage 3 scope (from `prompt.md` §11), for when it starts
 
-1. Write synthetic banking technical documentation under `data/knowledge/`, covering:
-   ATM transactions · card authentication · payment processing · digital banking ·
-   API integration · configuration · common errors · incident troubleshooting ·
-   system components. Enough content that retrieval is meaningful.
-2. Implement document loading in `app/knowledge/loader.py`.
-3. Attach metadata to every document: **document, domain, component, version, doc_type**.
-4. Add document-loading tests in `tests/test_loader.py`.
-5. Update `docs/architecture-guide.html` (§2 structure, §4 components, §6 RAG flow).
-6. Update this handover.
-7. **STOP** and wait for approval. Do not commit or push Stage 2 unapproved.
+1. Chunking in `app/rag/chunker.py`, carrying document metadata onto every chunk.
+2. Embedding generation behind an interface (`app/rag/embeddings.py`).
+3. A `VectorStore` protocol plus a local implementation (`app/rag/vectorstore.py`)
+   so the store can be replaced later. Index artefacts go to `data/vectorstore/`,
+   which is already git-ignored.
+4. Retrieval and similarity search in `app/rag/retriever.py`, returning source
+   metadata. Must be independently testable without an LLM.
+5. Retrieval tests plus representative examples.
+6. Update `docs/architecture-guide.html` §6 and this handover.
+7. **STOP** and wait for approval.
 
 Constraints carried forward:
 
 - Synthetic content only. No proprietary, confidential or copyrighted material.
 - Documents are data, not instructions — they become untrusted LLM input in Stage 5.
 - No secrets in documents, tests or logs.
+- Never spend money or call a paid API without explicit confirmation — relevant
+  from Stage 3, since a hosted embedding model would be a paid call.
 - Do not create a nested `banking-knowledge-agent/` directory.
