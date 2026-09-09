@@ -18,7 +18,7 @@ Last updated: **2026-09-09** · Stage 3 **approved, committed and pushed**.
 | | |
 |---|---|
 | Last **approved** stage | **Stage 3 — RAG Pipeline** (approved 2026-09-09) |
-| `HEAD` | the `feat(stage-3)` commit — see the Git section for the hash |
+| `HEAD` | the `docs(stage-3)` commit sitting on top of `be9297c` (= `origin/main`) |
 | Working tree | Clean, apart from git-ignored local files |
 | Tests | **240 passed** · ruff clean · mypy strict clean |
 | Next stage | **Stage 4 — LLM Abstraction** (not started) |
@@ -68,7 +68,7 @@ git status                    # expect clean
 | **Stage number** | 3 |
 | **Stage name** | RAG Pipeline |
 | **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Stage 3 approved 2026-09-09; committed and pushed to `origin/main` |
+| **Last completed step** | Stage 3 approved 2026-09-09; committed `be9297c` and pushed to `origin/main` |
 | **Next step** | **Begin Stage 4 — LLM Abstraction** (provider-agnostic prompt & response layer) |
 
 > ⛔ Stage 4 must STOP after implementation and testing, and wait for explicit approval
@@ -491,28 +491,28 @@ source for reassessment in Stage 13.
 |---|---|
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
-| **HEAD** | `081b3a0` — `docs(stage-2): record commit hash and push result in handover` |
-| **Local vs remote** | In sync at `081b3a0`. **Stage 3 is NOT committed.** |
 | **Stage 1 commit** | `d448cc1` — `feat(stage-1): project foundation — config, logging, tracing, health` |
 | **Stage 2 commit** | `cca70af` — `feat(stage-2): synthetic banking knowledge base and document loader` |
-| **Stage 3 commit** | ⛔ **None — awaiting approval** |
-| **Working tree** | Dirty: 13 new files, 8 modified — 21 files total, verified with `git add -An` |
-| **Deliberately not committed** | `prompt.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, caches |
+| **Stage 3 commit** | `be9297c` — `feat(stage-3): RAG pipeline — chunking, embeddings, vector store, retrieval` |
+| **Stage 3 docs commit** | `docs(stage-3): record commit hash and push result in handover` — this file's own commit, directly on top of `be9297c` |
+| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD` |
+| **Working tree** | Clean, apart from git-ignored local files |
+| **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
+| **Deliberately not committed** | `prompt.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
 
-### Pre-commit checklist for when Stage 3 is approved
+### Pre-commit checklist (worked for Stage 3; reuse for Stage 4)
 
-1. `git status --short` **and** `git add -An --dry-run` — list the exact file set
-   (Problems §9: `git status` collapses untracked directories into one line).
-2. Confirm `data/vectorstore/`, `logs/`, `.venv/`, `prompt.md`, `ccp.txt` are **not** staged.
-3. Re-run `pytest`, `ruff check .`, `mypy`.
-4. Update this file with the commit hash and push result.
-5. Commit, push, verify `origin/main == HEAD`.
-
-Proposed commit message:
-
-```
-feat(stage-3): RAG pipeline — chunking, embeddings, vector store, retrieval
-```
+1. `git add -An` — list the **exact** file set. `git status` collapses untracked
+   directories into a single line and will hide what is really being staged
+   (Problems §9).
+2. Confirm `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`, `prompt.md`,
+   `ccp.txt` are **not** in that list. Grep precisely — a loose `vectorstore` pattern
+   matches the legitimate `app/rag/vectorstore.py` source file.
+3. Scan the staged set for secret-shaped assignments, long base64/hex literals and
+   card-number-shaped digit runs.
+4. Check for a stale `.git/*.lock` and a running `git.exe` (Problems §3).
+5. Re-run `pytest`, `ruff check .`, `mypy`.
+6. Commit, push, verify `origin/main == HEAD`, then record the hash here.
 
 ---
 
