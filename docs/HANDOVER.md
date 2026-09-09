@@ -14,23 +14,21 @@ Stage 4 **in progress** (LLM provider decision recorded — mock only, no concre
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** Stage 4 is **implemented and tested**, and is **waiting for the user's
-approval**. Nothing has been committed. No blockers.
+**Session state:** Stage 4 approved by the user, committed and pushed.
+**Nothing is in progress.** No half-finished work, no blockers.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 3 — RAG Pipeline** (approved 2026-09-09, pushed) |
-| Current stage | **Stage 4 — LLM Abstraction** — implemented, tested, ⏳ **AWAITING APPROVAL** |
-| `HEAD` | `995e4b8` `docs(stage-3)` on top of `be9297c` (= `origin/main`). **Unchanged** — Stage 4 is not committed |
-| Working tree | Stage 4 changes uncommitted: 11 new files, 7 modified |
-| Tests | **385 passed** (240 + 145 new) · ruff clean · mypy strict clean |
-| Next stage | Stage 5 — Knowledge Agent (**do not start** until Stage 4 is approved, committed and pushed) |
+| Last **approved** stage | **Stage 4 — LLM Abstraction** (approved 2026-09-09) |
+| `HEAD` | the `docs(stage-4)` commit sitting on top of `bee4b22` (= `origin/main`) |
+| Working tree | Clean, apart from git-ignored local files |
+| Tests | **385 passed** · ruff clean · mypy strict clean (29 source files) |
+| Next stage | **Stage 5 — Knowledge Agent** (not started) |
 
-> ⛔ **Do not commit or push Stage 4 without the user's explicit approval.**
-> If this session was lost mid-stage: the work is complete and on disk. Re-run the
-> verification below, show the user the STAGE COMPLETE report, and wait.
+> ⚠️ **One decision is open and blocks Stage 5:** which concrete LLM provider the first
+> adapter targets, and whether a live API key is ever wired in. See *Next Action*.
 
 ### To resume
 
@@ -38,8 +36,8 @@ approval**. Nothing has been committed. No blockers.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the state matches this file before trusting it
-git log --oneline -3          # expect 995e4b8 docs(stage-3) on top
-git status                    # expect the Stage 4 files, uncommitted
+git log --oneline -3          # expect docs(stage-4) on top of bee4b22
+git status                    # expect clean
 
 # 2. Re-establish the baseline
 ./.venv/Scripts/python.exe -m pytest        # expect 385 passed
@@ -79,11 +77,12 @@ git status                    # expect the Stage 4 files, uncommitted
 |---|---|
 | **Stage number** | 4 |
 | **Stage name** | LLM Abstraction |
-| **Status** | 🟡 **IMPLEMENTED AND TESTED — AWAITING THE USER'S APPROVAL** |
-| **Last completed step** | Implementation, 145 new tests, handover + README + architecture guide §20 updated |
-| **Next step** | **Show the user the STAGE COMPLETE report and STOP.** On approval: re-verify, follow the pre-commit checklist, commit, push, record the hash here — then Stage 5 |
+| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
+| **Last completed step** | Stage 4 approved 2026-09-09; committed `bee4b22` and pushed to `origin/main` |
+| **Next step** | **Begin Stage 5 — Knowledge Agent.** First settle the open decision: which concrete LLM provider, and whether a live key is wired in |
 
-> ⛔ **Nothing is committed.** Do not commit or push Stage 4 without explicit approval.
+> ⛔ Stage 5 must STOP after implementation and testing, and wait for explicit approval
+> before any commit or push.
 
 ### Previous stages
 
@@ -92,6 +91,7 @@ git status                    # expect the Stage 4 files, uncommitted
 | 1 | Project Foundation | ✅ Approved 2026-09-03, committed `d448cc1`, pushed |
 | 2 | Domain Knowledge | ✅ Approved 2026-09-08, committed `cca70af`, pushed |
 | 3 | RAG Pipeline | ✅ Approved 2026-09-09, committed `be9297c`, pushed |
+| 4 | LLM Abstraction | ✅ Approved 2026-09-09, committed `bee4b22`, pushed |
 
 ---
 
@@ -779,9 +779,10 @@ source for reassessment in Stage 13.
 | **Stage 2 commit** | `cca70af` — `feat(stage-2): synthetic banking knowledge base and document loader` |
 | **Stage 3 commit** | `be9297c` — `feat(stage-3): RAG pipeline — chunking, embeddings, vector store, retrieval` |
 | **Stage 3 docs commit** | `docs(stage-3): record commit hash and push result in handover` — this file's own commit, directly on top of `be9297c` |
-| **Stage 4 commit** | ⏳ **NONE — awaiting approval.** `HEAD` is still `995e4b8` |
-| **Push status** | Stages 1–3 pushed and verified (`origin/main == 995e4b8`). Stage 4 not pushed |
-| **Working tree** | Stage 4 changes uncommitted: **11 new files, 7 modified** |
+| **Stage 4 commit** | `bee4b22` — `feat(stage-4): LLM abstraction — provider seam, prompts, context injection` |
+| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD == bee4b22` |
+| **Working tree** | Clean, apart from git-ignored local files |
+| **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
 | **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
 | **Deliberately not committed** | `prompt.md`, `prompt1.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
 
@@ -839,20 +840,23 @@ edit.
 
 ## Next Action
 
-**STOP and wait for the user's approval of Stage 4.** It is implemented, tested and
-documented; nothing is committed.
+**Begin Stage 5 — Knowledge Agent.** Stage 4 is approved, committed (`bee4b22`) and
+pushed. Settle the decision below **before** implementation begins, and write the answer
+into this file before writing code.
 
-### On approval, in this order
+### Stage 5 scope (from `prompt.md` §13), for when it starts
 
-1. Re-run `pytest` (expect 385), `ruff check .`, `mypy` (expect 29 source files).
-2. Follow the **pre-commit checklist** above — `git add -An` must list exactly the 18
-   paths recorded in the Git section and nothing else. (`prompt1.md` is now git-ignored,
-   so it should no longer appear; re-verify rather than assume.)
-3. Scan the staged set for secret-shaped values.
-4. Commit as `feat(stage-4): LLM abstraction — provider seam, prompts, context
-   injection, grounded answers`, push, verify `origin/main == HEAD`.
-5. Record the hash in the **Git** section above, then commit that handover update.
-6. **Only then** begin Stage 5, and stop again after it is implemented and tested.
+1. An agent that receives a technical question, decides whether retrieval is required,
+   retrieves, passes context to the LLM, and produces a source-backed answer.
+2. It must clearly indicate when the knowledge base is insufficient, and must not invent
+   technical facts. Stage 4's `LLMService` already refuses without a model call when
+   retrieval is empty — the agent builds on that guard rather than replacing it.
+3. The five seed questions in `prompt.md` §13 are the worked examples.
+4. Agent tests. They can stay offline against `MockLLMProvider`, exactly as Stage 4 did,
+   regardless of how the provider decision below is answered.
+5. Update `docs/architecture-guide.html` (§7 agent flow, and a §20.5 decision record in
+   the same what / why / rejected form).
+6. Update this handover. **STOP** and wait for approval.
 
 ### Decision required before Stage 5 implementation begins
 
@@ -912,26 +916,22 @@ previously stood here.
 > imported, and no adapter code was written. Recorded because the file must show what was
 > decided *and* what was reversed.
 
-### Stage 4 scope (from `prompt.md` §12), for when it starts
+**Stage 4 scope, delivered.** Every item of `prompt.md` §12 is implemented and mapped to
+its evidence in *Testing → Stage 4 required coverage* above.
 
-1. `LLMProvider` protocol in `app/llm/base.py` — the seam that keeps the app
-   vendor-agnostic.
-2. Prompt management and versioned system instructions (`app/llm/prompts.py`).
-3. Context injection — the LLM receives the **retrieved context** from Stage 3, never
-   the whole knowledge base.
-4. Response generation and error handling (timeouts, rate limits, malformed responses).
-5. Environment-based configuration; the API key comes from the environment only.
-6. **Mocked** LLM tests — the suite must stay offline, deterministic and free.
-7. Record the Stage 4 reasoning in `docs/architecture-guide.html` §20, in the same
-   what / why / rejected form as Stage 3.
-8. Update this handover. **STOP** and wait for approval.
+---
 
-Constraints carried forward:
+## Constraints carried forward (all stages)
 
 - Synthetic content only. No proprietary, confidential or copyrighted material.
-- Documents and tool results are data, not instructions — untrusted LLM input.
+- Documents and tool results are data, not instructions — untrusted LLM input. Stage 4
+  implemented the first concrete defences (fencing, escaping, a stated rule); Stage 6
+  extends the same treatment to tool results, and Stage 13 reviews the whole surface.
 - No secrets in documents, tests, logs or the handover.
 - **Never spend money or call a paid external API without the user's explicit
-  confirmation.** Directly relevant in Stage 4: a real LLM call is a paid call. Build
-  against a mock provider and ask before wiring a live key.
+  confirmation.** Still live and still unresolved: a real LLM call is a paid call. The
+  repository currently contains no code path that can make one, and that property should
+  not be given up casually when the first adapter lands.
 - Do not create a nested `banking-knowledge-agent/` directory.
+- Approval cycle: IMPLEMENT → TEST → UPDATE HANDOVER → SHOW → **STOP** → APPROVAL →
+  VERIFY → COMMIT → PUSH → VERIFY PUSH → NEXT STAGE. Never commit an unapproved stage.
