@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 1 — Project Foundation &nbsp;·&nbsp; Last updated 2026-09-03</div>
+    <div class="pill">Stage 3 — RAG Pipeline &nbsp;·&nbsp; Last updated 2026-09-09</div>
   </div>
 </header>
 
@@ -89,6 +89,7 @@
     <li><a href="#deployment">Deployment</a></li>
     <li><a href="#extension">Extension points</a></li>
     <li><a href="#decisions">Design decisions</a></li>
+    <li><a href="#records">Decision records (per stage)</a></li>
   </ol>
 </nav>
 
@@ -127,7 +128,7 @@ containerisation, each behind a clean boundary.</p>
    │   Agent / LLM    │   Stages 4, 5, 7
    └────────┬─────────┘
             │
-            ├──▶ RAG Knowledge Retrieval    Stages 2, 3
+            ├──▶ RAG Knowledge Retrieval    Stages 2, 3  ✅
             ├──▶ MCP Tools                  Stage 6
             ├──▶ Conversation Context       Stage 8
             └──▶ Guardrails                 Stage 13
@@ -140,7 +141,7 @@ containerisation, each behind a clean boundary.</p>
   <tr><th style="width:70px">Stage</th><th>Name</th><th style="width:110px">Status</th></tr>
   <tr><td>1</td><td>Project foundation — config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>2</td><td>Domain knowledge — synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>3</td><td>RAG pipeline — chunking, embeddings, vector store, retrieval</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>3</td><td>RAG pipeline — chunking, embeddings, vector store, retrieval</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>4</td><td>LLM abstraction — provider-agnostic prompt &amp; response layer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>5</td><td>Knowledge agent — retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>6</td><td>MCP tools — synthetic banking support tools</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -179,19 +180,36 @@ containerisation, each behind a clean boundary.</p>
 │   │   ├── config.py             Typed settings from the environment
 │   │   ├── logging.py            structlog config + on-disk sinks
 │   │   └── tracing.py            @traced / @traced_async
-│   └── knowledge/                Knowledge base sourcing
-│       ├── models.py             DocumentMetadata, KnowledgeDocument
-│       └── loader.py             Markdown + front-matter loader
+│   ├── knowledge/                Knowledge base sourcing
+│   │   ├── models.py             DocumentMetadata, KnowledgeDocument
+│   │   └── loader.py             Markdown + front-matter loader
+│   └── rag/                      Retrieval pipeline
+│       ├── __main__.py           CLI: build | search | demo | calibrate
+│       ├── models.py             Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
+│       ├── chunker.py            Heading-aware, token-budgeted splitting
+│       ├── embeddings.py         Embedder protocol + 2 implementations
+│       ├── vectorstore.py        VectorStore protocol + NumPy implementation
+│       ├── retriever.py          Question → embedding → search → sources
+│       └── pipeline.py           build_index / load_retriever / fingerprint
 ├── data/
-│   └── knowledge/                Synthetic banking documents (15 .md files)
-│       ├── api/  atm/  cards/  configuration/
-│       └── digital-banking/  operations/  payments/  platform/
+│   ├── knowledge/                Synthetic banking documents (15 .md files)
+│   │   ├── api/  atm/  cards/  configuration/
+│   │   └── digital-banking/  operations/  payments/  platform/
+│   └── vectorstore/              Built index — GIT-IGNORED build artefact
+│       ├── manifest.json         model id, dimension, corpus fingerprint
+│       ├── vectors.npy           (115, 384) float32 matrix
+│       └── chunks.json           chunk text + metadata
 ├── tests/                        Mirrors app/ structure
-│   ├── conftest.py               Fixtures: settings, app, client, knowledge_root
+│   ├── conftest.py               Fixtures: settings, app, client, corpus, retriever
 │   ├── test_config.py
 │   ├── test_health.py
 │   ├── test_logging.py
-│   └── test_loader.py
+│   ├── test_loader.py
+│   ├── test_chunker.py
+│   ├── test_embeddings.py
+│   ├── test_vectorstore.py
+│   ├── test_retriever.py
+│   └── test_rag_integration.py   Real model — retrieval quality
 ├── docs/
 │   ├── HANDOVER.md               Session recovery point
 │   └── architecture-guide.html   ← this file
@@ -203,11 +221,17 @@ containerisation, each behind a clean boundary.</p>
 └── README.md</pre>
 
 <p><strong>Directories added in later stages:</strong>
-<code>app/rag/</code> (Stage 3), <code>app/llm/</code> (4),
-<code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6),
-<code>app/web/</code> (9), <code>evals/</code> (11), <code>Dockerfile</code> (12).
-The vector index lands in <code>data/vectorstore/</code>, which is git-ignored —
-it is a build artefact of <code>data/knowledge/</code>, not a source.</p>
+<code>app/llm/</code> (Stage 4), <code>app/agent/</code> (5, 7),
+<code>app/mcp/</code> (6), <code>app/web/</code> (9), <code>evals/</code> (11),
+<code>Dockerfile</code> (12).</p>
+
+<div class="note">
+  <strong><code>data/vectorstore/</code> is git-ignored on purpose.</strong> It is
+  <em>derived</em> from <code>data/knowledge/</code> — a build artefact, not a source.
+  Committing it would put a binary blob in every diff, and worse, would let the index
+  and the documents drift apart in version control with nothing to notice.
+  Rebuild it instead: <code>python -m app.rag build</code>.
+</div>
 
 <div class="warn">
   <strong>Never</strong> create <code>banking-knowledge-agent/banking-knowledge-agent/</code>.
@@ -232,8 +256,9 @@ it is a build artefact of <code>data/knowledge/</code>, not a source.</p>
   <tr><td><strong>pytest</strong></td><td>Test suite, including async API tests via <code>httpx</code> + <code>TestClient</code>.</td><td>1</td></tr>
   <tr><td><strong>ruff</strong></td><td>Formatter and linter in one fast tool.</td><td>1</td></tr>
   <tr><td><strong>mypy (strict)</strong></td><td>Static type checking. Catches interface drift between layers before runtime.</td><td>1</td></tr>
-  <tr><td><strong>Vector store</strong></td><td>Similarity search over document chunks. Behind an interface so the implementation can be swapped.</td><td>3</td></tr>
-  <tr><td><strong>Embedding model</strong></td><td>Turns text into vectors so questions can be matched to documents by meaning, not keywords.</td><td>3</td></tr>
+  <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>Turns text into 384-dimension vectors so questions match documents by <em>meaning</em>, not shared words. Runs locally: no API key, no per-query cost, no network after the first download. Reads 256 word-piece tokens — the number the chunker is built around.</td><td>3</td></tr>
+  <tr><td><strong>NumPy</strong></td><td>The vector index <em>is</em> a NumPy matrix. Similarity search over the whole corpus is one <code>matrix @ query</code>, which at this size is faster than any index that could be built over it.</td><td>3</td></tr>
+  <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen — it is what sentence-transformers runs on. Pinned explicitly anyway: it is the largest artefact in the eventual image, so the CPU/GPU build choice belongs in <code>requirements.txt</code>, not in a transitive resolve.</td><td>3</td></tr>
   <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction — the app is never coupled to one vendor.</td><td>4</td></tr>
   <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
   <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only — front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
@@ -303,15 +328,61 @@ it is a build artefact of <code>data/knowledge/</code>, not a source.</p>
         being skipped. Returns documents in sorted order so indexing runs are
         reproducible.</td>
   </tr>
+  <tr>
+    <td><code>app/rag/models.py</code><br><span class="muted">Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult</span></td>
+    <td>The pipeline's data contracts. The one to know is <code>Chunk</code>, which
+        separates <code>content</code> (the passage as written, shown to a human and
+        to the LLM) from <code>embedding_text</code> (the same passage with a
+        <em>"Document title — Section"</em> prefix, which is what actually gets
+        embedded). <code>RetrievalResult</code> carries the outcome <em>and</em> the
+        reason for it, so an empty result is informative rather than just empty.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/chunker.py</code><br><span class="muted">chunk_documents()</span></td>
+    <td>Splits documents on Markdown <code>##</code> headings, with the size budget
+        measured in the embedding model's <em>own tokens</em>. Oversized sections are
+        broken at paragraph or table-row boundaries; a split table re-carries its
+        header row in every part. Guarantees no chunk exceeds the model's window.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/embeddings.py</code><br><span class="muted">Embedder protocol</span></td>
+    <td>Two implementations behind one protocol.
+        <code>SentenceTransformerEmbedder</code> runs all-MiniLM-L6-v2 locally, loading
+        it lazily so importing the module stays cheap. <code>HashingEmbedder</code> is
+        deterministic and dependency-light, and is what the fast test suite runs on.
+        Both return L2-normalised vectors, so cosine similarity is a dot product
+        everywhere downstream.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/vectorstore.py</code><br><span class="muted">VectorStore protocol, InMemoryVectorStore</span></td>
+    <td>Exact cosine search over one NumPy matrix, persistable to disk. Filters are
+        applied <em>before</em> scoring. The saved manifest records which model built
+        the index and refuses to load it under a different one.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/retriever.py</code><br><span class="muted">Retriever.retrieve()</span></td>
+    <td>Question → embedding → similarity search → threshold → scored chunks and
+        deduplicated sources. Composes an <code>Embedder</code> and a
+        <code>VectorStore</code>, both injected. No LLM anywhere, so retrieval
+        quality is measurable on its own.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/pipeline.py</code><br><span class="muted">build_index(), load_retriever()</span></td>
+    <td>The offline path end to end, plus a SHA-256 fingerprint of the corpus so a
+        stale index is refused rather than silently served.</td>
+  </tr>
+  <tr>
+    <td><code>app/rag/__main__.py</code></td>
+    <td>CLI: <code>build</code>, <code>search</code>, <code>demo</code>,
+        <code>calibrate</code>. Indexing is a build step, so it needs a way to be run;
+        <code>calibrate</code> exists so the score threshold can be re-derived from
+        data rather than inherited as a magic number.</td>
+  </tr>
 </table>
 
 <h3>Planned</h3>
 <table>
   <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
-  <tr><td><code>app/rag/chunker.py</code></td><td>Split documents into retrievable chunks, carrying metadata through.</td><td>3</td></tr>
-  <tr><td><code>app/rag/embeddings.py</code></td><td>Embedding provider behind an interface.</td><td>3</td></tr>
-  <tr><td><code>app/rag/vectorstore.py</code></td><td><code>VectorStore</code> protocol + a local implementation.</td><td>3</td></tr>
-  <tr><td><code>app/rag/retriever.py</code></td><td>Question → embedding → similarity search → ranked chunks + sources. Independently testable.</td><td>3</td></tr>
   <tr><td><code>app/llm/base.py</code></td><td><code>LLMProvider</code> protocol: the seam that keeps the app vendor-agnostic.</td><td>4</td></tr>
   <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions and context-injection templates.</td><td>4</td></tr>
   <tr><td><code>app/agent/agent.py</code></td><td>Orchestrates retrieve → ground → answer, and refuses when evidence is thin.</td><td>5, 7</td></tr>
@@ -324,16 +395,20 @@ it is a build artefact of <code>data/knowledge/</code>, not a source.</p>
 <section id="dataflow">
 <h2>5. Data flow</h2>
 
-<h3>Today (Stage 1)</h3>
-<pre class="plain">HTTP GET /health
-   │
-   ▼
-FastAPI router  ──▶ SettingsDep reads request.app.state.settings
-   │
-   ▼
-HealthResponse (validated by Pydantic)
-   │
-   ├──▶ logs/app.log      structured application event
+<h3>Today (Stage 3)</h3>
+<p>Two independent paths. They are not yet joined — the API does not call retrieval
+until Stage 5, when the agent exists to sit between them.</p>
+
+<pre class="plain">HTTP GET /health                     python -m app.rag search "..."
+   │                                    │
+   ▼                                    ▼
+FastAPI router                       Retriever
+   │  SettingsDep reads                 │  embed → filter → cosine → top-k → floor
+   │  request.app.state.settings        ▼
+   ▼                                 RetrievalResult (chunks + sources + why)
+HealthResponse (Pydantic)               │
+   │                                    └──▶ logs/app.log  "rag.retrieved"
+   ├──▶ logs/app.log                              query, returned, top_score, docs
    └──▶ HTTP 200 JSON</pre>
 
 <h3>Target (Stage 9 complete)</h3>
@@ -370,28 +445,42 @@ into an undifferentiated blob.</p>
 <!-- ================================================================== -->
 <section id="rag">
 <h2>6. RAG flow</h2>
-<span class="tag t-part">PART BUILT — loading done (Stage 2), retrieval next (Stage 3)</span>
+<span class="tag t-done">BUILT — Stages 2 &amp; 3</span>
 
 <p><strong>Why RAG at all?</strong> An LLM does not know this platform, and fine-tuning
 is the wrong tool for documentation that changes. Retrieval keeps the knowledge base
 editable, makes every answer citable, and constrains the model to material we control.</p>
 
 <h3>Indexing (offline, once per document change)</h3>
-<pre class="plain">Synthetic banking documents (data/knowledge/)   ← BUILT (Stage 2)
+<pre class="plain">Synthetic banking documents (data/knowledge/)        15 documents
    │
    ▼  loader — parse front matter, validate metadata
 {document_id, title, domain, component, version, doc_type, tags}
    │
    ▼  KnowledgeDocument (metadata + body + source_path)
    │
-   ▼  chunker — split, preserving metadata on every chunk   ← Stage 3
-Chunks
+   ▼  chunker — split on ## headings, budget in MODEL tokens
+   │            oversized sections split; tables keep their header
+Chunks                                              108 sections → 115 chunks
+   │            each carries the full document metadata
+   │            each is prefixed "Title — Heading" for embedding
+   ▼  all-MiniLM-L6-v2, batched, L2-normalised
+Vectors                                             (115, 384) float32
    │
-   ▼  embedding model
-Vectors
-   │
-   ▼
-Vector store</pre>
+   ▼  InMemoryVectorStore.save()
+data/vectorstore/   vectors.npy + chunks.json + manifest.json
+                    manifest pins the model id and a corpus fingerprint</pre>
+
+<table>
+  <tr><th style="width:210px">Measured on this corpus</th><th></th></tr>
+  <tr><td>Documents</td><td>15</td></tr>
+  <tr><td><code>##</code> sections</td><td>108</td></tr>
+  <tr><td>Chunks produced</td><td>115 — only 7 sections needed splitting</td></tr>
+  <tr><td>Chunk size (tokens)</td><td>min 31 · median 104 · mean 116 · <strong>max 251</strong></td></tr>
+  <tr><td>Chunks over the 256 limit</td><td><strong>0</strong> — asserted as a test invariant</td></tr>
+  <tr><td>Vector width</td><td>384</td></tr>
+  <tr><td>Index build time</td><td>~4 s after the model is cached</td></tr>
+</table>
 
 <h3>The knowledge base (Stage 2, built)</h3>
 
@@ -429,24 +518,69 @@ body, or an empty knowledge directory all raise.</p>
 </div>
 
 <h3>Retrieval (per question)</h3>
-<pre class="plain">Question
+<pre class="plain">Question   "Why would an ATM transaction fail after card authentication?"
    │
-   ▼  same embedding model  ← must match indexing, or search is meaningless
-Query vector
+   ▼  SAME embedding model as indexing
+   │     ← if these differ, search returns nonsense rather than failing.
+   │       The manifest check exists precisely to make that impossible.
+Query vector  (384,)  unit length
    │
-   ▼  similarity search (top-k)
+   ▼  metadata pre-filter (optional):  domain / component / doc_type / version
+Permitted rows
+   │
+   ▼  cosine = matrix @ query      one BLAS call over (115, 384)
+Scores
+   │
+   ▼  top-k  (argpartition, not a full sort)
+   │
+   ▼  min_score floor  ── below it ──▶  EMPTY RESULT
+   │                                    "no documented answer" (Stage 5 refuses)
 Relevant chunks
    │
    ▼
-Sources: document, domain, component, version, score</pre>
+RetrievalResult
+   ├─ chunks    scored, best first, each with full document metadata
+   ├─ sources   deduplicated by document
+   └─ why       candidates_considered, min_score, top_score</pre>
 
-<p>Metadata is not decoration. It is what lets the system say
+<h3>Worked example — the output is real</h3>
+<pre class="plain">$ python -m app.rag search "Why would an ATM transaction fail after card authentication?"
+
+  1. 0.790  ATM Transaction Lifecycle — Why a transaction can fail after card authentication
+            atm / TransactionSwitch v4.2 · atm/atm-transaction-lifecycle.md
+  2. 0.682  ATM Transaction Lifecycle — Why a transaction can fail after card authentication
+            atm / TransactionSwitch v4.2 · atm/atm-transaction-lifecycle.md
+  3. 0.627  Card Authentication and Authorisation — The authorisation decision
+            cards / AuthorizationService v4.2 · cards/card-authentication.md
+  sources: 2 document(s)
+
+$ python -m app.rag search "What is the capital of France?"
+
+  NO MATCH — nothing scored above 0.25 of 115 chunks.</pre>
+
+<p>Note results 1 and 2: the same section, split into two chunks, both retrieved. That
+is the chunker's table/paragraph splitting and the store's ranking agreeing with each
+other. Because <code>sources</code> deduplicates by document, the citation list still
+says <em>two documents</em>, not five — five chunks of one document is one piece of
+evidence to a reader, and a citation list that repeats it five times looks like five.</p>
+
+<h3>Why metadata travels all the way down</h3>
+<p>Metadata is not decoration. Every <code>Chunk</code> carries the complete
+<code>DocumentMetadata</code> of its source, which is what lets the system say
 <em>"per ATM Transaction Lifecycle (TransactionSwitch v4.2)"</em> instead of
-<em>"somewhere in the docs"</em>, and it enables filtered retrieval later
-(e.g. restrict to <code>domain = payments</code>). Citations are addressed by
+<em>"somewhere in the docs"</em>, and what makes
+<code>filters={"domain": "payments"}</code> possible. Citations are addressed by
 <code>document_id</code>, which is why the loader insists it match the filename, and
 <code>source_path</code> is normalised to POSIX so a citation reads identically on
 Windows and inside a container.</p>
+
+<div class="warn">
+  <strong>The score floor is what makes honesty possible.</strong> Without it,
+  <em>"what is the weather tomorrow?"</em> still returns the five least-bad banking
+  chunks — and an LLM handed five confident-looking banking passages writes a
+  confident banking answer. The floor turns "nothing here is relevant" into an
+  empty result the agent can refuse on. See §20 for how the number was derived.
+</div>
 </section>
 
 <!-- ================================================================== -->
@@ -551,13 +685,56 @@ runs offline, deterministically, and at zero API cost.</p>
 <!-- ================================================================== -->
 <section id="vector">
 <h2>10. Vector database</h2>
-<span class="tag t-todo">PLANNED — Stage 3</span>
+<span class="tag t-done">BUILT</span>
 
 <p>Accessed through a <code>VectorStore</code> protocol —
-<code>add(chunks)</code>, <code>search(query_vector, k, filters)</code> — so the
-implementation is replaceable. Local development uses an embedded store requiring no
-server; the same interface admits a managed vector database in production without
-touching the agent or API layers.</p>
+<code>add()</code>, <code>search()</code>, <code>count()</code>, <code>clear()</code> —
+so the implementation is replaceable. The shipped implementation,
+<code>InMemoryVectorStore</code>, is one NumPy matrix.</p>
+
+<pre class="plain">InMemoryVectorStore
+  _matrix   ndarray (115, 384) float32, contiguous, all rows unit length
+  _chunks   list[Chunk]        row i of the matrix ↔ _chunks[i]
+
+  search(q, k, filters)
+     indices = rows permitted by filters          ← pre-filter, not post
+     scores  = _matrix[indices] @ q               ← one BLAS matvec
+     top     = argpartition(-scores, k)[:k]       ← O(n), no full sort
+     return sorted top as ScoredChunk</pre>
+
+<h3>Why brute force, and when that stops being true</h3>
+<p>115 vectors × 384 dimensions is ~176 KB. Scoring all of them is a single matrix-vector
+product — tens of microseconds, orders of magnitude below the cost of embedding the
+query, never mind an LLM call. An approximate index (HNSW, IVF) buys sub-linear scaling
+by <em>spending recall</em>, and there is no scaling problem here to spend recall on.</p>
+
+<p>The honest crossover is somewhere around 10<sup>5</sup>–10<sup>6</sup> vectors, or
+when the index no longer fits comfortably in one process's memory, or when several
+replicas need to share writes. At that point the <code>VectorStore</code> protocol is
+the thing that makes it a one-class change rather than a rewrite.</p>
+
+<h3>The on-disk format, and the two guards on it</h3>
+<table>
+  <tr><th style="width:170px">File</th><th>Contents</th><th>Why this format</th></tr>
+  <tr><td><code>vectors.npy</code></td><td>The <code>(n, 384)</code> float32 matrix</td><td>Compact, exact, and loads without parsing.</td></tr>
+  <tr><td><code>chunks.json</code></td><td>Chunk text + full metadata</td><td>Human-readable. When retrieval misbehaves the first question is "what is actually <em>in</em> the index?", and that should be answerable with a text editor.</td></tr>
+  <tr><td><code>manifest.json</code></td><td>format version, model id, dimension, chunk count, corpus fingerprint, build time</td><td>The guard rail — see below.</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Both guards exist because their failure mode is silent.</strong>
+  <ul>
+    <li><strong>Wrong model.</strong> Searching an index built by model A with a query
+        embedded by model B does not raise — the vectors just live in unrelated spaces,
+        and you get confident, plausible-looking nonsense. So the manifest pins the
+        model id and dimension, and <code>load()</code> refuses a mismatch.</li>
+    <li><strong>Stale index.</strong> If a document changed after indexing, answers stay
+        fluent and citations still resolve — nobody notices the agent quoting a
+        procedure that was edited last week. So the manifest carries a SHA-256
+        fingerprint of the corpus (metadata <em>and</em> body), checked on load.</li>
+  </ul>
+  Neither would surface in the output. That is exactly why they are checked explicitly.
+</div>
 </section>
 
 <!-- ================================================================== -->
@@ -592,10 +769,31 @@ frozen. Invalid configuration fails loudly at startup.</p>
 BKA_HOST=127.0.0.1
 BKA_PORT=8000
 BKA_KNOWLEDGE_DIR=data/knowledge
+
+# --- RAG (Stage 3) ---
+BKA_VECTORSTORE_DIR=data/vectorstore
+BKA_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+                             # or "hashing" — no model download at all
+# BKA_EMBEDDING_DEVICE=      # unset = auto (cuda if present, else cpu)
+BKA_EMBEDDING_BATCH_SIZE=32
+# BKA_CHUNK_MAX_TOKENS=      # unset = use the MODEL's own limit
+BKA_CHUNK_OVERLAP_TOKENS=32
+BKA_RETRIEVAL_TOP_K=5
+BKA_RETRIEVAL_MIN_SCORE=0.25 # calibrated — see §20
+
 BKA_LOG_LEVEL=INFO
 BKA_LOG_FORMAT=console       # console locally, json in Docker
 BKA_LOG_DIR=logs
 BKA_LOG_TO_FILE=true</pre>
+
+<div class="note">
+  <strong>Two settings deliberately default to "ask the model".</strong>
+  <code>BKA_CHUNK_MAX_TOKENS</code> is unset by default so the chunker uses the
+  embedding model's own window, and the vector dimension is never configured at all —
+  it is read off the loaded model. Hardcoding either would be correct today and
+  silently wrong the moment the model changes, and both failures show up as
+  <em>bad search results</em> rather than as an exception.
+</div>
 
 <p><code>.env.example</code> is committed and documented. <code>.env</code> is
 git-ignored and must never be committed. Secrets come from the environment only —
@@ -655,11 +853,55 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
   <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud — missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
+  <tr><td><code>tests/test_chunker.py</code></td><td>Heading splitting, H1 dropping, code fences not mistaken for headings, metadata carried onto every chunk, <code>content</code> vs <code>embedding_text</code>, oversized sections split, tables split row-wise with the header repeated and no row lost, and the invariant that <em>no chunk exceeds the budget</em>.</td></tr>
+  <tr><td><code>tests/test_embeddings.py</code></td><td>The <code>Embedder</code> protocol contract: fixed width, unit length, float32, determinism across calls and processes, token counting in the same units as <code>max_tokens</code>, and that constructing the real embedder does <em>not</em> load the model.</td></tr>
+  <tr><td><code>tests/test_vectorstore.py</code></td><td>Ranking order, cosine bounds, <code>k</code> handling, pre-filtering (including the explicit post-filter-would-fail case), duplicate and wrong-width rejection, save/load round trip, and the manifest guards refusing a foreign model, a wrong dimension, an old format and an inconsistent index.</td></tr>
+  <tr><td><code>tests/test_retriever.py</code></td><td>End-to-end over the real corpus with the hashing embedder: every document indexed, unique chunk ids, ordering, top-k, filters, the score floor, source deduplication, persistence, and staleness detection. Fast and offline.</td></tr>
+  <tr><td><code>tests/test_rag_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>Quality, with the real model.</strong> Each of the five brief questions retrieves its own document first; paraphrases with no shared vocabulary still find the right domain; every off-topic question returns nothing; the score distributions provably separate and the configured floor sits between them; and no indexed chunk is silently truncated.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest          # 72 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 240 tests
+.venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
+
+<div class="note">
+  <strong>Why two embedders, and why that is a testing decision as much as a design one.</strong>
+  Almost every RAG test runs on the deterministic <code>HashingEmbedder</code>: no
+  90 MB download, no warm cache, no machine-dependent floating point, and the whole
+  suite finishes in ~30 s. Those tests assert <em>mechanics</em>. A separate,
+  <code>integration</code>-marked file asserts <em>quality</em> against the real model,
+  because mechanics cannot prove that a question finds the right passage.
+  A mock would not have done this job: a mock proves the calls happen, not that the
+  numbers are right. Running the real pipeline on a different real embedder proves the
+  decoupling is genuine rather than aspirational.
+</div>
+
+<h3>Temp directory: a project-local <code>--basetemp</code></h3>
+<p><code>pyproject.toml</code> sets <code>--basetemp=.pytest_tmp</code>, so
+<code>tmp_path</code> never touches
+<code>%LOCALAPPDATA%\Temp\pytest-of-&lt;user&gt;</code>.</p>
+
+<div class="warn">
+  <strong>Why — a real failure, not a precaution.</strong> pytest hardens its default
+  temp root by stripping inherited ACLs, leaving only <code>SYSTEM</code>,
+  <code>Administrators</code> and <code>OWNER RIGHTS</code>. When that directory gets
+  created by an <em>elevated</em> process whose owner resolves to
+  <code>BUILTIN\Administrators</code>, a normal non-elevated run of the <em>same
+  user</em> has no ACE at all and every <code>tmp_path</code> test dies with
+  <code>PermissionError: [WinError 5]</code>. It happened here: 96 errors in a normal
+  shell, while an elevated shell passed all 240 — because the elevated shell had access
+  through the <code>Administrators</code> ACE. And because pytest <em>reuses</em>
+  <code>pytest-of-&lt;user&gt;</code> across runs, the broken state persisted.
+  <br><br>
+  An explicit basetemp fixes both halves: it inherits the repository's permissions
+  rather than Temp's, and pytest <strong>deletes and recreates it every session</strong>,
+  so a bad state cannot outlive one run.
+  <br><br>
+  The wider lesson, which applies to any tooling that runs commands for you:
+  <strong>a green run under different privileges is not evidence the suite passes for
+  the person who will run it.</strong>
+</div>
 
 <p><strong>Stage 11</strong> adds an evaluation framework over a small dataset of
 realistic banking questions with expected evidence, measuring retrieval accuracy, answer
@@ -696,6 +938,17 @@ knowledge data stays available inside the image or a mounted volume.</p>
       (private keys, assigned passwords or API keys) and card-number-shaped digit runs.</li>
   <li>Knowledge documents are treated as untrusted data, not instructions — they become
       LLM input in Stage 5.</li>
+  <li>The embedding model runs <strong>locally</strong>: no document text and no user
+      question leaves the machine during indexing or retrieval. That is a data-privacy
+      property, not just a cost one — a hosted embedding API would send every question
+      and every document to a third party.</li>
+  <li><code>data/vectorstore/</code> is git-ignored. It contains no secrets, but it is a
+      derived artefact and committing it would let the index and the documents drift
+      apart in version control.</li>
+  <li>The retrieval log records the question text. That is a deliberate, recorded
+      decision: these are technical support queries about a synthetic platform, not
+      customer data. It is flagged in <code>retriever.py</code> for reassessment in
+      Stage 13 if the deployment context ever changes.</li>
 </ul>
 
 <h3>To be assessed and documented in Stage 13</h3>
@@ -741,8 +994,10 @@ infrastructure is built that the portfolio project does not need.</p>
   <tr><td>A new banking domain</td><td>Documents + metadata. No code change.</td></tr>
   <tr><td>A new MCP tool</td><td>One tool module + registration. The agent discovers it.</td></tr>
   <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>. Nothing else.</td></tr>
-  <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code>.</td></tr>
-  <tr><td>A different embedding model</td><td>One class implementing the embedder interface (re-index required).</td></tr>
+  <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code> — <code>add</code>, <code>search</code>, <code>count</code>, <code>clear</code>. The retriever, agent and API are unchanged.</td></tr>
+  <tr><td>A different embedding model</td><td>Change <code>BKA_EMBEDDING_MODEL</code> and rebuild. A different <em>kind</em> of embedder (hosted API, ONNX runtime) is one class implementing <code>Embedder</code>. The manifest check forces the re-index rather than letting the two drift.</td></tr>
+  <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement — a BM25 scorer combined with the existing cosine scores behind the same <code>VectorStore.search</code> signature. See §20.3.1.</td></tr>
+  <tr><td>A reranker</td><td>A cross-encoder pass between <code>search</code> and the score floor in <code>Retriever.retrieve</code>. The floor and the result contract stay as they are.</td></tr>
 </table>
 </section>
 
@@ -773,11 +1028,413 @@ infrastructure is built that the portfolio project does not need.</p>
   <tr><td><strong><code>uv</code> for the virtual environment</strong></td>
       <td>Practical, not architectural: the stdlib <code>venv</code> module is missing from the system Python on this machine, and a <code>virtualenv</code>-created environment segfaulted on importing <code>structlog</code> and <code>httpx</code>. A <code>uv</code>-created environment works.</td></tr>
 </table>
+
+<p class="muted">The full reasoning behind each Stage 3 decision — including the
+alternatives that were rejected and why — is in §20.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="records">
+<h2>20. Decision records (per stage)</h2>
+
+<div class="note">
+  <strong>What this section is for.</strong> §19 is the one-line summary. This is the
+  long form: for each significant decision, <em>what</em> was chosen, <em>why</em>,
+  what was <em>rejected</em> and why, and what the choice <em>costs</em>. Where a number
+  appears it was measured on this corpus with this model, not taken from a blog post —
+  the measurement commands are given so any of it can be re-derived.
+</div>
+
+<h3 style="margin-top:32px">Stage 3 — RAG pipeline</h3>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.1 &nbsp; Embedding model: local <code>all-MiniLM-L6-v2</code></h3>
+
+<p><strong>Chosen.</strong> sentence-transformers running
+<code>all-MiniLM-L6-v2</code> on the local CPU. 384 dimensions, 256-token window,
+~90 MB, no API key, no per-query cost, no network after the first download.</p>
+
+<p><strong>Why.</strong> The whole reason to embed rather than keyword-match is
+paraphrase. A support engineer types <em>"customer says money left the account but no
+cash came out"</em>; the document that answers it is titled <em>"Troubleshooting a
+Failed Cash Withdrawal"</em> and shares almost none of those words. Only a semantic
+model bridges that. It is now a passing test, not a claim.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr>
+    <td><strong>Hosted embedding API</strong><br><span class="muted">OpenAI, Voyage, Cohere</span></td>
+    <td>Best quality and trivial to run, but: it is a <em>paid</em> per-query call, it
+        needs a key in every environment including CI, it sends every document and every
+        question to a third party, and it makes the test suite depend on the network.
+        The project rule is no paid external API without explicit sign-off — and here
+        the free local option was good enough that the spend was not justified.</td>
+  </tr>
+  <tr>
+    <td><strong>Lexical retrieval</strong><br><span class="muted">TF-IDF / BM25, zero new dependencies</span></td>
+    <td>Genuinely tempting, and stronger on this corpus than the usual dismissal
+        suggests: the text is dense with distinctive identifiers
+        (<code>TransactionSwitch</code>, <code>ATM-4021</code>,
+        <code>LimitService</code>) that lexical matching nails. It would have added
+        <em>no</em> dependencies and kept the image tiny. Rejected because it cannot do
+        the paraphrase case above, which is the realistic support query. Worth noting
+        as the one rejected option that would likely <em>improve</em> results if added
+        <em>alongside</em> the embedder — hybrid search is the natural next step.</td>
+  </tr>
+  <tr>
+    <td><strong>A larger local model</strong><br><span class="muted">e.g. all-mpnet-base-v2, bge-large</span></td>
+    <td>Better retrieval, but 3–5× the size and latency for a 15-document corpus where
+        MiniLM already separates on-topic from off-topic by 0.27 cosine. Buying quality
+        that is not currently the bottleneck.</td>
+  </tr>
+</table>
+
+<p><strong>What it costs.</strong> ~250 MB of PyTorch in the dependency tree and a
+~90 MB model download on first run — by far the largest thing in this project. That is
+a real Docker-image and cold-start cost to account for in Stage 12, and it is the price
+paid for the paraphrase capability above.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.2 &nbsp; Chunk boundaries: Markdown <code>##</code> headings</h3>
+
+<p><strong>Chosen.</strong> Split on the section headings the author already wrote.
+A section becomes one chunk unless it is too big for the model.</p>
+
+<p><strong>Why.</strong> A heading is a human's explicit statement of where one topic
+ends and the next begins — strictly better information than any character count.
+And it was checked rather than assumed: measuring all 15 documents gives
+<strong>108 sections, 32–411 tokens, median 99</strong>. They are already
+chunk-sized.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr>
+    <td><strong>Fixed-size sliding window</strong><br><span class="muted">the default recipe: ~512 chars, 50 overlap</span></td>
+    <td>It would cut through the middle of numbered troubleshooting procedures and
+        Markdown tables — and this corpus is <em>mostly</em> procedures and tables.
+        "Step 4 of 6" severed from steps 1–3 is not a useful retrieval result.
+        The generic recipe ignores structure that is right there in the document.</td>
+  </tr>
+  <tr>
+    <td><strong>One chunk per document</strong></td>
+    <td>Documents run 457–670 words, which is 700–1,100 tokens — 3–4× the model's
+        window. Every document would be truncated to its first quarter. Also the wrong
+        retrieval granularity: the answer to "why does it fail after authentication" is
+        one section, and returning the whole document buries it.</td>
+  </tr>
+  <tr>
+    <td><strong>Merging small sections together</strong></td>
+    <td>Planned, then dropped after measuring: the <em>smallest</em> section in the
+        corpus is 32 tokens, and there are no degenerate one-line fragments to merge.
+        The complexity was not earned. Worth revisiting only if a future document
+        introduces them.</td>
+  </tr>
+</table>
+<p class="muted">Re-derive: the section-size distribution comes from
+<code>split_sections()</code> plus <code>Embedder.count_tokens</code>.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.3 &nbsp; Budget measured in the model's own tokens
+  <span class="tag t-part" style="vertical-align:middle">the finding that changed the design</span></h3>
+
+<p><strong>Chosen.</strong> The chunker asks the <em>embedder</em> for both the limit
+(<code>max_tokens</code>) and the length of any text (<code>count_tokens</code>). No
+word counts, no character counts, no hardcoded 256.</p>
+
+<p><strong>Why — and this started as a mistake.</strong> The first plan was a word
+budget, converted with the usual "~0.75 words per token" rule of thumb. Measuring the
+actual ratio on this corpus killed it:</p>
+
+<pre class="plain">tokens per word, across 108 sections
+   min 1.13   mean 1.61   p90 2.07   max 2.82
+
+worst offender:  146 words  →  411 tokens</pre>
+
+<p>The cause is the domain. Identifiers like <code>SWX-7001</code> and
+<code>switch.downstream_timeout_ms</code> shatter into many word-pieces, so the
+<em>densest</em> sections are the ones a word budget underestimates most — and those
+are exactly the config-key and error-code tables engineers search for.</p>
+
+<div class="warn">
+  <strong>Why this matters more than it looks.</strong> <code>all-MiniLM-L6-v2</code>
+  does not raise when input exceeds 256 tokens. It <strong>truncates and returns a
+  perfectly normal-looking vector.</strong> A too-long chunk is therefore a passage that
+  has quietly stopped being findable, with nothing anywhere to indicate it. A word-based
+  budget would have silently amputated the six densest sections in the corpus and the
+  system would have looked like it was working.
+</div>
+
+<p>So the invariant — <em>no chunk exceeds the model's window</em> — is asserted as a
+test against the real model, not just trusted. Current worst case: <strong>251 of
+256</strong>.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Word or character budget</strong></td><td>Measured above: off by up to 2.8× on the exact content that matters most.</td></tr>
+  <tr><td><strong>Hardcoding 256</strong></td><td>Correct today, silently wrong the moment the model changes — and failing as bad results rather than an error. The number is read off the loaded model instead.</td></tr>
+  <tr><td><strong>Using <code>tiktoken</code></strong></td><td>It tokenises for OpenAI models. MiniLM is a BERT word-piece model with a different vocabulary, so the counts would be confidently wrong. The right tokenizer is the one attached to the model doing the embedding.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.4 &nbsp; Oversized tables split row-wise, header repeated</h3>
+
+<p><strong>Chosen.</strong> When a section over the budget is a Markdown table, split it
+between rows and re-carry the header and separator rows into every part.</p>
+
+<p><strong>Why.</strong> Of the six sections that exceed the window, most are tables —
+<em>Timeout and retry keys</em> (366 tokens), <em>POST /v1/payments/authorise</em>
+(411), <em>The keys</em> (260). These are the highest-value retrieval targets in the
+whole corpus. And a table fragment without its header is unreadable:</p>
+
+<pre class="plain">split naively                      split with the header repeated
+─────────────────────────          ──────────────────────────────
+| DEV-6002 | Cassette   |          | Code     | Meaning  | Class |
+|          | empty      |          |---|---|---|
+| DEV-6004 | Dispenser  |          | DEV-6002 | Cassette empty | Operational |
+|          | jam        |          | DEV-6004 | Dispenser jam  | Hardware    |
+
+  columns mean nothing               self-contained and citable</pre>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Treat tables as plain text</strong></td><td>Loses the column names on every part but the first — see above.</td></tr>
+  <tr><td><strong>Skip tables entirely</strong></td><td>They are the best content in the corpus, not an inconvenience.</td></tr>
+  <tr><td><strong>Convert tables to prose before embedding</strong></td><td>Would embed better, but needs an LLM pass over the corpus at index time: paid, non-deterministic, and it puts generated text into the citation path. Not worth it for six sections.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.5 &nbsp; Contextual prefix: <code>embedding_text</code> ≠ <code>content</code></h3>
+
+<p><strong>Chosen.</strong> What gets embedded is
+<code>"{document title} — {section heading}\n\n{content}"</code>. What gets stored,
+shown and cited is <code>content</code> alone.</p>
+
+<p><strong>Why.</strong> Chunking orphans text. This is a real chunk from the corpus:</p>
+
+<pre class="plain">"Reversals are retried up to `switch.reversal_retry_count` times.
+ Reversals are idempotent: the same transaction reference may be sent again safely."</pre>
+
+<p>It never says ATM, never says TransactionSwitch, never says withdrawal. Embedded as
+it stands, a question phrased in those terms will not find it. Prefixing
+<em>"ATM Transaction Lifecycle — Reversals"</em> puts the entity names back into the
+vector. Keeping the prefix out of <code>content</code> keeps the human-facing text and
+the LLM's context clean, and stops the prefix being cited as though it were part of the
+document body. The cost is honest and accounted for: the prefix spends part of the
+token budget, so the chunker reserves it <em>before</em> splitting rather than after.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Embed the raw content</strong></td><td>The orphaning problem above.</td></tr>
+  <tr><td><strong>Prepend to <code>content</code> itself</strong></td><td>Simpler by one property, but it pollutes what a human reads and what the LLM is given, and it makes the citation text include a header the source document does not contain.</td></tr>
+  <tr><td><strong>Full contextual retrieval</strong><br><span class="muted">an LLM writes a bespoke summary per chunk</span></td><td>The published technique, and better. It is also ~115 LLM calls per index rebuild — paid, slow, and non-deterministic, so two builds of the same corpus would differ. The title-and-heading prefix captures most of the benefit for zero cost. Revisit if retrieval quality ever becomes the bottleneck.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.6 &nbsp; Vector store: brute-force NumPy, not a vector database</h3>
+
+<p><strong>Chosen.</strong> Exact cosine search over one in-memory
+<code>(115, 384)</code> float32 matrix, behind a <code>VectorStore</code> protocol.</p>
+
+<p><strong>Why.</strong> Scoring the entire corpus is a single BLAS matrix-vector
+product over ~176 KB — tens of microseconds, orders of magnitude below the cost of
+embedding the query, let alone an LLM call. An ANN index exists to buy sub-linear
+scaling by <em>sacrificing recall</em>; there is no scaling problem here to spend recall
+on. Choosing the simple thing is the decision, and the protocol is what makes it
+reversible.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Chroma</strong></td><td>The obvious "just use a vector DB" pick, and it would work. But it brings its own embedding-function abstraction and its own persistence model, which means two competing opinions about how embedding works in one codebase — and hiding the seam this stage is meant to demonstrate.</td></tr>
+  <tr><td><strong>FAISS</strong></td><td>Excellent at scale. At 115 vectors an HNSW graph is slower to build than the exhaustive search it replaces, and it is <em>approximate</em>: it would trade recall for a speed-up that is already invisible.</td></tr>
+  <tr><td><strong>pgvector / Qdrant / Weaviate</strong></td><td>A container, a network hop and an operational dependency for a project whose requirement is to run locally and offline. Right answer in production, wrong answer here.</td></tr>
+</table>
+
+<p><strong>When this stops being right.</strong> Roughly 10<sup>5</sup>–10<sup>6</sup>
+vectors, or when the index no longer fits comfortably in one process, or when several
+replicas need shared writes. Then it is one class implementing
+<code>VectorStore</code>; the retriever, agent and API do not change.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.7 &nbsp; Cosine similarity, via normalised dot product</h3>
+
+<p><strong>Chosen.</strong> Vectors are L2-normalised at encode time, so cosine
+similarity is exactly <code>matrix @ query</code>.</p>
+
+<p><strong>Why.</strong> Not merely convenient — <em>correct</em>.
+<code>all-MiniLM-L6-v2</code> is trained with a cosine objective, so cosine is the
+metric the vector space was actually built for. Normalising once at encode time also
+means nothing downstream has to remember to do it, which is one fewer silent-wrongness
+opportunity.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Euclidean distance</strong></td><td>On unit vectors it is monotonically equivalent to cosine, so it ranks identically — but with an extra subtraction and square root, and a score that no longer reads as "similarity in [-1, 1]". No benefit.</td></tr>
+  <tr><td><strong>Dot product on unnormalised vectors</strong></td><td>Vector <em>length</em> then becomes a relevance signal, which it is not: longer chunks would systematically outrank shorter ones regardless of content.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.8 &nbsp; Metadata filters applied before scoring</h3>
+
+<p><strong>Chosen.</strong> Restrict the candidate rows first, then score and rank
+within them.</p>
+
+<p><strong>Why.</strong> Post-filtering is the classic retrieval bug. Ask for the top 5
+chunks and <em>then</em> keep only the <code>payments</code> ones, and you can easily be
+left with zero — not because the corpus lacks payments material, but because five ATM
+chunks happened to outrank it. Pre-filtering always returns the best <em>k</em> of the
+permitted set. There is a test named after exactly this case.</p>
+
+<p>An unknown filter field raises rather than matching nothing, for the same class of
+reason: <code>{"damain": "atm"}</code> would silently return an empty result that looks
+identical to "the knowledge base has no answer".</p>
+
+<p><strong>Cost.</strong> The filter is an O(n) Python scan over chunk metadata —
+negligible at 115 chunks, and the wrong shape at 10<sup>6</sup>. A real vector store
+pushes this into the index as a payload filter; that is a property of the replacement,
+not of the interface.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.9 &nbsp; A minimum-score floor of 0.25 — calibrated, not guessed</h3>
+
+<p><strong>Chosen.</strong> A passage must score ≥ 0.25 cosine to be returned. Below
+that, retrieval returns <em>nothing</em>.</p>
+
+<p><strong>Why.</strong> Vector search always returns its <em>k</em> nearest rows. Ask
+<em>"what is the weather tomorrow?"</em> and it will hand back the five least-bad
+banking chunks with no complaint — and an LLM given five confident-looking banking
+passages will write a confident banking answer. The floor is the single mechanism that
+converts "nothing here is relevant" into an empty result Stage 5 can honestly refuse
+on.</p>
+
+<p><strong>How the number was derived.</strong> Not from a blog post — cosine scores are
+a <em>ranking</em> signal, not a calibrated probability, and the useful range differs
+per model and per corpus. It was measured
+(<code>python -m app.rag calibrate</code>):</p>
+
+<pre class="plain">Top-1 cosine score, best match per question
+
+  on-topic  (10 questions)   min 0.388   median 0.775   max 0.819
+  off-topic ( 5 questions)   min 0.032   median 0.104   max 0.122
+
+  separation: +0.266   (worst on-topic 0.388 − best off-topic 0.122)
+  midpoint:    0.255
+  configured:  0.250</pre>
+
+<p>The two distributions are cleanly separated, and 0.25 sits in the gap with margin on
+both sides. A test asserts the separation still holds and that the configured floor
+still sits between the two — so if a future document or a model swap collapses the gap,
+the suite says so.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>No floor at all</strong></td><td>Every question gets evidence, including questions the corpus cannot answer. This is the direct route to a confidently wrong answer, which in a banking support context is worse than no answer.</td></tr>
+  <tr><td><strong>A number from a tutorial</strong> (0.7 is the usual one)</td><td>Would reject <em>every</em> genuine result here — the worst on-topic question scores 0.388. Scores are not comparable across models or corpora.</td></tr>
+  <tr><td><strong>Return top-k and let the LLM judge</strong></td><td>Defers a cheap deterministic check to an expensive non-deterministic one, and the failure mode is the model rationalising the irrelevant context it was handed. Worth adding <em>as well</em> in Stage 5; not instead.</td></tr>
+</table>
+
+<p><strong>Known limitation, stated plainly.</strong> Ten on-topic and five off-topic
+questions is a small sample, and they were written by the same person who wrote the
+corpus. The threshold is defensible, not proven. Stage 11's evaluation set is where it
+gets tested properly.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.10 &nbsp; The index is an offline build artefact</h3>
+
+<p><strong>Chosen.</strong> <code>python -m app.rag build</code> writes
+<code>data/vectorstore/</code>. The application loads it; it does not build it.</p>
+
+<p><strong>Why.</strong> Embedding the corpus takes seconds and needs hundreds of
+megabytes of model resident. Doing it per process would make startup slow, make every
+container replica repeat identical work, and — worst — make a document edit invisible
+until someone restarts something. Building once and loading is also what lets replicas
+share one index in Stage 12.</p>
+
+<p>The artefact is git-ignored: it is <em>derived</em> from <code>data/knowledge/</code>,
+and committing it would both put a binary blob in every diff and allow the index and the
+documents to drift apart in version control with nothing to notice.</p>
+
+<p><code>get_retriever()</code> is the convenience path — it loads, and rebuilds only on
+the three recoverable conditions (no index, wrong model, stale). Anything else still
+fails loudly rather than being papered over by a silent rebuild.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.11 &nbsp; Two guards whose failure mode is silence</h3>
+
+<p><strong>Chosen.</strong> The index manifest records the model id, the vector
+dimension, an on-disk format version and a SHA-256 fingerprint of the corpus. All four
+are checked on load.</p>
+
+<p><strong>Why.</strong> Both of the failures they catch are <em>invisible in the
+output</em>, which is the only reason they justify their code:</p>
+
+<ul>
+  <li><strong>Wrong model.</strong> Query vectors from model B against an index built by
+      model A do not error. The two spaces are simply unrelated, so the search returns
+      well-formed, plausible, wrong results. Nothing about the answer looks off.</li>
+  <li><strong>Stale index.</strong> If a document changed after indexing, answers stay
+      fluent and every citation still resolves to a real file. The only symptom is the
+      agent quoting a procedure that was edited last week — which nobody notices.</li>
+</ul>
+
+<p>The fingerprint covers metadata as well as body text, so bumping a component version
+in front matter invalidates the index too. Freshness checking costs a few milliseconds
+of re-reading the corpus, against the cost of serving confidently outdated banking
+procedures.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">3.12 &nbsp; Two embedders behind one protocol</h3>
+
+<p><strong>Chosen.</strong> <code>SentenceTransformerEmbedder</code> for real use;
+<code>HashingEmbedder</code> — deterministic, dependency-light, non-semantic — for the
+fast test suite.</p>
+
+<p><strong>Why.</strong> Two reasons, and the second is the interesting one.
+Practically, it keeps ~200 tests offline, deterministic and finishing in ~30 s with no
+model download and no warm cache. Architecturally, running the entire pipeline on a
+genuinely different embedder is the <em>proof</em> that the decoupling is real. A claim
+that the model is swappable is worth nothing; a test suite that swaps it is worth
+something.</p>
+
+<p>Query and document embedding are separate methods even though MiniLM treats them
+identically, because asymmetric models (E5, BGE, most hosted retrieval models) require
+different <code>query:</code> / <code>passage:</code> prefixes — and retrofitting that
+distinction later would mean re-indexing everything.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Mock the embedder</strong></td><td>A mock proves the calls happen. It proves nothing about the numerics — normalisation, dimensions, ranking — which is where retrieval actually goes wrong.</td></tr>
+  <tr><td><strong>Use the real model everywhere</strong></td><td>A slow suite that needs a warm Hugging Face cache to run at all. Quality tests need it; ranking, filtering and persistence tests do not.</td></tr>
+  <tr><td><strong>Python's built-in <code>hash()</code></strong> for the hashing embedder</td><td>Genuine trap: <code>PYTHONHASHSEED</code> randomises string hashing per process, so an index written by one run would be unreadable by the next. Uses <code>blake2b</code> instead.</td></tr>
+</table>
+</div>
 </section>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> — architecture guide ·
-  Stage 1 (Project Foundation) · Last updated 2026-09-03<br>
+  Stage 3 (RAG Pipeline) · Last updated 2026-09-09<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

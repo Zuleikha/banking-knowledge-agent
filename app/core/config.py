@@ -42,6 +42,28 @@ class Settings(BaseSettings):
 
     knowledge_dir: Path = PROJECT_ROOT / "data" / "knowledge"
 
+    # --- RAG pipeline (Stage 3) ------------------------------------------
+    # The index is a build artefact of knowledge_dir, so it is git-ignored and
+    # rebuilt rather than committed.
+    vectorstore_dir: Path = PROJECT_ROOT / "data" / "vectorstore"
+
+    # Runs locally: no API key, no per-query cost, no network after the first
+    # download. Set to "hashing" to run the pipeline with no model at all.
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # None lets sentence-transformers choose (CUDA when present, else CPU).
+    embedding_device: str | None = None
+    embedding_batch_size: int = Field(default=32, ge=1)
+
+    # None means "use the embedding model's own limit", which is the safe
+    # default -- a hardcoded number would silently truncate if the model changed.
+    chunk_max_tokens: int | None = Field(default=None, ge=16)
+    chunk_overlap_tokens: int = Field(default=32, ge=0)
+
+    retrieval_top_k: int = Field(default=5, ge=1)
+    # Empirically calibrated against this corpus and this model; re-measure with
+    # `python -m app.rag calibrate` if either changes.
+    retrieval_min_score: float = Field(default=0.25, ge=-1.0, le=1.0)
+
     log_level: LogLevel = "INFO"
     log_format: LogFormat = "console"
     log_dir: Path = PROJECT_ROOT / "logs"

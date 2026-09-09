@@ -11,7 +11,11 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.logging import reset_logging
+from app.knowledge.loader import load_knowledge_base
+from app.knowledge.models import KnowledgeDocument
 from app.main import create_app
+from app.rag.pipeline import build_index
+from app.rag.retriever import Retriever
 
 
 @pytest.fixture
@@ -45,3 +49,44 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 def knowledge_root() -> Path:
     """The real synthetic knowledge base shipped with the repository."""
     return Settings().knowledge_dir
+
+
+@pytest.fixture
+def rag_settings(tmp_path: Path) -> Settings:
+    """Settings for RAG tests: hashing embedder, index written to tmp_path.
+
+    The hashing embedder keeps the suite fast, offline and deterministic. It is
+    not semantic, so these tests assert *pipeline* behaviour -- ranking order,
+    filtering, thresholds, persistence -- and never retrieval quality. Quality
+    is asserted against the real model in ``test_rag_integration.py``.
+    """
+    return Settings(
+        environment="test",
+        embedding_model="hashing",
+        vectorstore_dir=tmp_path / "vectorstore",
+        log_dir=tmp_path / "logs",
+        log_to_file=False,
+    )
+
+
+@pytest.fixture
+def real_settings(tmp_path: Path) -> Settings:
+    """Settings using the real sentence-transformers model, indexed to tmp_path."""
+    return Settings(
+        environment="test",
+        vectorstore_dir=tmp_path / "vectorstore",
+        log_dir=tmp_path / "logs",
+        log_to_file=False,
+    )
+
+
+@pytest.fixture
+def corpus() -> tuple[KnowledgeDocument, ...]:
+    """The real synthetic corpus, loaded once per test."""
+    return load_knowledge_base(Settings().knowledge_dir)
+
+
+@pytest.fixture
+def retriever(rag_settings: Settings) -> Retriever:
+    """A retriever over the real corpus, indexed with the hashing embedder."""
+    return build_index(rag_settings, persist=False)

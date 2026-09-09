@@ -9,3 +9,15 @@ structlog==24.4.0
 
 # Knowledge document front matter (Stage 2). safe_load only -- see loader.py.
 PyYAML==6.0.2
+
+# --- RAG pipeline (Stage 3) ------------------------------------------------
+# Local embedding model: no API key, no per-query cost, no network after the
+# first model download. torch is pinned explicitly even though it arrives via
+# sentence-transformers -- it is the single largest artefact in the image and
+# the CPU/GPU build choice belongs in this file, not in a transitive resolve.
+# On Windows and macOS the PyPI wheel is CPU-only; on Linux add
+#   --extra-index-url https://download.pytorch.org/whl/cpu
+# to keep the image from pulling ~2 GB of unused CUDA libraries.
+sentence-transformers==5.7.0
+torch==2.14.0
+numpy==2.5.3
