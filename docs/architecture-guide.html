@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Banking Knowledge Agent — Architecture Guide</title>
+<title>Banking Knowledge Agent - Architecture Guide</title>
 <style>
   :root{
     --ink:#16202b; --muted:#5b6b7c; --line:#dfe6ee; --bg:#f6f8fb; --card:#fff;
@@ -57,11 +57,11 @@
 
 <header>
   <div class="wrap">
-    <h1>Banking Knowledge Agent — Architecture Guide</h1>
+    <h1>Banking Knowledge Agent - Architecture Guide</h1>
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 3 — RAG Pipeline &nbsp;·&nbsp; Last updated 2026-09-09</div>
+    <div class="pill">Stage 4 - LLM Abstraction &nbsp;·&nbsp; Last updated 2026-09-09</div>
   </div>
 </header>
 
@@ -97,7 +97,7 @@
   <strong>How to read this guide.</strong> Sections tagged
   <span class="tag t-done">BUILT</span> describe code that exists today.
   Sections tagged <span class="tag t-todo">PLANNED</span> describe the intended design
-  for a later stage — they are the plan, not a description of working code.
+  for a later stage - they are the plan, not a description of working code.
   Update this file whenever the architecture changes.
 </div>
 
@@ -105,9 +105,9 @@
 <section id="overview">
 <h2>1. System overview</h2>
 
-<p>The Banking Knowledge Agent answers technical questions about a banking platform —
+<p>The Banking Knowledge Agent answers technical questions about a banking platform -
 ATM and self-service banking, digital banking, cards, payments, APIs, integrations,
-configuration and incident troubleshooting — and backs every answer with sources.</p>
+configuration and incident troubleshooting - and backs every answer with sources.</p>
 
 <p>The objective is not a chatbot. It is a demonstration of production-oriented AI
 engineering: retrieval, an agent loop, tool use, guardrails, testing, observability and
@@ -139,12 +139,12 @@ containerisation, each behind a clean boundary.</p>
 <h3>Build stages</h3>
 <table>
   <tr><th style="width:70px">Stage</th><th>Name</th><th style="width:110px">Status</th></tr>
-  <tr><td>1</td><td>Project foundation — config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>2</td><td>Domain knowledge — synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>3</td><td>RAG pipeline — chunking, embeddings, vector store, retrieval</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>4</td><td>LLM abstraction — provider-agnostic prompt &amp; response layer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
-  <tr><td>5</td><td>Knowledge agent — retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
-  <tr><td>6</td><td>MCP tools — synthetic banking support tools</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>1</td><td>Project foundation - config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>2</td><td>Domain knowledge - synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>3</td><td>RAG pipeline - chunking, embeddings, vector store, retrieval</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>4</td><td>LLM abstraction - provider-agnostic prompt &amp; response layer</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>6</td><td>MCP tools - synthetic banking support tools</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>7</td><td>Agent decision &amp; tool selection</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>8</td><td>Conversation context</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>9</td><td>Web interface</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -172,7 +172,7 @@ containerisation, each behind a clean boundary.</p>
 ├── app/                          Application source
 │   ├── __init__.py
 │   ├── main.py                   FastAPI factory + entry point
-│   ├── api/                      HTTP layer — thin, no business logic
+│   ├── api/                      HTTP layer - thin, no business logic
 │   │   ├── dependencies.py       Shared FastAPI dependencies
 │   │   └── routes/
 │   │       └── health.py         GET /health
@@ -183,19 +183,27 @@ containerisation, each behind a clean boundary.</p>
 │   ├── knowledge/                Knowledge base sourcing
 │   │   ├── models.py             DocumentMetadata, KnowledgeDocument
 │   │   └── loader.py             Markdown + front-matter loader
-│   └── rag/                      Retrieval pipeline
-│       ├── __main__.py           CLI: build | search | demo | calibrate
-│       ├── models.py             Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
-│       ├── chunker.py            Heading-aware, token-budgeted splitting
-│       ├── embeddings.py         Embedder protocol + 2 implementations
-│       ├── vectorstore.py        VectorStore protocol + NumPy implementation
-│       ├── retriever.py          Question → embedding → search → sources
-│       └── pipeline.py           build_index / load_retriever / fingerprint
+│   ├── rag/                      Retrieval pipeline
+│   │   ├── __main__.py           CLI: build | search | demo | calibrate
+│   │   ├── models.py             Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
+│   │   ├── chunker.py            Heading-aware, token-budgeted splitting
+│   │   ├── embeddings.py         Embedder protocol + 2 implementations
+│   │   ├── vectorstore.py        VectorStore protocol + NumPy implementation
+│   │   ├── retriever.py          Question → embedding → search → sources
+│   │   └── pipeline.py           build_index / load_retriever / fingerprint
+│   └── llm/                      LLM abstraction - NO vendor named in here
+│       ├── __main__.py           CLI: prompt | ask | demo
+│       ├── models.py             CompletionRequest, LLMResponse, GroundedAnswer
+│       ├── base.py               LLMProvider protocol + error taxonomy
+│       ├── prompts.py            Versioned instructions, context budget + fencing
+│       ├── mock.py               Deterministic in-process provider (the only one)
+│       ├── service.py            Context injection → generate → validate → answer
+│       └── factory.py            Provider selection from configuration
 ├── data/
 │   ├── knowledge/                Synthetic banking documents (15 .md files)
 │   │   ├── api/  atm/  cards/  configuration/
 │   │   └── digital-banking/  operations/  payments/  platform/
-│   └── vectorstore/              Built index — GIT-IGNORED build artefact
+│   └── vectorstore/              Built index - GIT-IGNORED build artefact
 │       ├── manifest.json         model id, dimension, corpus fingerprint
 │       ├── vectors.npy           (115, 384) float32 matrix
 │       └── chunks.json           chunk text + metadata
@@ -209,7 +217,10 @@ containerisation, each behind a clean boundary.</p>
 │   ├── test_embeddings.py
 │   ├── test_vectorstore.py
 │   ├── test_retriever.py
-│   └── test_rag_integration.py   Real model — retrieval quality
+│   ├── test_rag_integration.py   Real model - retrieval quality
+│   ├── test_llm_prompts.py       Context budget, fencing, injection defence
+│   ├── test_llm_provider.py      Protocol, mock, factory, errors, no-network
+│   └── test_llm_service.py       Injection, refusal, error handling, provenance
 ├── docs/
 │   ├── HANDOVER.md               Session recovery point
 │   └── architecture-guide.html   ← this file
@@ -221,13 +232,12 @@ containerisation, each behind a clean boundary.</p>
 └── README.md</pre>
 
 <p><strong>Directories added in later stages:</strong>
-<code>app/llm/</code> (Stage 4), <code>app/agent/</code> (5, 7),
-<code>app/mcp/</code> (6), <code>app/web/</code> (9), <code>evals/</code> (11),
-<code>Dockerfile</code> (12).</p>
+<code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6), <code>app/web/</code> (9),
+<code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
 
 <div class="note">
   <strong><code>data/vectorstore/</code> is git-ignored on purpose.</strong> It is
-  <em>derived</em> from <code>data/knowledge/</code> — a build artefact, not a source.
+  <em>derived</em> from <code>data/knowledge/</code> - a build artefact, not a source.
   Committing it would put a binary blob in every diff, and worse, would let the index
   and the documents drift apart in version control with nothing to notice.
   Rebuild it instead: <code>python -m app.rag build</code>.
@@ -248,20 +258,20 @@ containerisation, each behind a clean boundary.</p>
 <table>
   <tr><th style="width:170px">Technology</th><th>Job</th><th style="width:90px">Stage</th></tr>
   <tr><td><strong>Python 3.12</strong></td><td>The language with the mature LLM, embedding and vector-store ecosystem.</td><td>1</td></tr>
-  <tr><td><strong>FastAPI</strong></td><td>Async HTTP API with typed models, dependency injection and OpenAPI documentation generated from the code — the schema can never drift from the implementation.</td><td>1</td></tr>
+  <tr><td><strong>FastAPI</strong></td><td>Async HTTP API with typed models, dependency injection and OpenAPI documentation generated from the code - the schema can never drift from the implementation.</td><td>1</td></tr>
   <tr><td><strong>Pydantic v2</strong></td><td>Validation at the system boundary. Malformed input fails at the edge with a clear 422 instead of propagating into the agent.</td><td>1</td></tr>
   <tr><td><strong>pydantic-settings</strong></td><td>Typed, environment-based configuration. Invalid config fails at startup, not at 3am. Keeps secrets out of source.</td><td>1</td></tr>
-  <tr><td><strong>structlog</strong></td><td>Logs are structured <em>events with fields</em>, not formatted prose. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code>, <code>request_id</code> as queryable fields — that is only possible if logging is structured from day one.</td><td>1</td></tr>
+  <tr><td><strong>structlog</strong></td><td>Logs are structured <em>events with fields</em>, not formatted prose. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code>, <code>request_id</code> as queryable fields - that is only possible if logging is structured from day one.</td><td>1</td></tr>
   <tr><td><strong>uvicorn</strong></td><td>ASGI server for FastAPI's async request handling.</td><td>1</td></tr>
   <tr><td><strong>pytest</strong></td><td>Test suite, including async API tests via <code>httpx</code> + <code>TestClient</code>.</td><td>1</td></tr>
   <tr><td><strong>ruff</strong></td><td>Formatter and linter in one fast tool.</td><td>1</td></tr>
   <tr><td><strong>mypy (strict)</strong></td><td>Static type checking. Catches interface drift between layers before runtime.</td><td>1</td></tr>
-  <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>Turns text into 384-dimension vectors so questions match documents by <em>meaning</em>, not shared words. Runs locally: no API key, no per-query cost, no network after the first download. Reads 256 word-piece tokens — the number the chunker is built around.</td><td>3</td></tr>
+  <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>Turns text into 384-dimension vectors so questions match documents by <em>meaning</em>, not shared words. Runs locally: no API key, no per-query cost, no network after the first download. Reads 256 word-piece tokens - the number the chunker is built around.</td><td>3</td></tr>
   <tr><td><strong>NumPy</strong></td><td>The vector index <em>is</em> a NumPy matrix. Similarity search over the whole corpus is one <code>matrix @ query</code>, which at this size is faster than any index that could be built over it.</td><td>3</td></tr>
-  <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen — it is what sentence-transformers runs on. Pinned explicitly anyway: it is the largest artefact in the eventual image, so the CPU/GPU build choice belongs in <code>requirements.txt</code>, not in a transitive resolve.</td><td>3</td></tr>
-  <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction — the app is never coupled to one vendor.</td><td>4</td></tr>
+  <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen - it is what sentence-transformers runs on. Pinned explicitly anyway: it is the largest artefact in the eventual image, so the CPU/GPU build choice belongs in <code>requirements.txt</code>, not in a transitive resolve.</td><td>3</td></tr>
+  <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction - the app is never coupled to one vendor.</td><td>4</td></tr>
   <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
-  <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only — front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
+  <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only - front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
   <tr><td><strong>Docker</strong></td><td>Reproducible local runtime; the same image everywhere.</td><td>12</td></tr>
 </table>
 </section>
@@ -297,8 +307,8 @@ containerisation, each behind a clean boundary.</p>
   </tr>
   <tr>
     <td><code>app/core/tracing.py</code><br><span class="muted">@traced, @traced_async</span></td>
-    <td>Wraps a function so each call emits a structured trace event —
-        qualified name, duration in ms, ok/error outcome — to
+    <td>Wraps a function so each call emits a structured trace event -
+        qualified name, duration in ms, ok/error outcome - to
         <code>logs/traces.log</code>. Arguments are deliberately never recorded.</td>
   </tr>
   <tr>
@@ -309,7 +319,7 @@ containerisation, each behind a clean boundary.</p>
   </tr>
   <tr>
     <td><code>app/api/routes/health.py</code></td>
-    <td><code>GET /health</code> — a pure liveness check returning status, service
+    <td><code>GET /health</code> - a pure liveness check returning status, service
         name, version and environment. It touches no downstream system.</td>
   </tr>
   <tr>
@@ -333,7 +343,7 @@ containerisation, each behind a clean boundary.</p>
     <td>The pipeline's data contracts. The one to know is <code>Chunk</code>, which
         separates <code>content</code> (the passage as written, shown to a human and
         to the LLM) from <code>embedding_text</code> (the same passage with a
-        <em>"Document title — Section"</em> prefix, which is what actually gets
+        <em>"Document title - Section"</em> prefix, which is what actually gets
         embedded). <code>RetrievalResult</code> carries the outcome <em>and</em> the
         reason for it, so an empty result is informative rather than just empty.</td>
   </tr>
@@ -378,13 +388,56 @@ containerisation, each behind a clean boundary.</p>
         <code>calibrate</code> exists so the score threshold can be re-derived from
         data rather than inherited as a magic number.</td>
   </tr>
+  <tr>
+    <td><code>app/llm/models.py</code><br><span class="muted">CompletionRequest, LLMResponse, GroundedAnswer</span></td>
+    <td>The vocabulary the application uses to talk to any model. No vendor shapes.
+        <code>GroundedAnswer</code> carries provenance - sources, passages used,
+        whether a model was called at all - so a grounded answer and an honest refusal
+        are distinguishable without reading the prose.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/base.py</code><br><span class="muted">LLMProvider protocol</span></td>
+    <td>The seam. A protocol, so a test double or a future adapter qualifies
+        structurally - no inheritance, no registration. Also owns the six-type error
+        taxonomy each adapter translates its vendor's failures into, once, at the
+        boundary.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/prompts.py</code><br><span class="muted">select_context(), build_request()</span></td>
+    <td>Versioned system instructions (v1.0.0), the context budget, and the fencing and
+        delimiter-escaping that make retrieved text untrusted data rather than
+        instructions.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/mock.py</code><br><span class="muted">MockLLMProvider</span></td>
+    <td>The only provider that ships in Stage 4: deterministic, in-process, free. Cites
+        back the passages it was actually given, so a context-injection bug shows up as
+        a missing citation. Records every request for assertion; can script responses or
+        raise, which is how the error paths are tested.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/service.py</code><br><span class="muted">LLMService.answer()</span></td>
+    <td>Inject context → generate → reject unusable generations → attach provenance.
+        Refuses without calling the provider when retrieval found nothing. Does not
+        retrieve: that is the caller's job, and the agent that decides is Stage 5.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/factory.py</code><br><span class="muted">get_provider(), get_llm_service()</span></td>
+    <td>The one place a provider is chosen from configuration. An unavailable provider
+        raises rather than falling back to the mock.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/__main__.py</code></td>
+    <td>CLI: <code>prompt</code> prints the exact request that would be sent - context
+        injection is this stage's claim, and a claim you cannot see is one you cannot
+        check. <code>ask</code> and <code>demo</code> run it end to end, offline.</td>
+  </tr>
 </table>
 
 <h3>Planned</h3>
 <table>
   <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
-  <tr><td><code>app/llm/base.py</code></td><td><code>LLMProvider</code> protocol: the seam that keeps the app vendor-agnostic.</td><td>4</td></tr>
-  <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions and context-injection templates.</td><td>4</td></tr>
+  <tr><td><code>app/llm/&lt;vendor&gt;_provider.py</code></td><td>The first concrete adapter. Which vendor, and whether a live key is wired in, is a decision deferred to before Stage 5.</td><td>5</td></tr>
   <tr><td><code>app/agent/agent.py</code></td><td>Orchestrates retrieve → ground → answer, and refuses when evidence is thin.</td><td>5, 7</td></tr>
   <tr><td><code>app/mcp/tools/</code></td><td>Synthetic support tools: config lookup, transaction status, component status, error codes, versions, service health.</td><td>6</td></tr>
   <tr><td><code>app/agent/context.py</code></td><td>Session handling and bounded conversation history.</td><td>8</td></tr>
@@ -396,10 +449,11 @@ containerisation, each behind a clean boundary.</p>
 <h2>5. Data flow</h2>
 
 <h3>Today (Stage 3)</h3>
-<p>Two independent paths. They are not yet joined — the API does not call retrieval
-until Stage 5, when the agent exists to sit between them.</p>
+<p>Two independent paths. Retrieval and generation are now joined, but neither is
+reachable over HTTP - the API does not call them until Stage 5, when the agent exists to
+sit between them.</p>
 
-<pre class="plain">HTTP GET /health                     python -m app.rag search "..."
+<pre class="plain">HTTP GET /health                     python -m app.llm ask "..."
    │                                    │
    ▼                                    ▼
 FastAPI router                       Retriever
@@ -407,9 +461,18 @@ FastAPI router                       Retriever
    │  request.app.state.settings        ▼
    ▼                                 RetrievalResult (chunks + sources + why)
 HealthResponse (Pydantic)               │
-   │                                    └──▶ logs/app.log  "rag.retrieved"
-   ├──▶ logs/app.log                              query, returned, top_score, docs
-   └──▶ HTTP 200 JSON</pre>
+   │                                    ├──▶ logs/app.log  "rag.retrieved"
+   ├──▶ logs/app.log                    ▼
+   └──▶ HTTP 200 JSON               LLMService.answer()
+                                        │  budget → fence → generate → validate
+                                        │
+                                        ├── empty result ──▶ refuse, NO model call
+                                        ▼
+                                     GroundedAnswer (text + sources + provenance)
+                                        │
+                                        └──▶ logs/app.log  "llm.answered"
+                                                 provider, model, chunks, tokens
+                                                 — never the prompt or the answer</pre>
 
 <h3>Target (Stage 9 complete)</h3>
 <pre class="plain">Question
@@ -445,7 +508,7 @@ into an undifferentiated blob.</p>
 <!-- ================================================================== -->
 <section id="rag">
 <h2>6. RAG flow</h2>
-<span class="tag t-done">BUILT — Stages 2 &amp; 3</span>
+<span class="tag t-done">BUILT - Stages 2 &amp; 3</span>
 
 <p><strong>Why RAG at all?</strong> An LLM does not know this platform, and fine-tuning
 is the wrong tool for documentation that changes. Retrieval keeps the knowledge base
@@ -454,16 +517,16 @@ editable, makes every answer citable, and constrains the model to material we co
 <h3>Indexing (offline, once per document change)</h3>
 <pre class="plain">Synthetic banking documents (data/knowledge/)        15 documents
    │
-   ▼  loader — parse front matter, validate metadata
+   ▼  loader - parse front matter, validate metadata
 {document_id, title, domain, component, version, doc_type, tags}
    │
    ▼  KnowledgeDocument (metadata + body + source_path)
    │
-   ▼  chunker — split on ## headings, budget in MODEL tokens
+   ▼  chunker - split on ## headings, budget in MODEL tokens
    │            oversized sections split; tables keep their header
 Chunks                                              108 sections → 115 chunks
    │            each carries the full document metadata
-   │            each is prefixed "Title — Heading" for embedding
+   │            each is prefixed "Title - Heading" for embedding
    ▼  all-MiniLM-L6-v2, batched, L2-normalised
 Vectors                                             (115, 384) float32
    │
@@ -475,9 +538,9 @@ data/vectorstore/   vectors.npy + chunks.json + manifest.json
   <tr><th style="width:210px">Measured on this corpus</th><th></th></tr>
   <tr><td>Documents</td><td>15</td></tr>
   <tr><td><code>##</code> sections</td><td>108</td></tr>
-  <tr><td>Chunks produced</td><td>115 — only 7 sections needed splitting</td></tr>
+  <tr><td>Chunks produced</td><td>115 - only 7 sections needed splitting</td></tr>
   <tr><td>Chunk size (tokens)</td><td>min 31 · median 104 · mean 116 · <strong>max 251</strong></td></tr>
-  <tr><td>Chunks over the 256 limit</td><td><strong>0</strong> — asserted as a test invariant</td></tr>
+  <tr><td>Chunks over the 256 limit</td><td><strong>0</strong> - asserted as a test invariant</td></tr>
   <tr><td>Vector width</td><td>384</td></tr>
   <tr><td>Index build time</td><td>~4 s after the model is cached</td></tr>
 </table>
@@ -505,7 +568,7 @@ the body is exactly the text that gets chunked and embedded, it stays readable a
 reviewable in a diff, and the metadata travels with the content it describes.</p>
 
 <p><strong>Why the loader is strict.</strong> A silently skipped document becomes an
-answer the agent cannot ground — a far harder fault to diagnose than a failed load.
+answer the agent cannot ground - a far harder fault to diagnose than a failed load.
 So missing front matter, invalid YAML, an unknown domain, an unrecognised key, a
 <code>document_id</code> that disagrees with its filename, a duplicate id, an empty
 body, or an empty knowledge directory all raise.</p>
@@ -543,25 +606,25 @@ RetrievalResult
    ├─ sources   deduplicated by document
    └─ why       candidates_considered, min_score, top_score</pre>
 
-<h3>Worked example — the output is real</h3>
+<h3>Worked example - the output is real</h3>
 <pre class="plain">$ python -m app.rag search "Why would an ATM transaction fail after card authentication?"
 
-  1. 0.790  ATM Transaction Lifecycle — Why a transaction can fail after card authentication
+  1. 0.790  ATM Transaction Lifecycle - Why a transaction can fail after card authentication
             atm / TransactionSwitch v4.2 · atm/atm-transaction-lifecycle.md
-  2. 0.682  ATM Transaction Lifecycle — Why a transaction can fail after card authentication
+  2. 0.682  ATM Transaction Lifecycle - Why a transaction can fail after card authentication
             atm / TransactionSwitch v4.2 · atm/atm-transaction-lifecycle.md
-  3. 0.627  Card Authentication and Authorisation — The authorisation decision
+  3. 0.627  Card Authentication and Authorisation - The authorisation decision
             cards / AuthorizationService v4.2 · cards/card-authentication.md
   sources: 2 document(s)
 
 $ python -m app.rag search "What is the capital of France?"
 
-  NO MATCH — nothing scored above 0.25 of 115 chunks.</pre>
+  NO MATCH - nothing scored above 0.25 of 115 chunks.</pre>
 
 <p>Note results 1 and 2: the same section, split into two chunks, both retrieved. That
 is the chunker's table/paragraph splitting and the store's ranking agreeing with each
 other. Because <code>sources</code> deduplicates by document, the citation list still
-says <em>two documents</em>, not five — five chunks of one document is one piece of
+says <em>two documents</em>, not five - five chunks of one document is one piece of
 evidence to a reader, and a citation list that repeats it five times looks like five.</p>
 
 <h3>Why metadata travels all the way down</h3>
@@ -577,7 +640,7 @@ Windows and inside a container.</p>
 <div class="warn">
   <strong>The score floor is what makes honesty possible.</strong> Without it,
   <em>"what is the weather tomorrow?"</em> still returns the five least-bad banking
-  chunks — and an LLM handed five confident-looking banking passages writes a
+  chunks - and an LLM handed five confident-looking banking passages writes a
   confident banking answer. The floor turns "nothing here is relevant" into an
   empty result the agent can refuse on. See §20 for how the number was derived.
 </div>
@@ -586,7 +649,7 @@ Windows and inside a container.</p>
 <!-- ================================================================== -->
 <section id="agent">
 <h2>7. Agent flow</h2>
-<span class="tag t-todo">PLANNED — Stages 5 &amp; 7</span>
+<span class="tag t-todo">PLANNED - Stages 5 &amp; 7</span>
 
 <pre class="plain">Question
    │
@@ -609,12 +672,12 @@ Answer + sources + tool activity</pre>
 
 <h3>The grounding rule</h3>
 <p>The agent must not invent technical facts. When the knowledge base does not contain
-enough evidence, the correct output is an explicit statement to that effect — not a
+enough evidence, the correct output is an explicit statement to that effect - not a
 plausible guess. In a banking support context a confident wrong answer is worse than
 "I don't have that documented."</p>
 
 <h3>What is exposed</h3>
-<p>Execution information is surfaced — retrieval performed, documents used, tool called,
+<p>Execution information is surfaced - retrieval performed, documents used, tool called,
 tool result, final answer. Hidden chain-of-thought is <strong>not</strong> exposed.</p>
 
 <h3>Example questions the agent must handle</h3>
@@ -630,7 +693,7 @@ tool result, final answer. Hidden chain-of-thought is <strong>not</strong> expos
 <!-- ================================================================== -->
 <section id="mcp">
 <h2>8. MCP flow</h2>
-<span class="tag t-todo">PLANNED — Stage 6</span>
+<span class="tag t-todo">PLANNED - Stage 6</span>
 
 <p><strong>Why MCP?</strong> RAG answers "what do the documents say?". Tools answer
 "what is the system doing right now?". MCP makes those tools a declared, versioned,
@@ -664,22 +727,62 @@ _config     transaction_status       code            health
 <!-- ================================================================== -->
 <section id="llm">
 <h2>9. LLM interaction</h2>
-<span class="tag t-todo">PLANNED — Stage 4</span>
+<span class="tag t-done">BUILT</span>
 
-<pre class="plain">app/agent  ──▶  LLMProvider (protocol)  ──▶  concrete provider
-                      ▲                          │
-                      │                          ▼
-              app depends on this          vendor SDK, API key
-              interface only               from the environment</pre>
+<pre class="plain">RetrievalResult (Stage 3)
+      │
+      ▼  select_context      apply the budget: max 5 passages / 12,000 chars
+      │                      passages dropped WHOLE, never truncated
+      ▼  build_request       frozen system prompt (v1.0.0)
+      │                      + fenced, numbered passages   ← untrusted data
+      │                      + the question                ← the instruction
+CompletionRequest            system · messages · max_tokens
+      │
+      ▼  LLMProvider.complete()          ← the vendor-agnostic seam
+      │        │
+      │        └── MockLLMProvider       deterministic, in-process, free
+      │            (the only implementation; a real adapter is Stage 5)
+LLMResponse                  text · stop_reason · usage · provider/model id
+      │
+      ▼  validate            refusal / truncated / empty  ──▶ raise, never show
+GroundedAnswer               answer + sources + provenance
+      │
+      └──▶ logs/app.log  "llm.answered"   shape and cost only, never the text</pre>
 
 <p><strong>The rule:</strong> the LLM receives the <em>retrieved context</em>, never the
 whole knowledge base. That is what keeps cost, latency and prompt-injection surface
-bounded — and it is the difference between RAG and stuffing a prompt.</p>
+bounded - and it is the difference between RAG and stuffing a prompt. It is enforced by
+two configured numbers and asserted against the real corpus in the suite, not left as an
+intention.</p>
 
-<p>The abstraction covers prompt management, system instructions, question handling,
-context injection, response generation, error handling (timeouts, rate limits, malformed
-responses) and environment-based configuration. Tests use a mock provider, so the suite
-runs offline, deterministically, and at zero API cost.</p>
+<p><strong>Nothing above <code>app/llm/</code> names a vendor.</strong> The application
+depends on the <code>LLMProvider</code> protocol and on the exception types in
+<code>app/llm/base.py</code> - never on an SDK, a model name, or a vendor's error
+classes. A test parses every import in the package to keep it that way.</p>
+
+<p><strong>No paid call exists yet.</strong> Stage 4 ships one provider, the
+deterministic in-process mock, so the suite is offline and free <em>by construction</em>
+rather than by discipline. Which real vendor the first adapter targets, and whether a
+key is ever wired in, is deferred to a decision before Stage 5. Requesting any other
+provider raises rather than silently falling back to the mock - see decision record 4.2.</p>
+
+<table>
+  <tr><th style="width:210px">Module</th><th>Responsibility</th></tr>
+  <tr><td><code>app/llm/models.py</code></td><td>The shared vocabulary: <code>CompletionRequest</code>, <code>LLMResponse</code>, <code>TokenUsage</code>, <code>GroundedAnswer</code>. No vendor shapes.</td></tr>
+  <tr><td><code>app/llm/base.py</code></td><td>The <code>LLMProvider</code> protocol and the six-type error taxonomy, each carrying <code>retryable</code>.</td></tr>
+  <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions, context budgeting, fencing and escaping, request assembly.</td></tr>
+  <tr><td><code>app/llm/mock.py</code></td><td>The deterministic provider: synthesises, scripts, or raises - and records every request it was sent.</td></tr>
+  <tr><td><code>app/llm/service.py</code></td><td>Orchestration: inject context, generate, reject unusable generations, attach provenance.</td></tr>
+  <tr><td><code>app/llm/factory.py</code></td><td>The one place a provider is chosen from configuration.</td></tr>
+  <tr><td><code>app/llm/__main__.py</code></td><td>CLI: <code>prompt</code> (show what is sent) · <code>ask</code> · <code>demo</code>.</td></tr>
+</table>
+
+<div class="note">
+  <strong>See it rather than trust it.</strong>
+  <code>python -m app.llm prompt "What component handles card authentication?"</code>
+  prints the complete request. The interesting part is what is <em>absent</em>: the other
+  110 chunks of the knowledge base.
+</div>
 </section>
 
 <!-- ================================================================== -->
@@ -687,8 +790,8 @@ runs offline, deterministically, and at zero API cost.</p>
 <h2>10. Vector database</h2>
 <span class="tag t-done">BUILT</span>
 
-<p>Accessed through a <code>VectorStore</code> protocol —
-<code>add()</code>, <code>search()</code>, <code>count()</code>, <code>clear()</code> —
+<p>Accessed through a <code>VectorStore</code> protocol -
+<code>add()</code>, <code>search()</code>, <code>count()</code>, <code>clear()</code> -
 so the implementation is replaceable. The shipped implementation,
 <code>InMemoryVectorStore</code>, is one NumPy matrix.</p>
 
@@ -704,7 +807,7 @@ so the implementation is replaceable. The shipped implementation,
 
 <h3>Why brute force, and when that stops being true</h3>
 <p>115 vectors × 384 dimensions is ~176 KB. Scoring all of them is a single matrix-vector
-product — tens of microseconds, orders of magnitude below the cost of embedding the
+product - tens of microseconds, orders of magnitude below the cost of embedding the
 query, never mind an LLM call. An approximate index (HNSW, IVF) buys sub-linear scaling
 by <em>spending recall</em>, and there is no scaling problem here to spend recall on.</p>
 
@@ -718,18 +821,18 @@ the thing that makes it a one-class change rather than a rewrite.</p>
   <tr><th style="width:170px">File</th><th>Contents</th><th>Why this format</th></tr>
   <tr><td><code>vectors.npy</code></td><td>The <code>(n, 384)</code> float32 matrix</td><td>Compact, exact, and loads without parsing.</td></tr>
   <tr><td><code>chunks.json</code></td><td>Chunk text + full metadata</td><td>Human-readable. When retrieval misbehaves the first question is "what is actually <em>in</em> the index?", and that should be answerable with a text editor.</td></tr>
-  <tr><td><code>manifest.json</code></td><td>format version, model id, dimension, chunk count, corpus fingerprint, build time</td><td>The guard rail — see below.</td></tr>
+  <tr><td><code>manifest.json</code></td><td>format version, model id, dimension, chunk count, corpus fingerprint, build time</td><td>The guard rail - see below.</td></tr>
 </table>
 
 <div class="warn">
   <strong>Both guards exist because their failure mode is silent.</strong>
   <ul>
     <li><strong>Wrong model.</strong> Searching an index built by model A with a query
-        embedded by model B does not raise — the vectors just live in unrelated spaces,
+        embedded by model B does not raise - the vectors just live in unrelated spaces,
         and you get confident, plausible-looking nonsense. So the manifest pins the
         model id and dimension, and <code>load()</code> refuses a mismatch.</li>
     <li><strong>Stale index.</strong> If a document changed after indexing, answers stay
-        fluent and citations still resolve — nobody notices the agent quoting a
+        fluent and citations still resolve - nobody notices the agent quoting a
         procedure that was edited last week. So the manifest carries a SHA-256
         fingerprint of the corpus (metadata <em>and</em> body), checked on load.</li>
   </ul>
@@ -744,10 +847,10 @@ the thing that makes it a one-class change rather than a rewrite.</p>
 
 <table>
   <tr><th style="width:200px">Endpoint</th><th>Purpose</th><th style="width:110px">Status</th></tr>
-  <tr><td><code>GET /health</code></td><td>Liveness — process is up and configured</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td><code>GET /health</code></td><td>Liveness - process is up and configured</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td><code>GET /docs</code></td><td>Interactive OpenAPI documentation</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td><code>GET /openapi.json</code></td><td>Generated OpenAPI schema</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td><code>GET /ready</code></td><td>Readiness — vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
+  <tr><td><code>GET /ready</code></td><td>Readiness - vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
   <tr><td><code>POST /api/chat</code></td><td>Ask the agent a question</td><td><span class="tag t-todo">Stage 5</span></td></tr>
 </table>
 
@@ -773,13 +876,25 @@ BKA_KNOWLEDGE_DIR=data/knowledge
 # --- RAG (Stage 3) ---
 BKA_VECTORSTORE_DIR=data/vectorstore
 BKA_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-                             # or "hashing" — no model download at all
+                             # or "hashing" - no model download at all
 # BKA_EMBEDDING_DEVICE=      # unset = auto (cuda if present, else cpu)
 BKA_EMBEDDING_BATCH_SIZE=32
 # BKA_CHUNK_MAX_TOKENS=      # unset = use the MODEL's own limit
 BKA_CHUNK_OVERLAP_TOKENS=32
 BKA_RETRIEVAL_TOP_K=5
-BKA_RETRIEVAL_MIN_SCORE=0.25 # calibrated — see §20
+BKA_RETRIEVAL_MIN_SCORE=0.25 # calibrated - see §20
+
+# --- LLM (Stage 4) ---
+BKA_LLM_PROVIDER=mock        # the ONLY value this build can construct;
+                             # anything else RAISES - it never falls back
+# BKA_LLM_MODEL=             # unset: no vendor chosen yet
+BKA_LLM_MAX_TOKENS=4096      # a runaway guard, not a target
+BKA_LLM_TIMEOUT_SECONDS=60.0
+BKA_LLM_MAX_RETRIES=2
+BKA_LLM_CONTEXT_MAX_CHUNKS=5     # how "never the whole knowledge base"
+BKA_LLM_CONTEXT_MAX_CHARS=12000  # is actually enforced
+# BKA_LLM_API_KEY=           # environment only; SecretStr; LEAVE UNSET -
+                             # no provider in this build can use it
 
 BKA_LOG_LEVEL=INFO
 BKA_LOG_FORMAT=console       # console locally, json in Docker
@@ -789,15 +904,24 @@ BKA_LOG_TO_FILE=true</pre>
 <div class="note">
   <strong>Two settings deliberately default to "ask the model".</strong>
   <code>BKA_CHUNK_MAX_TOKENS</code> is unset by default so the chunker uses the
-  embedding model's own window, and the vector dimension is never configured at all —
+  embedding model's own window, and the vector dimension is never configured at all -
   it is read off the loaded model. Hardcoding either would be correct today and
   silently wrong the moment the model changes, and both failures show up as
   <em>bad search results</em> rather than as an exception.
 </div>
 
 <p><code>.env.example</code> is committed and documented. <code>.env</code> is
-git-ignored and must never be committed. Secrets come from the environment only —
+git-ignored and must never be committed. Secrets come from the environment only -
 never hardcoded, never defaulted to a real value.</p>
+
+<div class="warn">
+  <strong>The API key is typed, not just documented.</strong>
+  <code>BKA_LLM_API_KEY</code> is a Pydantic <code>SecretStr</code>, so it renders as
+  <code>**********</code> in any <code>repr()</code> or <code>model_dump()</code>. The
+  rule "never log secrets" is enforced by the type rather than by remembering - and it
+  is asserted in the suite. It is unset by default and no provider in this build can
+  use it.
+</div>
 </section>
 
 <!-- ================================================================== -->
@@ -808,7 +932,7 @@ never hardcoded, never defaulted to a real value.</p>
 <h3>Two sinks, deliberately separate</h3>
 <table>
   <tr><th style="width:180px">Sink</th><th>Contents</th></tr>
-  <tr><td><code>logs/app.log</code></td><td>Application events — startup, shutdown, requests, errors. JSON lines, size-rotated.</td></tr>
+  <tr><td><code>logs/app.log</code></td><td>Application events - startup, shutdown, requests, errors. JSON lines, size-rotated.</td></tr>
   <tr><td><code>logs/traces.log</code></td><td><code>@traced</code> function traces via the <code>bka.trace</code> logger, which has <code>propagate = False</code> so traces never leak into the application stream.</td></tr>
 </table>
 
@@ -829,7 +953,7 @@ never hardcoded, never defaulted to a real value.</p>
 <h3>Planned for Stage 10</h3>
 <p>Request ID propagated through <code>structlog.contextvars</code>; question, retrieval
 latency, retrieved documents, LLM latency, tool calls, tool latency, errors, and overall
-response latency — all as queryable fields.</p>
+response latency - all as queryable fields.</p>
 
 <h3>Known constraint: tracing and FastAPI</h3>
 <p><code>@traced</code> must <strong>not</strong> decorate FastAPI route handlers.
@@ -837,7 +961,7 @@ FastAPI resolves a handler's postponed annotations against that function's
 <code>__globals__</code>; a wrapper defined in <code>app/core/tracing.py</code> resolves
 them against the tracing module instead, so dependency annotations silently degrade into
 query parameters and requests fail with <code>422</code>. This was caught by the test
-suite in Stage 1. Route handlers are traced by request middleware in Stage 10 — which is
+suite in Stage 1. Route handlers are traced by request middleware in Stage 10 - which is
 the architecturally correct layer for it anyway.</p>
 </section>
 
@@ -848,22 +972,34 @@ the architecturally correct layer for it anyway.</p>
 
 <table>
   <tr><th style="width:200px">File</th><th>Covers</th></tr>
-  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root.</td></tr>
+  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root, corpus and retriever, and for Stage 4 a mock provider, a wired <code>LLMService</code>, and both a populated and an empty <code>RetrievalResult</code> over the real corpus.</td></tr>
   <tr><td><code>tests/test_config.py</code></td><td>Defaults, environment overrides, rejection of invalid port and environment, caching, immutability.</td></tr>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
-  <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud — missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
+  <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud - missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
   <tr><td><code>tests/test_chunker.py</code></td><td>Heading splitting, H1 dropping, code fences not mistaken for headings, metadata carried onto every chunk, <code>content</code> vs <code>embedding_text</code>, oversized sections split, tables split row-wise with the header repeated and no row lost, and the invariant that <em>no chunk exceeds the budget</em>.</td></tr>
   <tr><td><code>tests/test_embeddings.py</code></td><td>The <code>Embedder</code> protocol contract: fixed width, unit length, float32, determinism across calls and processes, token counting in the same units as <code>max_tokens</code>, and that constructing the real embedder does <em>not</em> load the model.</td></tr>
   <tr><td><code>tests/test_vectorstore.py</code></td><td>Ranking order, cosine bounds, <code>k</code> handling, pre-filtering (including the explicit post-filter-would-fail case), duplicate and wrong-width rejection, save/load round trip, and the manifest guards refusing a foreign model, a wrong dimension, an old format and an inconsistent index.</td></tr>
   <tr><td><code>tests/test_retriever.py</code></td><td>End-to-end over the real corpus with the hashing embedder: every document indexed, unique chunk ids, ordering, top-k, filters, the score floor, source deduplication, persistence, and staleness detection. Fast and offline.</td></tr>
   <tr><td><code>tests/test_rag_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>Quality, with the real model.</strong> Each of the five brief questions retrieves its own document first; paraphrases with no shared vocabulary still find the right domain; every off-topic question returns nothing; the score distributions provably separate and the configured floor sits between them; and no indexed chunk is silently truncated.</td></tr>
+  <tr><td><code>tests/test_llm_prompts.py</code></td><td>The system instructions (grounding rules, citation requirement, the exact refusal sentence, no vendor and no proprietary reference in the text), the context budget (chunk and character limits, order preserved, never truncated, always at least one passage), rendering and citation metadata, and the <strong>injection defence</strong>: attribute escaping, and a passage containing the literal closing fence failing to escape it. Ends with the stage's central claim asserted against the real corpus - only the selected passages reach the prompt, and every other document is absent from it.</td></tr>
+  <tr><td><code>tests/test_llm_provider.py</code></td><td>Protocol conformance (including a structurally-typed implementation that inherits nothing), the full error taxonomy and its <code>retryable</code> flags, the mock's three modes, the factory refusing an unavailable provider without falling back, and configuration - including that a key set in the environment appears in <em>neither</em> a repr nor a dump. Ends with the safety property: an AST walk over every module in <code>app/llm/</code> asserting no vendor SDK, no HTTP client and no URL.</td></tr>
+  <tr><td><code>tests/test_llm_service.py</code></td><td>What actually reaches the provider (versioned system prompt, question present once, passages fenced, knowledge base absent, budgets honoured), the refusal path making <em>no</em> provider call at all, and error handling: timeout and rate limit propagate with their retry hints, an untyped vendor exception is wrapped with its cause preserved, and refused / truncated / empty generations raise rather than being shown.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 240 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 385 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
+
+<div class="note">
+  <strong>The Stage 4 suite cannot make a paid call, and that is structural.</strong>
+  It is not that the network is mocked out - it is that no code path exists which calls
+  anything. The only provider is in-process, and a test parses every import in
+  <code>app/llm/</code> to assert that no vendor SDK and no HTTP client is reachable
+  from the package. When the first real adapter lands, that test is what will force it
+  to be added deliberately rather than by accident.
+</div>
 
 <div class="note">
   <strong>Why two embedders, and why that is a testing decision as much as a design one.</strong>
@@ -883,14 +1019,14 @@ the architecturally correct layer for it anyway.</p>
 <code>%LOCALAPPDATA%\Temp\pytest-of-&lt;user&gt;</code>.</p>
 
 <div class="warn">
-  <strong>Why — a real failure, not a precaution.</strong> pytest hardens its default
+  <strong>Why - a real failure, not a precaution.</strong> pytest hardens its default
   temp root by stripping inherited ACLs, leaving only <code>SYSTEM</code>,
   <code>Administrators</code> and <code>OWNER RIGHTS</code>. When that directory gets
   created by an <em>elevated</em> process whose owner resolves to
   <code>BUILTIN\Administrators</code>, a normal non-elevated run of the <em>same
   user</em> has no ACE at all and every <code>tmp_path</code> test dies with
   <code>PermissionError: [WinError 5]</code>. It happened here: 96 errors in a normal
-  shell, while an elevated shell passed all 240 — because the elevated shell had access
+  shell, while an elevated shell passed all 240 - because the elevated shell had access
   through the <code>Administrators</code> ACE. And because pytest <em>reuses</em>
   <code>pytest-of-&lt;user&gt;</code> across runs, the broken state persisted.
   <br><br>
@@ -905,14 +1041,14 @@ the architecturally correct layer for it anyway.</p>
 
 <p><strong>Stage 11</strong> adds an evaluation framework over a small dataset of
 realistic banking questions with expected evidence, measuring retrieval accuracy, answer
-grounding, hallucination resistance and tool selection — because "the tests pass" and
+grounding, hallucination resistance and tool selection - because "the tests pass" and
 "the answers are correct" are different claims.</p>
 </section>
 
 <!-- ================================================================== -->
 <section id="docker">
 <h2>15. Docker</h2>
-<span class="tag t-todo">PLANNED — Stage 12</span>
+<span class="tag t-todo">PLANNED - Stage 12</span>
 
 <p>A Dockerfile and Compose setup so the whole system runs locally with one command, no
 cloud infrastructure required. Container config comes from environment variables
@@ -927,7 +1063,7 @@ knowledge data stays available inside the image or a mounted volume.</p>
 
 <h3>In place today</h3>
 <ul>
-  <li>Secrets from environment variables only — never hardcoded, never a real default.</li>
+  <li>Secrets from environment variables only - never hardcoded, never a real default.</li>
   <li><code>.env</code>, <code>*.pem</code>, <code>*.key</code>, <code>secrets/</code> and <code>logs/</code> are git-ignored.</li>
   <li>Traced function arguments are never logged.</li>
   <li>Pydantic validates every request and response at the boundary.</li>
@@ -936,11 +1072,11 @@ knowledge data stays available inside the image or a mounted volume.</p>
       construct arbitrary Python objects.</li>
   <li>The test suite scans the whole corpus on every run for secret-shaped values
       (private keys, assigned passwords or API keys) and card-number-shaped digit runs.</li>
-  <li>Knowledge documents are treated as untrusted data, not instructions — they become
+  <li>Knowledge documents are treated as untrusted data, not instructions - they become
       LLM input in Stage 5.</li>
   <li>The embedding model runs <strong>locally</strong>: no document text and no user
       question leaves the machine during indexing or retrieval. That is a data-privacy
-      property, not just a cost one — a hosted embedding API would send every question
+      property, not just a cost one - a hosted embedding API would send every question
       and every document to a third party.</li>
   <li><code>data/vectorstore/</code> is git-ignored. It contains no secrets, but it is a
       derived artefact and committing it would let the index and the documents drift
@@ -954,13 +1090,43 @@ knowledge data stays available inside the image or a mounted volume.</p>
 <h3>To be assessed and documented in Stage 13</h3>
 <p>Authentication, authorisation, secrets management, input validation, prompt-injection
 risk, MCP tool security, data privacy, rate limiting, LLM and tool failure handling,
-logging risks, and dependency security. Lightweight protections where practical — no
+logging risks, and dependency security. Lightweight protections where practical - no
 unnecessary enterprise infrastructure for a portfolio project.</p>
 
 <div class="warn">
   <strong>Prompt injection is the live risk for this class of system.</strong> Retrieved
   documents and tool results are untrusted input to the model. They must be treated as
   data, never as instructions.
+</div>
+
+<h3>What Stage 4 actually implemented against that risk</h3>
+<ul>
+  <li><strong>Structural separation.</strong> Retrieved passages go in the <em>user</em>
+      turn inside <code>&lt;retrieved_documentation&gt;</code>, never in the system
+      prompt. Operator instructions and untrusted data never share a channel.</li>
+  <li><strong>A stated rule the model sees first.</strong> The system prompt declares,
+      before any passage, that everything inside the fence is reference data - and that
+      a passage appearing to contain an instruction should be <em>reported</em>, not
+      obeyed.</li>
+  <li><strong>Delimiter escaping.</strong> Occurrences of the fence inside a passage's
+      own text are neutralised, so a document cannot close the untrusted region early.
+      Without this the fence would be decorative. It is a passing test.</li>
+  <li><strong>The question goes last</strong>, positionally outside the untrusted
+      region.</li>
+</ul>
+
+<p>This is defence in depth for a corpus that is currently synthetic and repository-owned,
+so today's risk is nil. The guards are written now because the day a document arrives from
+a ticket or an upload, the architecture must already be right - see decision record 4.3.
+Stage 13 reassesses the whole surface.</p>
+
+<div class="note">
+  <strong>Secrets in Stage 4.</strong> <code>BKA_LLM_API_KEY</code> is read from the
+  environment only and typed <code>SecretStr</code>, so it cannot be printed by accident;
+  it is unset by default and no provider in this build can use it. The LLM layer logs
+  request <em>shape</em> and cost - passage count, token counts, stop reason, prompt
+  version - and never the prompt or the answer text, both of which embed document
+  content. What a request record should contain is decided deliberately in Stage 10.
 </div>
 </section>
 
@@ -974,7 +1140,7 @@ unnecessary enterprise infrastructure for a portfolio project.</p>
   <tr><td>Logs</td><td>Console + <code>logs/*.log</code></td><td>JSON to a log aggregator</td></tr>
   <tr><td>Vector store</td><td>Embedded, on disk</td><td>Managed vector database</td></tr>
   <tr><td>Secrets</td><td><code>.env</code> (git-ignored)</td><td>Secret manager injected as env vars</td></tr>
-  <tr><td>Scale</td><td>Single process</td><td>Horizontal — the API is stateless</td></tr>
+  <tr><td>Scale</td><td>Single process</td><td>Horizontal - the API is stateless</td></tr>
 </table>
 
 <p>Stage 14 documents the production architecture in full and keeps the boundary between
@@ -993,10 +1159,12 @@ infrastructure is built that the portfolio project does not need.</p>
   <tr><td>A new knowledge source</td><td>A loader implementation. Chunking, embedding and retrieval are unchanged.</td></tr>
   <tr><td>A new banking domain</td><td>Documents + metadata. No code change.</td></tr>
   <tr><td>A new MCP tool</td><td>One tool module + registration. The agent discovers it.</td></tr>
-  <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>. Nothing else.</td></tr>
-  <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code> — <code>add</code>, <code>search</code>, <code>count</code>, <code>clear</code>. The retriever, agent and API are unchanged.</td></tr>
+  <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>, plus one branch in <code>app/llm/factory.py</code> and its entry in <code>AVAILABLE_PROVIDERS</code>. Nothing above <code>app/llm/</code> changes - the service, the CLI and every caller depend on the protocol and on the error types, never on a vendor. The adapter's only real work is translating its SDK's failures into the taxonomy in <code>base.py</code>.</td></tr>
+  <tr><td>Streaming or async generation</td><td>An additional method on the protocol and its implementations. Deliberately absent in Stage 4 - it would be an untested interface with no caller until Stage 9.</td></tr>
+  <tr><td>Conversation history</td><td><code>CompletionRequest.messages</code> is already a tuple of turns, so Stage 8 appends rather than reshapes. That cost was paid up front precisely to avoid changing every call site later.</td></tr>
+  <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code> - <code>add</code>, <code>search</code>, <code>count</code>, <code>clear</code>. The retriever, agent and API are unchanged.</td></tr>
   <tr><td>A different embedding model</td><td>Change <code>BKA_EMBEDDING_MODEL</code> and rebuild. A different <em>kind</em> of embedder (hosted API, ONNX runtime) is one class implementing <code>Embedder</code>. The manifest check forces the re-index rather than letting the two drift.</td></tr>
-  <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement — a BM25 scorer combined with the existing cosine scores behind the same <code>VectorStore.search</code> signature. See §20.3.1.</td></tr>
+  <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement - a BM25 scorer combined with the existing cosine scores behind the same <code>VectorStore.search</code> signature. See §20.3.1.</td></tr>
   <tr><td>A reranker</td><td>A cross-encoder pass between <code>search</code> and the score floor in <code>Retriever.retrieve</code>. The floor and the result contract stay as they are.</td></tr>
 </table>
 </section>
@@ -1010,7 +1178,7 @@ infrastructure is built that the portfolio project does not need.</p>
   <tr><td><strong>App factory</strong> (<code>create_app()</code>) rather than only a module-level app</td>
       <td>Tests can build an application with overridden settings. A bare singleton would force tests to mutate global state.</td></tr>
   <tr><td><strong>Settings from <code>app.state</code></strong>, not the cached global</td>
-      <td>The factory stays the single source of truth. The first version used <code>Depends(get_settings)</code> and the health test caught it immediately — the endpoint reported <code>local</code> while the app was configured as <code>test</code>.</td></tr>
+      <td>The factory stays the single source of truth. The first version used <code>Depends(get_settings)</code> and the health test caught it immediately - the endpoint reported <code>local</code> while the app was configured as <code>test</code>.</td></tr>
   <tr><td><strong>structlog from Stage 1</strong>, not Stage 10</td>
       <td>Retrofitting structured logging over string logs means rewriting every call site. The cost now is near zero.</td></tr>
   <tr><td><strong>Separate trace sink</strong> with <code>propagate = False</code></td>
@@ -1027,10 +1195,22 @@ infrastructure is built that the portfolio project does not need.</p>
       <td>With many interfaces (LLM, vector store, tools), static checking catches contract drift between layers before runtime does.</td></tr>
   <tr><td><strong><code>uv</code> for the virtual environment</strong></td>
       <td>Practical, not architectural: the stdlib <code>venv</code> module is missing from the system Python on this machine, and a <code>virtualenv</code>-created environment segfaulted on importing <code>structlog</code> and <code>httpx</code>. A <code>uv</code>-created environment works.</td></tr>
+  <tr><td><strong>No concrete LLM provider in Stage 4</strong></td>
+      <td>An abstraction is proved by what it is independent of, and everything the stage must demonstrate is exercisable without a vendor. It also makes the safety property structural: the suite cannot make a paid call because no code path makes any call. See §20.4.1.</td></tr>
+  <tr><td><strong>An unavailable provider raises; it never falls back to the mock</strong></td>
+      <td>The alternative failure - an application that starts, answers, and looks healthy while running a stub - is one nobody notices. See §20.4.2.</td></tr>
+  <tr><td><strong>No evidence means no model call</strong></td>
+      <td>A generation with zero context can only refuse or invent. Removing the request removes the only path to an ungrounded answer, and is free and deterministic besides. See §20.4.4.</td></tr>
+  <tr><td><strong>Truncated and refused generations raise</strong></td>
+      <td>A cut-off answer about a transaction limit reads as complete. An error is loud and recoverable; a plausible half-sentence is neither. See §20.4.5.</td></tr>
+  <tr><td><strong>Retrieved passages are fenced, escaped and declared untrusted</strong></td>
+      <td>Without the escaping step the fence is theatre - a document containing the closing tag would break out of it. Written now, while the corpus is synthetic and the risk is nil. See §20.4.3.</td></tr>
+  <tr><td><strong>The API key is a <code>SecretStr</code></strong></td>
+      <td>"Never log secrets" enforced by the type rather than by remembering, and asserted in the suite. See §20.4.8.</td></tr>
 </table>
 
-<p class="muted">The full reasoning behind each Stage 3 decision — including the
-alternatives that were rejected and why — is in §20.</p>
+<p class="muted">The full reasoning behind each Stage 3 and Stage 4 decision - including
+the alternatives that were rejected and why - is in §20.</p>
 </section>
 
 <!-- ================================================================== -->
@@ -1041,11 +1221,11 @@ alternatives that were rejected and why — is in §20.</p>
   <strong>What this section is for.</strong> §19 is the one-line summary. This is the
   long form: for each significant decision, <em>what</em> was chosen, <em>why</em>,
   what was <em>rejected</em> and why, and what the choice <em>costs</em>. Where a number
-  appears it was measured on this corpus with this model, not taken from a blog post —
+  appears it was measured on this corpus with this model, not taken from a blog post -
   the measurement commands are given so any of it can be re-derived.
 </div>
 
-<h3 style="margin-top:32px">Stage 3 — RAG pipeline</h3>
+<h3 style="margin-top:32px">Stage 3 - RAG pipeline</h3>
 
 <!-- ---------------------------------------------------------------- -->
 <div class="card">
@@ -1068,7 +1248,7 @@ model bridges that. It is now a passing test, not a claim.</p>
     <td>Best quality and trivial to run, but: it is a <em>paid</em> per-query call, it
         needs a key in every environment including CI, it sends every document and every
         question to a third party, and it makes the test suite depend on the network.
-        The project rule is no paid external API without explicit sign-off — and here
+        The project rule is no paid external API without explicit sign-off - and here
         the free local option was good enough that the spend was not justified.</td>
   </tr>
   <tr>
@@ -1080,7 +1260,7 @@ model bridges that. It is now a passing test, not a claim.</p>
         <em>no</em> dependencies and kept the image tiny. Rejected because it cannot do
         the paraphrase case above, which is the realistic support query. Worth noting
         as the one rejected option that would likely <em>improve</em> results if added
-        <em>alongside</em> the embedder — hybrid search is the natural next step.</td>
+        <em>alongside</em> the embedder - hybrid search is the natural next step.</td>
   </tr>
   <tr>
     <td><strong>A larger local model</strong><br><span class="muted">e.g. all-mpnet-base-v2, bge-large</span></td>
@@ -1091,7 +1271,7 @@ model bridges that. It is now a passing test, not a claim.</p>
 </table>
 
 <p><strong>What it costs.</strong> ~250 MB of PyTorch in the dependency tree and a
-~90 MB model download on first run — by far the largest thing in this project. That is
+~90 MB model download on first run - by far the largest thing in this project. That is
 a real Docker-image and cold-start cost to account for in Stage 12, and it is the price
 paid for the paraphrase capability above.</p>
 </div>
@@ -1104,7 +1284,7 @@ paid for the paraphrase capability above.</p>
 A section becomes one chunk unless it is too big for the model.</p>
 
 <p><strong>Why.</strong> A heading is a human's explicit statement of where one topic
-ends and the next begins — strictly better information than any character count.
+ends and the next begins - strictly better information than any character count.
 And it was checked rather than assumed: measuring all 15 documents gives
 <strong>108 sections, 32–411 tokens, median 99</strong>. They are already
 chunk-sized.</p>
@@ -1114,13 +1294,13 @@ chunk-sized.</p>
   <tr>
     <td><strong>Fixed-size sliding window</strong><br><span class="muted">the default recipe: ~512 chars, 50 overlap</span></td>
     <td>It would cut through the middle of numbered troubleshooting procedures and
-        Markdown tables — and this corpus is <em>mostly</em> procedures and tables.
+        Markdown tables - and this corpus is <em>mostly</em> procedures and tables.
         "Step 4 of 6" severed from steps 1–3 is not a useful retrieval result.
         The generic recipe ignores structure that is right there in the document.</td>
   </tr>
   <tr>
     <td><strong>One chunk per document</strong></td>
-    <td>Documents run 457–670 words, which is 700–1,100 tokens — 3–4× the model's
+    <td>Documents run 457–670 words, which is 700–1,100 tokens - 3–4× the model's
         window. Every document would be truncated to its first quarter. Also the wrong
         retrieval granularity: the answer to "why does it fail after authentication" is
         one section, and returning the whole document buries it.</td>
@@ -1146,7 +1326,7 @@ chunk-sized.</p>
 (<code>max_tokens</code>) and the length of any text (<code>count_tokens</code>). No
 word counts, no character counts, no hardcoded 256.</p>
 
-<p><strong>Why — and this started as a mistake.</strong> The first plan was a word
+<p><strong>Why - and this started as a mistake.</strong> The first plan was a word
 budget, converted with the usual "~0.75 words per token" rule of thumb. Measuring the
 actual ratio on this corpus killed it:</p>
 
@@ -1157,7 +1337,7 @@ worst offender:  146 words  →  411 tokens</pre>
 
 <p>The cause is the domain. Identifiers like <code>SWX-7001</code> and
 <code>switch.downstream_timeout_ms</code> shatter into many word-pieces, so the
-<em>densest</em> sections are the ones a word budget underestimates most — and those
+<em>densest</em> sections are the ones a word budget underestimates most - and those
 are exactly the config-key and error-code tables engineers search for.</p>
 
 <div class="warn">
@@ -1169,14 +1349,14 @@ are exactly the config-key and error-code tables engineers search for.</p>
   system would have looked like it was working.
 </div>
 
-<p>So the invariant — <em>no chunk exceeds the model's window</em> — is asserted as a
+<p>So the invariant - <em>no chunk exceeds the model's window</em> - is asserted as a
 test against the real model, not just trusted. Current worst case: <strong>251 of
 256</strong>.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Word or character budget</strong></td><td>Measured above: off by up to 2.8× on the exact content that matters most.</td></tr>
-  <tr><td><strong>Hardcoding 256</strong></td><td>Correct today, silently wrong the moment the model changes — and failing as bad results rather than an error. The number is read off the loaded model instead.</td></tr>
+  <tr><td><strong>Hardcoding 256</strong></td><td>Correct today, silently wrong the moment the model changes - and failing as bad results rather than an error. The number is read off the loaded model instead.</td></tr>
   <tr><td><strong>Using <code>tiktoken</code></strong></td><td>It tokenises for OpenAI models. MiniLM is a BERT word-piece model with a different vocabulary, so the counts would be confidently wrong. The right tokenizer is the one attached to the model doing the embedding.</td></tr>
 </table>
 </div>
@@ -1188,7 +1368,7 @@ test against the real model, not just trusted. Current worst case: <strong>251 o
 <p><strong>Chosen.</strong> When a section over the budget is a Markdown table, split it
 between rows and re-carry the header and separator rows into every part.</p>
 
-<p><strong>Why.</strong> Of the six sections that exceed the window, most are tables —
+<p><strong>Why.</strong> Of the six sections that exceed the window, most are tables -
 <em>Timeout and retry keys</em> (366 tokens), <em>POST /v1/payments/authorise</em>
 (411), <em>The keys</em> (260). These are the highest-value retrieval targets in the
 whole corpus. And a table fragment without its header is unreadable:</p>
@@ -1204,7 +1384,7 @@ whole corpus. And a table fragment without its header is unreadable:</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
-  <tr><td><strong>Treat tables as plain text</strong></td><td>Loses the column names on every part but the first — see above.</td></tr>
+  <tr><td><strong>Treat tables as plain text</strong></td><td>Loses the column names on every part but the first - see above.</td></tr>
   <tr><td><strong>Skip tables entirely</strong></td><td>They are the best content in the corpus, not an inconvenience.</td></tr>
   <tr><td><strong>Convert tables to prose before embedding</strong></td><td>Would embed better, but needs an LLM pass over the corpus at index time: paid, non-deterministic, and it puts generated text into the citation path. Not worth it for six sections.</td></tr>
 </table>
@@ -1215,7 +1395,7 @@ whole corpus. And a table fragment without its header is unreadable:</p>
 <h3 style="margin-top:0">3.5 &nbsp; Contextual prefix: <code>embedding_text</code> ≠ <code>content</code></h3>
 
 <p><strong>Chosen.</strong> What gets embedded is
-<code>"{document title} — {section heading}\n\n{content}"</code>. What gets stored,
+<code>"{document title} - {section heading}\n\n{content}"</code>. What gets stored,
 shown and cited is <code>content</code> alone.</p>
 
 <p><strong>Why.</strong> Chunking orphans text. This is a real chunk from the corpus:</p>
@@ -1225,7 +1405,7 @@ shown and cited is <code>content</code> alone.</p>
 
 <p>It never says ATM, never says TransactionSwitch, never says withdrawal. Embedded as
 it stands, a question phrased in those terms will not find it. Prefixing
-<em>"ATM Transaction Lifecycle — Reversals"</em> puts the entity names back into the
+<em>"ATM Transaction Lifecycle - Reversals"</em> puts the entity names back into the
 vector. Keeping the prefix out of <code>content</code> keeps the human-facing text and
 the LLM's context clean, and stops the prefix being cited as though it were part of the
 document body. The cost is honest and accounted for: the prefix spends part of the
@@ -1235,7 +1415,7 @@ token budget, so the chunker reserves it <em>before</em> splitting rather than a
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Embed the raw content</strong></td><td>The orphaning problem above.</td></tr>
   <tr><td><strong>Prepend to <code>content</code> itself</strong></td><td>Simpler by one property, but it pollutes what a human reads and what the LLM is given, and it makes the citation text include a header the source document does not contain.</td></tr>
-  <tr><td><strong>Full contextual retrieval</strong><br><span class="muted">an LLM writes a bespoke summary per chunk</span></td><td>The published technique, and better. It is also ~115 LLM calls per index rebuild — paid, slow, and non-deterministic, so two builds of the same corpus would differ. The title-and-heading prefix captures most of the benefit for zero cost. Revisit if retrieval quality ever becomes the bottleneck.</td></tr>
+  <tr><td><strong>Full contextual retrieval</strong><br><span class="muted">an LLM writes a bespoke summary per chunk</span></td><td>The published technique, and better. It is also ~115 LLM calls per index rebuild - paid, slow, and non-deterministic, so two builds of the same corpus would differ. The title-and-heading prefix captures most of the benefit for zero cost. Revisit if retrieval quality ever becomes the bottleneck.</td></tr>
 </table>
 </div>
 
@@ -1247,7 +1427,7 @@ token budget, so the chunker reserves it <em>before</em> splitting rather than a
 <code>(115, 384)</code> float32 matrix, behind a <code>VectorStore</code> protocol.</p>
 
 <p><strong>Why.</strong> Scoring the entire corpus is a single BLAS matrix-vector
-product over ~176 KB — tens of microseconds, orders of magnitude below the cost of
+product over ~176 KB - tens of microseconds, orders of magnitude below the cost of
 embedding the query, let alone an LLM call. An ANN index exists to buy sub-linear
 scaling by <em>sacrificing recall</em>; there is no scaling problem here to spend recall
 on. Choosing the simple thing is the decision, and the protocol is what makes it
@@ -1255,7 +1435,7 @@ reversible.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
-  <tr><td><strong>Chroma</strong></td><td>The obvious "just use a vector DB" pick, and it would work. But it brings its own embedding-function abstraction and its own persistence model, which means two competing opinions about how embedding works in one codebase — and hiding the seam this stage is meant to demonstrate.</td></tr>
+  <tr><td><strong>Chroma</strong></td><td>The obvious "just use a vector DB" pick, and it would work. But it brings its own embedding-function abstraction and its own persistence model, which means two competing opinions about how embedding works in one codebase - and hiding the seam this stage is meant to demonstrate.</td></tr>
   <tr><td><strong>FAISS</strong></td><td>Excellent at scale. At 115 vectors an HNSW graph is slower to build than the exhaustive search it replaces, and it is <em>approximate</em>: it would trade recall for a speed-up that is already invisible.</td></tr>
   <tr><td><strong>pgvector / Qdrant / Weaviate</strong></td><td>A container, a network hop and an operational dependency for a project whose requirement is to run locally and offline. Right answer in production, wrong answer here.</td></tr>
 </table>
@@ -1273,7 +1453,7 @@ replicas need shared writes. Then it is one class implementing
 <p><strong>Chosen.</strong> Vectors are L2-normalised at encode time, so cosine
 similarity is exactly <code>matrix @ query</code>.</p>
 
-<p><strong>Why.</strong> Not merely convenient — <em>correct</em>.
+<p><strong>Why.</strong> Not merely convenient - <em>correct</em>.
 <code>all-MiniLM-L6-v2</code> is trained with a cosine objective, so cosine is the
 metric the vector space was actually built for. Normalising once at encode time also
 means nothing downstream has to remember to do it, which is one fewer silent-wrongness
@@ -1281,7 +1461,7 @@ opportunity.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
-  <tr><td><strong>Euclidean distance</strong></td><td>On unit vectors it is monotonically equivalent to cosine, so it ranks identically — but with an extra subtraction and square root, and a score that no longer reads as "similarity in [-1, 1]". No benefit.</td></tr>
+  <tr><td><strong>Euclidean distance</strong></td><td>On unit vectors it is monotonically equivalent to cosine, so it ranks identically - but with an extra subtraction and square root, and a score that no longer reads as "similarity in [-1, 1]". No benefit.</td></tr>
   <tr><td><strong>Dot product on unnormalised vectors</strong></td><td>Vector <em>length</em> then becomes a relevance signal, which it is not: longer chunks would systematically outrank shorter ones regardless of content.</td></tr>
 </table>
 </div>
@@ -1295,7 +1475,7 @@ within them.</p>
 
 <p><strong>Why.</strong> Post-filtering is the classic retrieval bug. Ask for the top 5
 chunks and <em>then</em> keep only the <code>payments</code> ones, and you can easily be
-left with zero — not because the corpus lacks payments material, but because five ATM
+left with zero - not because the corpus lacks payments material, but because five ATM
 chunks happened to outrank it. Pre-filtering always returns the best <em>k</em> of the
 permitted set. There is a test named after exactly this case.</p>
 
@@ -1303,7 +1483,7 @@ permitted set. There is a test named after exactly this case.</p>
 reason: <code>{"damain": "atm"}</code> would silently return an empty result that looks
 identical to "the knowledge base has no answer".</p>
 
-<p><strong>Cost.</strong> The filter is an O(n) Python scan over chunk metadata —
+<p><strong>Cost.</strong> The filter is an O(n) Python scan over chunk metadata -
 negligible at 115 chunks, and the wrong shape at 10<sup>6</sup>. A real vector store
 pushes this into the index as a payload filter; that is a property of the replacement,
 not of the interface.</p>
@@ -1311,19 +1491,19 @@ not of the interface.</p>
 
 <!-- ---------------------------------------------------------------- -->
 <div class="card">
-<h3 style="margin-top:0">3.9 &nbsp; A minimum-score floor of 0.25 — calibrated, not guessed</h3>
+<h3 style="margin-top:0">3.9 &nbsp; A minimum-score floor of 0.25 - calibrated, not guessed</h3>
 
 <p><strong>Chosen.</strong> A passage must score ≥ 0.25 cosine to be returned. Below
 that, retrieval returns <em>nothing</em>.</p>
 
 <p><strong>Why.</strong> Vector search always returns its <em>k</em> nearest rows. Ask
 <em>"what is the weather tomorrow?"</em> and it will hand back the five least-bad
-banking chunks with no complaint — and an LLM given five confident-looking banking
+banking chunks with no complaint - and an LLM given five confident-looking banking
 passages will write a confident banking answer. The floor is the single mechanism that
 converts "nothing here is relevant" into an empty result Stage 5 can honestly refuse
 on.</p>
 
-<p><strong>How the number was derived.</strong> Not from a blog post — cosine scores are
+<p><strong>How the number was derived.</strong> Not from a blog post - cosine scores are
 a <em>ranking</em> signal, not a calibrated probability, and the useful range differs
 per model and per corpus. It was measured
 (<code>python -m app.rag calibrate</code>):</p>
@@ -1339,13 +1519,13 @@ per model and per corpus. It was measured
 
 <p>The two distributions are cleanly separated, and 0.25 sits in the gap with margin on
 both sides. A test asserts the separation still holds and that the configured floor
-still sits between the two — so if a future document or a model swap collapses the gap,
+still sits between the two - so if a future document or a model swap collapses the gap,
 the suite says so.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>No floor at all</strong></td><td>Every question gets evidence, including questions the corpus cannot answer. This is the direct route to a confidently wrong answer, which in a banking support context is worse than no answer.</td></tr>
-  <tr><td><strong>A number from a tutorial</strong> (0.7 is the usual one)</td><td>Would reject <em>every</em> genuine result here — the worst on-topic question scores 0.388. Scores are not comparable across models or corpora.</td></tr>
+  <tr><td><strong>A number from a tutorial</strong> (0.7 is the usual one)</td><td>Would reject <em>every</em> genuine result here - the worst on-topic question scores 0.388. Scores are not comparable across models or corpora.</td></tr>
   <tr><td><strong>Return top-k and let the LLM judge</strong></td><td>Defers a cheap deterministic check to an expensive non-deterministic one, and the failure mode is the model rationalising the irrelevant context it was handed. Worth adding <em>as well</em> in Stage 5; not instead.</td></tr>
 </table>
 
@@ -1364,7 +1544,7 @@ gets tested properly.</p>
 
 <p><strong>Why.</strong> Embedding the corpus takes seconds and needs hundreds of
 megabytes of model resident. Doing it per process would make startup slow, make every
-container replica repeat identical work, and — worst — make a document edit invisible
+container replica repeat identical work, and - worst - make a document edit invisible
 until someone restarts something. Building once and loading is also what lets replicas
 share one index in Stage 12.</p>
 
@@ -1372,7 +1552,7 @@ share one index in Stage 12.</p>
 and committing it would both put a binary blob in every diff and allow the index and the
 documents to drift apart in version control with nothing to notice.</p>
 
-<p><code>get_retriever()</code> is the convenience path — it loads, and rebuilds only on
+<p><code>get_retriever()</code> is the convenience path - it loads, and rebuilds only on
 the three recoverable conditions (no index, wrong model, stale). Anything else still
 fails loudly rather than being papered over by a silent rebuild.</p>
 </div>
@@ -1394,7 +1574,7 @@ output</em>, which is the only reason they justify their code:</p>
       well-formed, plausible, wrong results. Nothing about the answer looks off.</li>
   <li><strong>Stale index.</strong> If a document changed after indexing, answers stay
       fluent and every citation still resolves to a real file. The only symptom is the
-      agent quoting a procedure that was edited last week — which nobody notices.</li>
+      agent quoting a procedure that was edited last week - which nobody notices.</li>
 </ul>
 
 <p>The fingerprint covers metadata as well as body text, so bumping a component version
@@ -1408,7 +1588,7 @@ procedures.</p>
 <h3 style="margin-top:0">3.12 &nbsp; Two embedders behind one protocol</h3>
 
 <p><strong>Chosen.</strong> <code>SentenceTransformerEmbedder</code> for real use;
-<code>HashingEmbedder</code> — deterministic, dependency-light, non-semantic — for the
+<code>HashingEmbedder</code> - deterministic, dependency-light, non-semantic - for the
 fast test suite.</p>
 
 <p><strong>Why.</strong> Two reasons, and the second is the interesting one.
@@ -1420,21 +1600,274 @@ something.</p>
 
 <p>Query and document embedding are separate methods even though MiniLM treats them
 identically, because asymmetric models (E5, BGE, most hosted retrieval models) require
-different <code>query:</code> / <code>passage:</code> prefixes — and retrofitting that
+different <code>query:</code> / <code>passage:</code> prefixes - and retrofitting that
 distinction later would mean re-indexing everything.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
-  <tr><td><strong>Mock the embedder</strong></td><td>A mock proves the calls happen. It proves nothing about the numerics — normalisation, dimensions, ranking — which is where retrieval actually goes wrong.</td></tr>
+  <tr><td><strong>Mock the embedder</strong></td><td>A mock proves the calls happen. It proves nothing about the numerics - normalisation, dimensions, ranking - which is where retrieval actually goes wrong.</td></tr>
   <tr><td><strong>Use the real model everywhere</strong></td><td>A slow suite that needs a warm Hugging Face cache to run at all. Quality tests need it; ranking, filtering and persistence tests do not.</td></tr>
   <tr><td><strong>Python's built-in <code>hash()</code></strong> for the hashing embedder</td><td>Genuine trap: <code>PYTHONHASHSEED</code> randomises string hashing per process, so an index written by one run would be unreadable by the next. Uses <code>blake2b</code> instead.</td></tr>
+</table>
+</div>
+
+<h3 style="margin-top:32px">Stage 4 - LLM abstraction</h3>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.1 &nbsp; No concrete provider ships in Stage 4</h3>
+
+<p><strong>Chosen.</strong> Build the seam, the prompt layer, the context-injection
+layer and the error taxonomy - and ship exactly one implementation behind them:
+<code>MockLLMProvider</code>, which is deterministic and in-process. Which real vendor
+the first adapter targets, and whether a live key is ever wired in, is a decision
+deferred to Stage 5.</p>
+
+<p><strong>Why.</strong> Stage 4's requirement is an <em>abstraction</em>, and an
+abstraction is proved by what it is independent of. Everything the stage must
+demonstrate - prompt management, context injection, response handling, error handling,
+environment configuration - is fully exercised without a vendor. Deferring the adapter
+also makes the safety property structural rather than procedural: the suite cannot make
+a paid call because <em>no code path exists that makes any call at all</em>. That is a
+stronger guarantee than a mocked-out network, and it is checked by a test that parses
+every import in <code>app/llm/</code>.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr>
+    <td><strong>Ship a real adapter now, tested against a fake client</strong></td>
+    <td>The route originally taken in this session, then reversed. It is defensible -
+        the adapter's request-building and response-parsing is real logic worth testing -
+        but it buys a vendor dependency, a pinned SDK and a vendor-shaped
+        <code>except</code> chain for a stage whose deliverable is vendor independence.
+        The SDK was installed and then uninstalled; no adapter code was written.</td>
+  </tr>
+  <tr>
+    <td><strong>Two adapters, to "prove" the seam</strong></td>
+    <td>The Stage 3 argument for two embedders does not transfer. There, the second
+        implementation was <em>free</em> (a hashing function) and proved numerics.
+        Here, a second implementation means a second paid vendor account.</td>
+  </tr>
+  <tr>
+    <td><strong>Skip the mock; test the prompt layer as pure functions</strong></td>
+    <td>Would leave <code>LLMProvider</code> as an interface with zero implementations -
+        untested, and unverified as actually satisfiable. The mock is what makes the
+        protocol a claim with evidence behind it.</td>
+  </tr>
+</table>
+
+<p><strong>What it costs.</strong> No end-to-end evidence yet that a real model answers
+these prompts well. Prompt <em>quality</em> is therefore unproven until Stage 5, and
+Stage 11's evaluation set is where it is measured rather than asserted.</p>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.2 &nbsp; An unavailable provider fails loudly; it never falls back</h3>
+
+<p><strong>Chosen.</strong> <code>BKA_LLM_PROVIDER</code> defaults to <code>mock</code>.
+Any other value raises <code>LLMConfigurationError</code> from
+<code>app/llm/factory.py</code>, naming what is available and when a real adapter
+arrives.</p>
+
+<p><strong>Why.</strong> The tempting behaviour - "no adapter available, so use the mock"
+- produces the worst possible failure: an application that starts cleanly, serves
+requests, returns confident-looking answers, and is running a stub. Nothing in the
+logs, the health check or the response shape would say so. A refused start is
+recoverable in seconds; a silent substitution can survive a demo.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Fall back to the mock with a warning</strong></td><td>Warnings are not read. The failure mode this guards against is precisely one nobody notices.</td></tr>
+  <tr><td><strong>Fail at import or at startup</strong></td><td>Would make the whole application - health endpoint, retrieval CLI, every non-LLM path - unusable because of a setting only one component reads. Configuration errors are raised at the point of use.</td></tr>
+  <tr><td><strong>A <code>Literal</code> type on the setting</strong></td><td>Pydantic would reject an unknown value with a validation error naming the field, which is good, but the message could not explain <em>why</em> a plausible value like <code>anthropic</code> is unavailable or when it will be.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.3 &nbsp; Retrieved context is fenced, escaped, and declared untrusted</h3>
+
+<p><strong>Chosen.</strong> Passages are wrapped in
+<code>&lt;retrieved_documentation&gt;</code>, each in a numbered
+<code>&lt;passage&gt;</code> tag carrying its citation metadata. The system prompt states
+- before the model sees any of it - that everything inside the fence is reference data
+and never an instruction. Any occurrence of the delimiters <em>inside</em> a passage's own
+text is neutralised to <code>&amp;lt;</code>.</p>
+
+<p><strong>Why.</strong> The corpus here is synthetic and lives in this repository, so
+today the risk is zero. That is exactly why the guard is written now: the moment a
+document arrives from a ticket, a wiki or a customer upload, any imperative sentence
+inside it becomes something the model may follow. And without the escaping step the
+fence is theatre - a document containing the literal closing tag would end the untrusted
+region early, and everything after it would read to the model as operator text. That is
+the classic delimiter-escape injection, and it is a passing test rather than a
+paragraph of intent.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Plain text separators</strong> <span class="muted">("--- Document 1 ---")</span></td><td>No unambiguous boundary. Any document containing a similar line dissolves the structure, and there is nothing to escape against.</td></tr>
+  <tr><td><strong>Put the passages in the system prompt</strong></td><td>Erases the distinction the whole defence rests on: operator instructions and untrusted data would carry identical authority. It also makes every request a unique prefix, forfeiting cache reuse and comparability.</td></tr>
+  <tr><td><strong>Strip suspicious phrases from documents</strong></td><td>Blocklists on natural language do not work, and a corpus about <em>configuring</em> systems is full of legitimate imperatives ("set <code>switch.limits.daily</code> to..."). Structure and stated provenance are more robust than filtering.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.4 &nbsp; No evidence means no model call</h3>
+
+<p><strong>Chosen.</strong> When retrieval returns nothing above the score floor,
+<code>LLMService.answer()</code> returns the fixed sentence
+<em>"The knowledge base does not contain enough information to answer this question."</em>
+and does not call the provider at all. The returned
+<code>GroundedAnswer</code> records <code>refused=True</code> and
+<code>llm_called=False</code>.</p>
+
+<p><strong>Why.</strong> A generation request carrying zero evidence has exactly two
+possible outcomes: the model refuses, or it answers from its own training. The second is
+the failure mode this entire architecture exists to prevent, and on a banking platform it
+means a confidently invented configuration key. Not sending the request removes the only
+path to it - and is also faster, free, and deterministic. The sentence is a fixed
+constant, not a paraphrase, because the API, the web interface and the evaluation harness
+all need to detect "no answer" reliably rather than by matching improvised prose.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Send the question with empty context</strong></td><td>Pays a provider to produce a refusal that is already known, and leaves a live path to an ungrounded answer open. Relies on prompt compliance for a guarantee that code can make absolute.</td></tr>
+  <tr><td><strong>Lower the score floor when nothing matches</strong></td><td>Turns "no relevant evidence" into "here are the five least-irrelevant passages" - which is how a hallucinated answer acquires plausible-looking citations.</td></tr>
+  <tr><td><strong>Leave the decision to Stage 5's agent</strong></td><td>The agent will make richer decisions on top of this, but the guard belongs at the layer that owns the model call. A default that is safe only when a later layer remembers to be careful is not a safe default.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.5 &nbsp; A truncated or refused generation raises; it is never shown</h3>
+
+<p><strong>Chosen.</strong> <code>stop_reason == "max_tokens"</code> raises
+<code>LLMResponseError</code>; <code>"refusal"</code> raises
+<code>LLMRefusalError</code>; an empty body raises. None of them is returned as an
+answer.</p>
+
+<p><strong>Why.</strong> A truncated answer is more dangerous than an error, because it
+reads as complete. <em>"The daily withdrawal limit is configured in
+<code>switch.limits.</code>"</em> ends mid-identifier and looks finished. An error is
+loud and recoverable; a plausible half-sentence about a transaction limit is neither.
+This is the project's fail-loud rule applied at the one place where the failure is
+disguised as success.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Return the partial text with a flag</strong></td><td>Flags get dropped by the next layer. The dangerous artefact would still exist and would still be renderable.</td></tr>
+  <tr><td><strong>Automatically retry with a larger ceiling</strong></td><td>Doubles spend on a request already known to be expensive, and can loop. A retry policy belongs to the caller, which is why <code>LLMError.retryable</code> is exposed instead.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.6 &nbsp; The error taxonomy lives at the seam, not in the adapters</h3>
+
+<p><strong>Chosen.</strong> Six exception types in <code>app/llm/base.py</code>, all
+under <code>LLMError</code>, with a <code>retryable</code> flag. Each adapter translates
+its vendor's failures into these <em>once</em>, at the boundary. An unmapped vendor
+exception is wrapped in <code>LLMProviderError</code> by the service, preserving the
+cause.</p>
+
+<p><strong>Why.</strong> Callers need one distinction from a failure - <em>retry, or
+broken?</em> - and every SDK answers it with its own hierarchy. If those leaked upward,
+each call site would grow a vendor-specific <code>except</code> chain and swapping
+providers would mean rewriting error handling everywhere. Branching on
+<code>retryable</code> rather than on a concrete type also means a new error class cannot
+silently become non-retryable at every existing call site.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Let vendor exceptions propagate</strong></td><td>Puts a vendor's name in the API layer's error handling and in every test that asserts on failure. Precisely the coupling this stage exists to prevent.</td></tr>
+  <tr><td><strong>One generic <code>LLMError</code></strong></td><td>Loses the retryable/permanent distinction, which is the only thing most callers actually need.</td></tr>
+  <tr><td><strong>Return an error result object instead of raising</strong></td><td>Makes ignoring a failure the path of least resistance, and would let a caller render an "answer" that is really an error. The project rule is to surface errors, never swallow them.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.7 &nbsp; The context budget, and why passages are dropped whole</h3>
+
+<p><strong>Chosen.</strong> Two limits - <code>BKA_LLM_CONTEXT_MAX_CHUNKS</code> (5) and
+<code>BKA_LLM_CONTEXT_MAX_CHARS</code> (12,000). Passages are taken best-first and
+dropped <em>whole</em> once a limit is reached. A single oversized passage is always
+kept, so a budget can never turn a valid answer into a refusal.</p>
+
+<p><strong>Why.</strong> This is where "the LLM receives retrieved context, never the
+knowledge base" stops being a sentence and becomes an enforced number. Fifteen documents
+would fit in a modern context window, which is exactly why the discipline is established
+now: the version that pastes in the corpus works at fifteen documents, degrades quietly
+at five hundred, and is architecturally unfixable at five thousand. Passages are dropped
+rather than truncated because half a configuration table or a code fence missing its
+closing line is worse than the passage's absence - it reads as complete and is wrong.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Send the whole knowledge base</strong></td><td>Would work today at ~55 KB. It is the decision that cannot be walked back later, and it makes retrieval - the previous stage's entire deliverable - pointless.</td></tr>
+  <tr><td><strong>Truncate the last passage to fit exactly</strong></td><td>Optimises for filling the budget at the cost of the guarantee that every passage the model cites is complete.</td></tr>
+  <tr><td><strong>Budget in tokens rather than characters</strong></td><td>Right in principle, and what Stage 3's chunker does. Here it would mean owning a tokenizer for a provider not yet chosen - and every provider tokenizes differently. Characters are a deliberate over-approximation until there is a real model to measure against.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.8 &nbsp; The API key exists in configuration before the provider does</h3>
+
+<p><strong>Chosen.</strong> <code>BKA_LLM_API_KEY</code>, read from the environment only,
+unset by default, typed as a Pydantic <code>SecretStr</code> so it renders as
+<code>**********</code> in any <code>repr()</code> or <code>model_dump()</code>. The name
+is provider-neutral; <code>BKA_LLM_MODEL</code> is likewise unset while no vendor is
+chosen.</p>
+
+<p><strong>Why.</strong> The configuration seam is part of this stage's deliverable even
+though nothing consumes it yet, and defining it now means the first adapter adds a
+branch rather than a new configuration story. <code>SecretStr</code> is the part that
+matters: the rule "never log secrets" is enforced by the type rather than by remembering,
+and it is asserted in the suite - a key set in the environment must not appear in a
+repr or a dump.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>A vendor-specific name</strong> <span class="muted">(<code>BKA_ANTHROPIC_API_KEY</code>)</span></td><td>Puts a vendor's name in vendor-agnostic configuration before the vendor is even chosen. A per-provider key can be added alongside this one when there is more than one provider.</td></tr>
+  <tr><td><strong>Plain <code>str</code></strong></td><td>One <code>logger.info("settings", settings=settings)</code> away from a key in a log file. The type removes the possibility rather than documenting the rule.</td></tr>
+  <tr><td><strong>Read the SDK's own ambient variable</strong> <span class="muted">(<code>ANTHROPIC_API_KEY</code>)</span></td><td>Convenient, and dangerous: an ambient key on a developer machine turns a configuration mistake into a silent paid call. Credentials are read from this application's own explicit setting.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">4.9 &nbsp; What the request contract deliberately omits</h3>
+
+<p><strong>Chosen.</strong> <code>CompletionRequest</code> carries a system prompt,
+messages and <code>max_tokens</code>. No temperature, no <code>top_p</code>, no
+<code>top_k</code>, no streaming, no async. Messages are a tuple even though Stage 4 only
+ever sends one.</p>
+
+<p><strong>Why.</strong> Two different arguments, and they point opposite ways.
+Sampling parameters are left out because this application wants the most faithful
+reading of the retrieved passages rather than a varied one, and because several current
+frontier models reject those parameters outright - putting them in a shared contract
+would push one vendor's quirks onto every caller. The message <em>tuple</em> is the
+opposite call: Stage 8 adds conversation context, and retrofitting a list onto a
+single-string interface later would change every call site, so the shape is paid for
+now. Streaming and async are omitted because they would be untested interfaces with no
+caller until Stage 9.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Expose every common parameter</strong></td><td>A union of vendor APIs, most of it unused, all of it needing translation in every adapter - including ones that reject the parameter.</td></tr>
+  <tr><td><strong>A <code>dict</code> of provider options</strong></td><td>Restores vendor coupling through the back door: callers would set vendor-specific keys and the seam would leak.</td></tr>
+  <tr><td><strong>A single <code>prompt: str</code></strong></td><td>Simplest today, but conflates system instructions with user input - the distinction the injection defence in 4.3 depends on.</td></tr>
 </table>
 </div>
 </section>
 
 <footer>
-  <strong>Banking Knowledge Agent</strong> — architecture guide ·
-  Stage 3 (RAG Pipeline) · Last updated 2026-09-09<br>
+  <strong>Banking Knowledge Agent</strong> - architecture guide ·
+  Stage 4 (LLM Abstraction) · Last updated 2026-09-09<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

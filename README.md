@@ -17,9 +17,14 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 3 — RAG Pipeline |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, **chunking, embeddings, vector store, retrieval** |
-| **Not yet implemented** | LLM, agent, MCP, web UI, Docker |
+| **Current stage** | Stage 4 — LLM Abstraction |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, **prompt management, context injection, provider seam, grounded answers** |
+| **Not yet implemented** | A concrete LLM provider, agent, MCP, web UI, Docker |
+
+> **No paid API call exists in this repository.** The only LLM provider that ships is a
+> deterministic in-process mock, so the whole project clones, runs and tests with no
+> account, no API key and no spend. Which real provider the first adapter targets is a
+> decision deferred to Stage 5.
 
 Detailed progress and the exact next action live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md).
@@ -38,7 +43,7 @@ Web Interface            ── Stage 9
 API  (FastAPI)           ── Stage 1  ✅
  │
  ▼
-Agent / LLM              ── Stages 4, 5, 7
+Agent / LLM              ── Stage 4 ✅ (LLM layer) · Stages 5, 7 (agent)
  │
  ├── RAG Knowledge Retrieval   ── Stages 2, 3  ✅
  ├── MCP Tools                 ── Stage 6
@@ -141,7 +146,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 240 tests
+.venv/Scripts/python.exe -m pytest                       # 385 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -183,14 +188,22 @@ banking-knowledge-agent/
 │   ├── knowledge/
 │   │   ├── models.py        # DocumentMetadata, KnowledgeDocument
 │   │   └── loader.py        # Markdown + YAML front-matter loader
-│   └── rag/
-│       ├── __main__.py      # CLI: build | search | demo | calibrate
-│       ├── models.py        # Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
-│       ├── chunker.py       # Heading-aware, token-budgeted splitting
-│       ├── embeddings.py    # Embedder protocol + 2 implementations
-│       ├── vectorstore.py   # VectorStore protocol + NumPy implementation
-│       ├── retriever.py     # Question -> embedding -> search -> sources
-│       └── pipeline.py      # build_index / load_retriever / fingerprint
+│   ├── rag/
+│   │   ├── __main__.py      # CLI: build | search | demo | calibrate
+│   │   ├── models.py        # Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
+│   │   ├── chunker.py       # Heading-aware, token-budgeted splitting
+│   │   ├── embeddings.py    # Embedder protocol + 2 implementations
+│   │   ├── vectorstore.py   # VectorStore protocol + NumPy implementation
+│   │   ├── retriever.py     # Question -> embedding -> search -> sources
+│   │   └── pipeline.py      # build_index / load_retriever / fingerprint
+│   └── llm/                 # No vendor SDK is imported anywhere in here
+│       ├── __main__.py      # CLI: prompt | ask | demo
+│       ├── models.py        # CompletionRequest, LLMResponse, GroundedAnswer
+│       ├── base.py          # LLMProvider protocol + error taxonomy
+│       ├── prompts.py       # Versioned instructions, context budget + fencing
+│       ├── mock.py          # Deterministic in-process provider (the only one)
+│       ├── service.py       # Context injection -> generate -> validate -> answer
+│       └── factory.py       # Provider selection from configuration
 ├── data/
 │   ├── knowledge/           # 15 synthetic banking documents, by domain
 │   └── vectorstore/         # Built index — git-ignored build artefact
@@ -204,7 +217,10 @@ banking-knowledge-agent/
 │   ├── test_embeddings.py
 │   ├── test_vectorstore.py
 │   ├── test_retriever.py
-│   └── test_rag_integration.py   # Real model — retrieval quality
+│   ├── test_rag_integration.py   # Real model — retrieval quality
+│   ├── test_llm_prompts.py       # Context budget, fencing, injection defence
+│   ├── test_llm_provider.py      # Protocol, mock, factory, errors, no-network
+│   └── test_llm_service.py       # Injection, refusal, errors, provenance
 ├── docs/
 │   ├── HANDOVER.md          # Session recovery point — read this first
 │   └── architecture-guide.html
@@ -231,12 +247,20 @@ All settings are read from the environment with the `BKA_` prefix. See
 | `BKA_CHUNK_MAX_TOKENS` | *(unset)* | Unset = use the model's own limit |
 | `BKA_RETRIEVAL_TOP_K` | `5` | Passages returned per question |
 | `BKA_RETRIEVAL_MIN_SCORE` | `0.25` | Cosine floor; below it, retrieval returns nothing |
+| `BKA_LLM_PROVIDER` | `mock` | The only constructible value; anything else raises |
+| `BKA_LLM_MODEL` | *(unset)* | No vendor chosen yet |
+| `BKA_LLM_MAX_TOKENS` | `4096` | Runaway-generation ceiling, not a target |
+| `BKA_LLM_CONTEXT_MAX_CHUNKS` | `5` | How "never the whole knowledge base" is enforced |
+| `BKA_LLM_CONTEXT_MAX_CHARS` | `12000` | Second half of the same budget |
+| `BKA_LLM_API_KEY` | *(unset)* | Environment only; `SecretStr`; nothing can use it yet |
 | `BKA_LOG_LEVEL` | `INFO` | Log verbosity |
 | `BKA_LOG_FORMAT` | `console` | `console` locally, `json` in Docker |
 | `BKA_LOG_DIR` | `logs/` | Where log and trace files are written |
 
 Secrets come from the environment only. They are never hardcoded, never
-committed, and never written to logs or traces.
+committed, and never written to logs or traces. `BKA_LLM_API_KEY` is typed as a
+Pydantic `SecretStr`, so it renders as `**********` in any repr or dump — the rule
+is enforced by the type rather than by remembering, and asserted in the suite.
 
 ---
 
@@ -336,6 +360,56 @@ different model does not fail, it silently returns nonsense.
 
 Full reasoning for every choice above, including the alternatives that were
 rejected and why, is in §20 of
+[`docs/architecture-guide.html`](docs/architecture-guide.html).
+
+---
+
+## LLM abstraction
+
+Retrieved context → prompt → generation → **an answer with its sources**.
+
+```bash
+# Show the EXACT prompt that would be sent — the interesting part is what is absent
+.venv/Scripts/python.exe -m app.llm prompt "What component handles card authentication?"
+
+# Retrieve and answer one question
+.venv/Scripts/python.exe -m app.llm ask "How would I troubleshoot a failed cash withdrawal?"
+
+# The seed questions end to end, plus one the corpus cannot answer
+.venv/Scripts/python.exe -m app.llm demo
+```
+
+Example output:
+
+```
+Q  How would I troubleshoot a failed cash withdrawal?
+A  Answering from the retrieved documentation. ... [1][2][3][4][5]
+   [grounded: 5 of 5 passages used · prompt v1.0.0]
+   [1] Troubleshooting a Failed Cash Withdrawal (atm/atm-cash-withdrawal-troubleshooting.md)
+   ...
+   [mock/mock-deterministic-v1 · in≈1310 out≈64 tokens]
+
+Q  What is the capital of France?
+A  The knowledge base does not contain enough information to answer this question.
+   [refused: no passage cleared the score floor; no model call made]
+```
+
+| Piece | What it does |
+|---|---|
+| **`LLMProvider` protocol** | The seam. Nothing above `app/llm/` imports an SDK, names a model, or catches a vendor's exception type. A test parses every import in the package to keep it that way. |
+| **Prompt management** | One frozen, versioned system prompt (`v1.0.0`) recorded on every answer, so a stored answer can be tied to the instructions that produced it. |
+| **Context injection** | Retrieved passages only — capped at 5 passages / 12,000 characters, dropped *whole* rather than truncated. The knowledge base is never sent. |
+| **Injection defence** | Passages are fenced, numbered, and declared untrusted data before the model sees them; delimiters occurring *inside* a passage are escaped so a document cannot break out of the fence. |
+| **Error handling** | Six typed errors, each carrying `retryable`. Truncated, refused and empty generations **raise** — a half-finished sentence about a transaction limit reads as complete, which makes it worse than an error. |
+| **No evidence → no call** | When retrieval finds nothing, the service refuses without calling the provider at all. A generation with zero context can only refuse or invent. |
+
+**The only provider is a deterministic in-process mock.** No network, no key, no
+cost — and that is structural rather than a discipline: no code path exists that
+calls anything. Setting `BKA_LLM_PROVIDER` to anything else **raises** rather than
+falling back to the mock, because an application that answers questions with a stub
+while looking healthy is worse than one that refuses to start.
+
+Full reasoning, including rejected alternatives, is in §20.4 of
 [`docs/architecture-guide.html`](docs/architecture-guide.html).
 
 ---

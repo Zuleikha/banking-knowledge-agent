@@ -41,6 +41,7 @@ node_modules/
 # --- Local working files -- not part of the project ----------------------
 # Project brief and workflow rules, supplied by the developer.
 prompt.md
+prompt1.md
 ccp.txt
 # Written by a local Claude Code hook, not by the application.
 docs/decisions/auto-changes.log

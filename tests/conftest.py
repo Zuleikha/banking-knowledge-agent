@@ -13,7 +13,10 @@ from app.core.config import Settings
 from app.core.logging import reset_logging
 from app.knowledge.loader import load_knowledge_base
 from app.knowledge.models import KnowledgeDocument
+from app.llm.mock import MockLLMProvider
+from app.llm.service import LLMService
 from app.main import create_app
+from app.rag.models import RetrievalResult
 from app.rag.pipeline import build_index
 from app.rag.retriever import Retriever
 
@@ -90,3 +93,48 @@ def corpus() -> tuple[KnowledgeDocument, ...]:
 def retriever(rag_settings: Settings) -> Retriever:
     """A retriever over the real corpus, indexed with the hashing embedder."""
     return build_index(rag_settings, persist=False)
+
+
+@pytest.fixture
+def llm_settings(tmp_path: Path) -> Settings:
+    """Settings for LLM tests: mock provider, hashing embedder, no disk logs.
+
+    There is no API key and no provider that could use one. The suite cannot
+    make a paid call because no code path exists that makes any call at all.
+    """
+    return Settings(
+        environment="test",
+        embedding_model="hashing",
+        vectorstore_dir=tmp_path / "vectorstore",
+        llm_provider="mock",
+        log_dir=tmp_path / "logs",
+        log_to_file=False,
+    )
+
+
+@pytest.fixture
+def mock_provider() -> MockLLMProvider:
+    """A default mock provider that synthesises answers from injected context."""
+    return MockLLMProvider()
+
+
+@pytest.fixture
+def llm_service(mock_provider: MockLLMProvider, llm_settings: Settings) -> LLMService:
+    """An LLM service wired to the recording mock provider."""
+    return LLMService(mock_provider, llm_settings)
+
+
+@pytest.fixture
+def retrieval(retriever: Retriever) -> RetrievalResult:
+    """A real, non-empty retrieval result over the real corpus."""
+    result = retriever.retrieve("card authentication")
+    assert not result.is_empty, "fixture precondition: this query must match"
+    return result
+
+
+@pytest.fixture
+def empty_retrieval(retriever: Retriever) -> RetrievalResult:
+    """A real retrieval result where nothing cleared the score floor."""
+    result = retriever.retrieve("xylophone quokka meringue", min_score=0.99)
+    assert result.is_empty, "fixture precondition: this query must match nothing"
+    return result

@@ -1,0 +1,148 @@
+"""The ``LLMProvider`` seam, and the error taxonomy every provider maps onto.
+
+This module is the reason the application is not tied to a vendor. Everything
+above it — the service, the agent in Stage 5, the API in Stage 9 — depends on the
+:class:`LLMProvider` protocol and on the exceptions defined here. Nothing above
+it imports an SDK, names a vendor, or handles a vendor's exception type.
+
+**Why a protocol rather than an abstract base class.** A protocol is satisfied
+structurally, so a test double, a future adapter, or a caching decorator is a
+provider by virtue of having the right methods — no inheritance, no registration,
+no import of this module at all. The same choice was made for
+:class:`~app.rag.embeddings.Embedder` and :class:`~app.rag.vectorstore.VectorStore`
+in Stage 3, and it is what let the RAG pipeline be tested with a hashing embedder
+without a single ``if testing:`` branch.
+
+**Why the errors live here and not in each adapter.** Callers need to answer one
+question about a failure: *can this be retried, or is it broken?* Vendor SDKs
+each answer that with their own class hierarchy. If those leaked upward, every
+call site would grow a vendor-specific ``except`` chain, and swapping providers
+would mean rewriting error handling everywhere. Each adapter translates its
+vendor's failures into these types **once**, at the boundary, and
+:attr:`LLMError.retryable` carries the only distinction most callers need.
+
+Errors are never swallowed here. A failed generation raises; it does not return
+an empty answer that a caller might mistake for the model having nothing to say.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+from app.llm.models import CompletionRequest, LLMResponse
+
+
+class LLMError(RuntimeError):
+    """Base class for every failure originating in the LLM layer.
+
+    Attributes:
+        retryable: Whether the same request could plausibly succeed if sent
+            again. Subclasses set this; callers should branch on it rather than
+            on the concrete type, so a new error class does not silently become
+            non-retryable at every existing call site.
+    """
+
+    retryable: bool = False
+
+
+class LLMConfigurationError(LLMError):
+    """The LLM layer is misconfigured: no provider, unknown provider, no key.
+
+    Never retryable — the request is fine, the environment is not. Raised at the
+    point of use rather than at import or construction time, so that an
+    application with no LLM configured still starts, still serves ``/health``,
+    and still runs every non-LLM code path. A missing key must not be a startup
+    crash; it must be an explicit failure of the one operation that needs it.
+    """
+
+
+class LLMTimeoutError(LLMError):
+    """The provider did not respond within the configured timeout."""
+
+    retryable = True
+
+
+class LLMRateLimitError(LLMError):
+    """The provider rejected the request for rate or quota reasons."""
+
+    retryable = True
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        """Record how long the provider asked the caller to wait, when it said.
+
+        Args:
+            message: Human-readable description of the failure.
+            retry_after_seconds: The provider's advertised cool-off, if any.
+                ``None`` means the provider did not say — which is not the same
+                as "retry immediately", so it is kept distinguishable.
+        """
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class LLMResponseError(LLMError):
+    """The provider replied, but the reply cannot be used as an answer.
+
+    Covers a truncated generation, an empty body, and anything that fails to
+    parse. Deliberately distinct from a transport failure: the call succeeded, so
+    retrying the identical request will usually produce the identical problem.
+    A truncated answer is the dangerous case — it reads as complete and ends
+    mid-sentence — which is why it is an error here rather than a warning.
+    """
+
+
+class LLMRefusalError(LLMError):
+    """The model declined to answer.
+
+    Separate from :class:`LLMResponseError` because the correct handling differs:
+    a refusal is a decision about the content of the request, so it should be
+    surfaced to the user rather than retried or silently replaced.
+    """
+
+
+class LLMProviderError(LLMError):
+    """A provider failed in a way its adapter did not anticipate.
+
+    The catch-all that keeps an unmapped vendor exception from escaping the LLM
+    layer as a raw SDK type. Its presence in logs is a signal that an adapter's
+    translation table has a gap.
+    """
+
+
+@runtime_checkable
+class LLMProvider(Protocol):
+    """Generates a response for a prompt. The application's only model interface.
+
+    Implementations must guarantee:
+
+    * ``complete`` either returns a valid :class:`~app.llm.models.LLMResponse` or
+      raises an :class:`LLMError`. No other exception type escapes, and no
+      sentinel "empty" response stands in for a failure.
+    * ``provider_id`` and ``model_id`` identify what actually answered, so a
+      logged or displayed answer can always be traced back to its source.
+    * The call is synchronous. Stage 9 introduces the async path; adding it now
+      would mean an untested interface with no caller.
+    """
+
+    @property
+    def provider_id(self) -> str:
+        """Short identifier for this implementation, e.g. ``"mock"``."""
+
+    @property
+    def model_id(self) -> str:
+        """Identifier of the model that answers, recorded on every response."""
+
+    def complete(self, request: CompletionRequest) -> LLMResponse:
+        """Generate a single response.
+
+        Args:
+            request: The system instructions, conversation turns and token
+                ceiling to generate against.
+
+        Returns:
+            The generation, normalised into this application's own vocabulary.
+
+        Raises:
+            LLMError: On any failure. The concrete subclass tells the caller
+                whether a retry is worthwhile.
+        """
