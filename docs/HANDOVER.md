@@ -34,13 +34,27 @@ no live key, no live call. See *Stage 5 decision*.
 > `BKA_LLM_API_KEY` makes every answered question a **paid** call. No live call has ever
 > been made from this repository.
 
-### To resume Stage 5 work
+### To resume — run this before trusting anything in this file
 
 ```bash
 cd D:/PROJECTS/banking-knowledge-agent
-git log --oneline -3          # expect 1478631 feat(stage-5a) on top
+
+# 1. Confirm the repository matches this file
+git log --oneline -4        # expect 26fa239 docs(stage-5) on top
+git status                  # expect clean
+
+# 2. Re-establish the baseline
 ./.venv/Scripts/python.exe -m pytest        # expect 601 passed
-./.venv/Scripts/python.exe -m app.agent demo    # 5 grounded + 2 refusals, FREE
+./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
+./.venv/Scripts/python.exe -m mypy          # expect 37 source files
+
+# 3. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
+./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
+
+# 4. See Stage 5 working, entirely FREE
+./.venv/Scripts/python.exe -m app.agent demo    # 5 grounded + 2 refusals
+
+# 5. Then read "Next Action" at the bottom of this file.
 ```
 
 > If the venv is missing, recreate it per the Stage 4 instructions below — note that
