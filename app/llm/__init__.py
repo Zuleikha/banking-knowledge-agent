@@ -24,16 +24,23 @@ plus one branch in :mod:`app.llm.factory`.
 would fit in a prompt; that is exactly why the discipline is established now
 rather than when it becomes unavoidable.
 
-**No paid call exists.** Stage 4 ships one provider, :class:`MockLLMProvider`,
-which is deterministic and in-process. The concrete adapter and any live API key
-are a decision deferred to Stage 5, so the suite is offline and free by
-construction rather than by discipline.
+**No paid call happens unless somebody asks for one, twice.** Stage 5 added two
+vendor adapters — Anthropic and OpenAI — so the seam is proved rather than
+asserted. The default provider is still :class:`MockLLMProvider`, deterministic
+and in-process, and neither adapter can even be *constructed* without
+``BKA_LLM_API_KEY``, which is unset. Billing therefore requires two deliberate
+changes, and the test suite makes none of them: it mocks the SDK clients, so it
+is offline and free by construction rather than by discipline.
+
+The two adapter modules are the only place in this package a vendor is imported,
+and a test enforces that on every other module here.
 """
 
 from __future__ import annotations
 
 from app.llm.base import (
     LLMConfigurationError,
+    LLMConnectionError,
     LLMError,
     LLMProvider,
     LLMProviderError,
@@ -72,6 +79,7 @@ __all__ = [
     "CompletionRequest",
     "GroundedAnswer",
     "LLMConfigurationError",
+    "LLMConnectionError",
     "LLMError",
     "LLMMessage",
     "LLMProvider",

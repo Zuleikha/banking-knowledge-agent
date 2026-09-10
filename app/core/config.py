@@ -64,16 +64,18 @@ class Settings(BaseSettings):
     # `python -m app.rag calibrate` if either changes.
     retrieval_min_score: float = Field(default=0.25, ge=-1.0, le=1.0)
 
-    # --- LLM abstraction (Stage 4) ---------------------------------------
-    # No concrete provider has been chosen yet, so "mock" is the only value
-    # this build can construct. Any other value fails loudly in
-    # app.llm.factory rather than silently falling back to the mock -- an
-    # application that answers questions with a stub while looking healthy is
-    # worse than one that refuses to start.
+    # --- LLM abstraction (Stages 4 and 5) --------------------------------
+    # mock | anthropic | openai. The default stays "mock" -- deterministic,
+    # in-process and free -- so nothing calls a paid API unless someone
+    # deliberately changes this AND supplies a key. An unrecognised value
+    # fails loudly in app.llm.factory rather than silently falling back to
+    # the mock: an application that answers questions with a stub while
+    # looking healthy is worse than one that refuses to start.
     llm_provider: str = "mock"
 
-    # None means "whatever the provider's own default is". A hardcoded model
-    # name here would be a vendor's name in vendor-agnostic configuration.
+    # None means "whatever the configured provider's own default is". A
+    # hardcoded model name here would be one vendor's string sitting in
+    # vendor-neutral configuration, so each adapter owns its own default.
     llm_model: str | None = None
 
     # A ceiling, not a target: it exists to bound a runaway generation. It must
@@ -82,8 +84,7 @@ class Settings(BaseSettings):
     # system prompt's job, not this number's.
     llm_max_tokens: int = Field(default=4096, ge=256)
 
-    # Transport behaviour for whichever adapter is written next. Declared now
-    # so the configuration seam exists before the provider does.
+    # Transport behaviour, passed to whichever vendor SDK client is built.
     llm_timeout_seconds: float = Field(default=60.0, gt=0.0)
     llm_max_retries: int = Field(default=2, ge=0)
 
@@ -96,6 +97,9 @@ class Settings(BaseSettings):
     # Environment only. Unset by default, held as a SecretStr so it cannot be
     # printed by accident: repr() and str() render it as '**********', and
     # pydantic excludes it from model_dump() unless explicitly unmasked.
+    # Read only by the anthropic/openai adapters, which refuse to construct
+    # without it -- so switching provider without setting this fails loudly
+    # rather than reaching a vendor's ambient environment variable.
     llm_api_key: SecretStr | None = None
 
     log_level: LogLevel = "INFO"

@@ -8,6 +8,7 @@ makes the suite safe: no code path here can reach a network or a paid API.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -31,19 +32,72 @@ from app.llm.service import LLMService
 
 APP_LLM = Path(__file__).resolve().parents[1] / "app" / "llm"
 
-VENDOR_MARKERS = (
-    "import anthropic",
-    "from anthropic",
-    "import openai",
-    "from openai",
-    "langchain",
-    "google.generativeai",
-    "mistralai",
-    "cohere",
-    "ollama",
-    "api.anthropic.com",
-    "api.openai.com",
+ADAPTER_MODULES = frozenset({"anthropic_provider.py", "openai_provider.py"})
+"""The ONLY modules in ``app/llm/`` permitted to import a vendor SDK.
+
+Stage 5 narrowed the no-vendor guard rather than deleting it. The exemption is
+an explicit allow-list, not a pattern like ``*_provider.py``: a third vendor
+module cannot appear without this constant changing, and changing it is a
+visible line in a diff that a reviewer will ask about.
+"""
+
+SEAM_MODULES = frozenset(
+    {"base.py", "prompts.py", "service.py", "factory.py", "mock.py"}
 )
+"""The modules the user's Checkpoint B instruction names as staying vendor-free.
+
+Asserted to exist, so a rename cannot quietly empty the guarded set.
+"""
+
+VENDOR_ROOTS = frozenset(
+    {
+        "anthropic",
+        "openai",
+        "langchain",
+        "langchain_openai",
+        "google",
+        "mistralai",
+        "cohere",
+        "ollama",
+    }
+)
+
+NETWORK_ROOTS = frozenset(
+    {"socket", "http", "urllib", "httpx", "httpx2", "requests", "aiohttp"}
+)
+
+# Anchored to an actual import statement. The previous substring form matched
+# "import anthropic" inside "import anthropic_provider", which would have made
+# the factory's own deferred import look like a vendor import -- a false
+# positive that would have pushed the code into hiding the import from the test
+# rather than the test into being right.
+IMPORT_STATEMENT = re.compile(
+    r"^\s*(?:from|import)\s+(" + "|".join(sorted(VENDOR_ROOTS)) + r")\b",
+    re.MULTILINE,
+)
+
+VENDOR_HOSTS = ("api.anthropic.com", "api.openai.com")
+
+
+def seam_modules() -> list[Path]:
+    """Every module in ``app/llm/`` that is NOT an exempt vendor adapter.
+
+    Default-deny: a new module is guarded automatically. Only the two names in
+    :data:`ADAPTER_MODULES` are let through.
+    """
+    return [p for p in sorted(APP_LLM.glob("*.py")) if p.name not in ADAPTER_MODULES]
+
+
+def imported_roots(path: Path) -> set[str]:
+    """Top-level packages imported by ``path``, from its parsed import table."""
+    roots: set[str] = set()
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots |= {alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            roots.add((node.module or "").split(".")[0])
+    return roots
 
 
 def make_request(user: str = "Question: why?") -> CompletionRequest:
@@ -244,23 +298,25 @@ class TestFactory:
     def test_default_settings_select_the_mock(self):
         assert Settings().llm_provider == MOCK_PROVIDER_ID
 
-    def test_mock_is_the_only_available_provider(self):
-        assert AVAILABLE_PROVIDERS == (MOCK_PROVIDER_ID,)
+    def test_three_providers_are_available_and_the_mock_leads(self):
+        """Stage 5 added two adapters; it did not change which one is default."""
+        assert AVAILABLE_PROVIDERS == (MOCK_PROVIDER_ID, "anthropic", "openai")
 
-    @pytest.mark.parametrize("requested", ["anthropic", "openai", "gemini", ""])
+    @pytest.mark.parametrize("requested", ["gemini", "cohere", "Mock", "mock ", ""])
     def test_an_unavailable_provider_fails_loudly(
         self, llm_settings: Settings, requested: str
     ):
         settings = llm_settings.model_copy(update={"llm_provider": requested})
         with pytest.raises(LLMConfigurationError) as excinfo:
             get_provider(settings)
-        assert "Stage 5" in str(excinfo.value)
+        # The message must list what IS available, or the error is a dead end.
+        assert "mock" in str(excinfo.value)
 
     def test_an_unavailable_provider_never_falls_back_to_the_mock(
         self, llm_settings: Settings
     ):
         """Silently substituting a stub for a model is worse than failing."""
-        settings = llm_settings.model_copy(update={"llm_provider": "anthropic"})
+        settings = llm_settings.model_copy(update={"llm_provider": "gemini"})
         with pytest.raises(LLMConfigurationError):
             get_provider(settings)
 
@@ -323,58 +379,125 @@ class TestLLMConfiguration:
 # --- The safety property: nothing here can call anything ------------------
 
 
-class TestNoVendorAndNoNetwork:
-    def test_no_module_in_app_llm_imports_a_vendor_sdk(self):
-        for path in sorted(APP_LLM.glob("*.py")):
-            source = path.read_text(encoding="utf-8").lower()
-            for marker in VENDOR_MARKERS:
-                assert marker not in source, f"{path.name} references {marker!r}"
+class TestTheSeamStaysVendorFree:
+    """Narrowed in Stage 5, not deleted.
 
-    def test_no_module_in_app_llm_imports_an_http_client(self):
-        for path in sorted(APP_LLM.glob("*.py")):
-            source = path.read_text(encoding="utf-8")
-            for marker in ("import httpx", "import requests", "import urllib.request"):
-                assert marker not in source, f"{path.name} imports a network client"
+    Two adapter modules now import vendor SDKs, deliberately. Everything else
+    in ``app/llm/`` must stay free of them, because that is what makes the
+    layer replaceable -- and the exemption is an explicit two-name allow-list,
+    so a third vendor module cannot appear unnoticed.
+    """
 
-    def test_no_url_appears_in_the_llm_package(self):
-        for path in sorted(APP_LLM.glob("*.py")):
-            source = path.read_text(encoding="utf-8")
-            assert "https://" not in source
-            assert "http://" not in source
+    def test_the_named_seam_modules_all_exist(self):
+        """A rename must not quietly empty the guarded set."""
+        present = {p.name for p in APP_LLM.glob("*.py")}
+        assert present >= SEAM_MODULES, f"missing: {SEAM_MODULES - present}"
 
-    def test_the_llm_package_imports_nothing_that_can_reach_a_network(self):
-        """Checked against the parsed import statements, not against the prose.
+    def test_the_exemption_is_exactly_the_two_adapters(self):
+        """The allow-list is the whole allow-list. A third one fails here."""
+        present = {p.name for p in APP_LLM.glob("*.py")}
+        assert present >= ADAPTER_MODULES
+        assert set(ADAPTER_MODULES) == {"anthropic_provider.py", "openai_provider.py"}
 
-        Substring matching on the source would trip over the word "requests" in
-        a docstring; the import table is the thing that actually determines what
-        this package can do.
+    def test_every_seam_module_is_guarded(self):
+        """Default-deny: everything that is not an exempt adapter is checked."""
+        guarded = {p.name for p in seam_modules()}
+        assert guarded >= SEAM_MODULES
+        assert guarded & ADAPTER_MODULES == set()
+
+    def test_no_seam_module_imports_a_vendor_sdk(self):
+        for path in seam_modules():
+            leaked = imported_roots(path) & VENDOR_ROOTS
+            assert not leaked, f"{path.name} imports {leaked}"
+
+    def test_no_seam_module_imports_an_http_client(self):
+        for path in seam_modules():
+            leaked = imported_roots(path) & NETWORK_ROOTS
+            assert not leaked, f"{path.name} imports {leaked}"
+
+    def test_no_seam_module_writes_a_vendor_import_statement(self):
+        """Belt and braces: the source text, anchored to real import lines."""
+        for path in seam_modules():
+            match = IMPORT_STATEMENT.search(path.read_text(encoding="utf-8"))
+            assert match is None, f"{path.name} imports {match.group(1)!r}"
+
+    def test_the_factory_may_name_a_vendor_but_never_import_one(self):
+        """The factory routes on vendor *strings*; the SDKs stay in adapters.
+
+        Its deferred ``from app.llm.anthropic_provider import ...`` is an
+        import of this application, not of Anthropic -- which is why the guard
+        is anchored to import statements rather than matching substrings.
         """
-        forbidden = {
-            "socket",
-            "http",
-            "urllib",
-            "httpx",
-            "requests",
-            "aiohttp",
-            "anthropic",
-            "openai",
-        }
-        for path in sorted(APP_LLM.glob("*.py")):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    roots = {alias.name.split(".")[0] for alias in node.names}
-                elif isinstance(node, ast.ImportFrom):
-                    roots = {(node.module or "").split(".")[0]}
-                else:
-                    continue
-                leaked = roots & forbidden
-                assert not leaked, f"{path.name} imports {leaked}"
+        source = (APP_LLM / "factory.py").read_text(encoding="utf-8")
+        assert "anthropic" in source and "openai" in source
+        assert not imported_roots(APP_LLM / "factory.py") & VENDOR_ROOTS
 
-    def test_no_api_key_is_needed_to_build_a_provider(self, llm_settings: Settings):
+    def test_no_seam_module_contains_a_vendor_endpoint(self):
+        for path in seam_modules():
+            source = path.read_text(encoding="utf-8")
+            for host in VENDOR_HOSTS:
+                assert host not in source, f"{path.name} names {host}"
+
+    def test_neither_adapter_hardcodes_an_endpoint_or_a_key(self):
+        """The adapters are exempt from the SDK ban, not from the secrets rule."""
+        for name in sorted(ADAPTER_MODULES):
+            source = (APP_LLM / name).read_text(encoding="utf-8")
+            assert "https://" not in source, f"{name} hardcodes a URL"
+            assert "http://" not in source, f"{name} hardcodes a URL"
+            assert "sk-" not in source, f"{name} may contain a key literal"
+
+
+class TestNoPaidCallByDefault:
+    def test_mock_is_the_default_provider_when_the_env_var_is_unset(
+        self, monkeypatch
+    ):
+        """The property the whole no-spend guarantee rests on."""
+        monkeypatch.delenv("BKA_LLM_PROVIDER", raising=False)
+        assert Settings().llm_provider == MOCK_PROVIDER_ID
+
+    def test_the_default_settings_build_the_mock_provider(self, monkeypatch):
+        monkeypatch.delenv("BKA_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("BKA_LLM_API_KEY", raising=False)
+        assert get_provider(Settings()).provider_id == MOCK_PROVIDER_ID
+
+    def test_no_api_key_is_needed_to_build_the_default_provider(
+        self, llm_settings: Settings
+    ):
         settings = llm_settings.model_copy(update={"llm_api_key": None})
-        assert get_provider(settings) is not None
+        assert get_provider(settings).provider_id == MOCK_PROVIDER_ID
 
-    def test_the_factory_registry_lists_only_free_providers(self):
-        assert AVAILABLE_PROVIDERS == (MOCK_PROVIDER_ID,)
+    def test_the_registry_lists_the_mock_first(self):
+        assert AVAILABLE_PROVIDERS[0] == MOCK_PROVIDER_ID
+        assert set(AVAILABLE_PROVIDERS) == {"mock", "anthropic", "openai"}
         assert factory_module.MOCK_PROVIDER_ID == "mock"
+
+    def test_the_paid_providers_are_named_and_exclude_the_mock(self):
+        assert set(factory_module.PAID_PROVIDERS) == {"anthropic", "openai"}
+        assert MOCK_PROVIDER_ID not in factory_module.PAID_PROVIDERS
+
+    @pytest.mark.parametrize("provider", ["anthropic", "openai"])
+    def test_a_paid_provider_without_a_key_refuses_to_build(
+        self, llm_settings: Settings, provider
+    ):
+        """A half-made change fails loudly instead of quietly reaching a vendor.
+
+        It must also NOT fall through to the SDK's own ambient environment
+        variable, which would turn a config mistake into a silent paid call.
+        """
+        settings = llm_settings.model_copy(
+            update={"llm_provider": provider, "llm_api_key": None}
+        )
+        with pytest.raises(LLMConfigurationError) as excinfo:
+            get_provider(settings)
+        assert "BKA_LLM_API_KEY" in str(excinfo.value)
+
+    @pytest.mark.parametrize("provider", ["anthropic", "openai"])
+    def test_the_missing_key_error_says_it_would_be_a_paid_call(
+        self, llm_settings: Settings, provider
+    ):
+        settings = llm_settings.model_copy(
+            update={"llm_provider": provider, "llm_api_key": None}
+        )
+        with pytest.raises(LLMConfigurationError) as excinfo:
+            get_provider(settings)
+        assert "PAID" in str(excinfo.value)

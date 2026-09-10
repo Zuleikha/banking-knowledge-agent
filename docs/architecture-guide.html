@@ -191,14 +191,16 @@ containerisation, each behind a clean boundary.</p>
 │   │   ├── vectorstore.py        VectorStore protocol + NumPy implementation
 │   │   ├── retriever.py          Question → embedding → search → sources
 │   │   └── pipeline.py           build_index / load_retriever / fingerprint
-│   ├── llm/                      LLM abstraction - NO vendor named in here
+│   ├── llm/                      LLM abstraction
 │   │   ├── __main__.py           CLI: prompt | ask | demo
 │   │   ├── models.py             CompletionRequest, LLMResponse, GroundedAnswer
-│   │   ├── base.py               LLMProvider protocol + error taxonomy
-│   │   ├── prompts.py            Versioned instructions, context budget + fencing
-│   │   ├── mock.py               Deterministic in-process provider (the only one)
-│   │   ├── service.py            Context injection → generate → validate → answer
-│   │   └── factory.py            Provider selection from configuration
+│   │   ├── base.py               LLMProvider protocol + error taxonomy   ← seam
+│   │   ├── prompts.py            Versioned instructions, budget + fencing ← seam
+│   │   ├── mock.py               Deterministic in-process provider (default) ← seam
+│   │   ├── service.py            Context injection → generate → validate ← seam
+│   │   ├── factory.py            Provider selection from configuration   ← seam
+│   │   ├── anthropic_provider.py Anthropic adapter   ← ONE of two vendor modules
+│   │   └── openai_provider.py    OpenAI adapter      ← the other
 │   └── agent/                    Knowledge agent - the seam between rag/ and llm/
 │       ├── __main__.py           CLI: ask | demo
 │       ├── models.py             RetrievalDecision, RetrievalSummary, AgentAnswer
@@ -227,6 +229,7 @@ containerisation, each behind a clean boundary.</p>
 │   ├── test_llm_prompts.py       Context budget, fencing, injection defence
 │   ├── test_llm_provider.py      Protocol, mock, factory, errors, no-network
 │   ├── test_llm_service.py       Injection, refusal, error handling, provenance
+│   ├── test_llm_adapters.py      Both vendors, offline - shapes + error mapping
 │   ├── test_agent.py             Routing, wiring, refusals, execution record
 │   └── test_agent_integration.py Real model - the 5 seed questions end to end
 ├── docs/
@@ -277,7 +280,8 @@ containerisation, each behind a clean boundary.</p>
   <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>Turns text into 384-dimension vectors so questions match documents by <em>meaning</em>, not shared words. Runs locally: no API key, no per-query cost, no network after the first download. Reads 256 word-piece tokens - the number the chunker is built around.</td><td>3</td></tr>
   <tr><td><strong>NumPy</strong></td><td>The vector index <em>is</em> a NumPy matrix. Similarity search over the whole corpus is one <code>matrix @ query</code>, which at this size is faster than any index that could be built over it.</td><td>3</td></tr>
   <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen - it is what sentence-transformers runs on. Pinned explicitly anyway: it is the largest artefact in the eventual image, so the CPU/GPU build choice belongs in <code>requirements.txt</code>, not in a transitive resolve.</td><td>3</td></tr>
-  <tr><td><strong>LLM provider</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction - the app is never coupled to one vendor.</td><td>4</td></tr>
+  <tr><td><strong>LLM provider seam</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction - the app is never coupled to one vendor.</td><td>4</td></tr>
+  <tr><td><strong><code>anthropic</code> + <code>openai</code> SDKs</strong></td><td><strong>Both</strong>, deliberately. One adapter proves an adapter can be written; two prove the abstraction - switching vendor is one config line and no code change. Neither is "the" chosen vendor, and neither is the default: <code>BKA_LLM_PROVIDER</code> stays on the free mock. Installing them does not enable spending (§20.5.6, §20.5.7).</td><td>5</td></tr>
   <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
   <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only - front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
   <tr><td><strong>Docker</strong></td><td>Reproducible local runtime; the same image everywhere.</td><td>12</td></tr>
@@ -418,10 +422,24 @@ containerisation, each behind a clean boundary.</p>
   </tr>
   <tr>
     <td><code>app/llm/mock.py</code><br><span class="muted">MockLLMProvider</span></td>
-    <td>The only provider that ships in Stage 4: deterministic, in-process, free. Cites
+    <td>The <strong>default</strong> provider: deterministic, in-process, free. Cites
         back the passages it was actually given, so a context-injection bug shows up as
         a missing citation. Records every request for assertion; can script responses or
         raise, which is how the error paths are tested.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/anthropic_provider.py</code><br><span class="muted">AnthropicProvider</span></td>
+    <td>Real Anthropic API. <strong>Paid.</strong> Translates the request, the response
+        and the whole SDK exception hierarchy. Reads text from the <em>text blocks</em>,
+        not <code>content[0]</code>, because with thinking on the first block is
+        reasoning. Client injectable, so it is tested offline.</td>
+  </tr>
+  <tr>
+    <td><code>app/llm/openai_provider.py</code><br><span class="muted">OpenAIProvider</span></td>
+    <td>Real OpenAI API. <strong>Paid.</strong> Same seam, different shape: system prompt
+        as a message, <code>max_completion_tokens</code>, and a refusal reported on the
+        message while <code>finish_reason</code> still says <code>"stop"</code>. Its
+        existence is what proves the abstraction (§20.5.6).</td>
   </tr>
   <tr>
     <td><code>app/llm/service.py</code><br><span class="muted">LLMService.answer()</span></td>
@@ -431,8 +449,11 @@ containerisation, each behind a clean boundary.</p>
   </tr>
   <tr>
     <td><code>app/llm/factory.py</code><br><span class="muted">get_provider(), get_llm_service()</span></td>
-    <td>The one place a provider is chosen from configuration. An unavailable provider
-        raises rather than falling back to the mock.</td>
+    <td>The one place a provider is chosen from configuration - three of them, with
+        <code>mock</code> the default. Names vendors as strings but imports none: the SDK
+        import is deferred into the branch that needs it, so a missing SDK cannot stop
+        the app from starting on the mock. Also owns <code>PAID_PROVIDERS</code>, which
+        is what the CLIs check before spending.</td>
   </tr>
   <tr>
     <td><code>app/llm/__main__.py</code></td>
@@ -873,8 +894,10 @@ CompletionRequest            system · messages · max_tokens
       │
       ▼  LLMProvider.complete()          ← the vendor-agnostic seam
       │        │
-      │        └── MockLLMProvider       deterministic, in-process, free
-      │            (the only implementation; a real adapter is Stage 5)
+      │        ├── MockLLMProvider       DEFAULT. deterministic, in-process, free
+      │        ├── AnthropicProvider     real API · PAID · needs BKA_LLM_API_KEY
+      │        └── OpenAIProvider        real API · PAID · needs BKA_LLM_API_KEY
+      │            (config only: BKA_LLM_PROVIDER. No code above here changes.)
 LLMResponse                  text · stop_reason · usage · provider/model id
       │
       ▼  validate            refusal / truncated / empty  ──▶ raise, never show
@@ -1017,17 +1040,21 @@ BKA_CHUNK_OVERLAP_TOKENS=32
 BKA_RETRIEVAL_TOP_K=5
 BKA_RETRIEVAL_MIN_SCORE=0.25 # calibrated - see §20
 
-# --- LLM (Stage 4) ---
-BKA_LLM_PROVIDER=mock        # the ONLY value this build can construct;
-                             # anything else RAISES - it never falls back
-# BKA_LLM_MODEL=             # unset: no vendor chosen yet
+# --- LLM (Stages 4 and 5) ---
+BKA_LLM_PROVIDER=mock        # mock | anthropic | openai
+                             # mock is FREE and is the DEFAULT; the other two
+                             # are PAID. An unknown value RAISES - it never
+                             # falls back to the mock
+# BKA_LLM_MODEL=             # unset: use the chosen adapter's own default
 BKA_LLM_MAX_TOKENS=4096      # a runaway guard, not a target
 BKA_LLM_TIMEOUT_SECONDS=60.0
 BKA_LLM_MAX_RETRIES=2
 BKA_LLM_CONTEXT_MAX_CHUNKS=5     # how "never the whole knowledge base"
 BKA_LLM_CONTEXT_MAX_CHARS=12000  # is actually enforced
-# BKA_LLM_API_KEY=           # environment only; SecretStr; LEAVE UNSET -
-                             # no provider in this build can use it
+# BKA_LLM_API_KEY=           # environment only; SecretStr; LEAVE UNSET.
+                             # Read ONLY by the two paid adapters, which refuse
+                             # to construct without it. Spending therefore needs
+                             # TWO deliberate changes, not one
 
 BKA_LOG_LEVEL=INFO
 BKA_LOG_FORMAT=console       # console locally, json in Docker
@@ -1052,8 +1079,9 @@ never hardcoded, never defaulted to a real value.</p>
   <code>BKA_LLM_API_KEY</code> is a Pydantic <code>SecretStr</code>, so it renders as
   <code>**********</code> in any <code>repr()</code> or <code>model_dump()</code>. The
   rule "never log secrets" is enforced by the type rather than by remembering - and it
-  is asserted in the suite. It is unset by default and no provider in this build can
-  use it.
+  is asserted in the suite. It is unset by default, and the two paid adapters refuse to
+  construct without it rather than falling through to a vendor SDK's own ambient
+  environment variable - which would turn a forgotten setting into a silent bill.
 </div>
 </section>
 
@@ -1119,22 +1147,26 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_llm_provider.py</code></td><td>Protocol conformance (including a structurally-typed implementation that inherits nothing), the full error taxonomy and its <code>retryable</code> flags, the mock's three modes, the factory refusing an unavailable provider without falling back, and configuration - including that a key set in the environment appears in <em>neither</em> a repr nor a dump. Ends with the safety property: an AST walk over every module in <code>app/llm/</code> asserting no vendor SDK, no HTTP client and no URL.</td></tr>
   <tr><td><code>tests/test_llm_service.py</code></td><td>What actually reaches the provider (versioned system prompt, question present once, passages fenced, knowledge base absent, budgets honoured), the refusal path making <em>no</em> provider call at all, and error handling: timeout and rate limit propagate with their retry hints, an untyped vendor exception is wrapped with its cause preserved, and refused / truncated / empty generations raise rather than being shown.</td></tr>
   <tr><td><code>tests/test_agent.py</code></td><td>The routing policy (every real question retrieves; a question with no searchable content does not; a keyword classifier's two failure cases would break and are asserted against), the wiring (the question reaches the retriever verbatim, one question is one retrieval and one generation, the retrieved passages reach the prompt and the whole knowledge base does not), <strong>both refusal routes</strong> - after searching and without searching - producing the identical sentence with <em>zero</em> provider calls, the execution record, and failures propagating rather than being disguised as refusals. Ends with the stage boundary: no tools, no conversation state, no vendor import.</td></tr>
+  <tr><td><code>tests/test_llm_adapters.py</code></td><td><strong>Both vendor adapters, entirely offline.</strong> Every test injects a fake SDK client, so nothing here reaches a network or costs anything. Covers what each adapter <em>sends</em> (system prompt placement, <code>max_tokens</code> vs <code>max_completion_tokens</code>, no sampling parameters), what it makes of the <em>reply</em> (every stop-reason and finish-reason value, a leading thinking block not mistaken for the answer, an OpenAI refusal that arrives labelled <code>"stop"</code>, null content, a reply with no choices), and the full <em>error translation</em> for both hierarchies including the ordering traps - a timeout is a connection error, a 500 is a status error - with the right <code>retryable</code> flag on each. Ends with the same assertions run against <strong>both</strong> adapters through the service and through the agent, which is what makes the abstraction evidence rather than a claim. Also asserts the cost guard: a missing key refuses before a client exists, and <code>demo</code> refuses a paid run before building anything.</td></tr>
   <tr><td><code>tests/test_agent_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>The seed questions, with real semantics.</strong> Each of the five is answered from its own document, cites it, and clears the floor above 0.5; three off-topic controls are refused after being searched, at zero model cost; and two paraphrases with no shared vocabulary still find the right document. Shares one module-scoped index across the file - the transformer is loaded once, the provider is fresh per test so call counts stay meaningful.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 489 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 601 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
 
 <div class="note">
-  <strong>The suite cannot make a paid call, and that is structural.</strong>
-  It is not that the network is mocked out - it is that no code path exists which calls
-  anything. The only provider is in-process, and a test parses every import in
-  <code>app/llm/</code> - and, from Stage 5, in <code>app/agent/</code> - to assert that
-  no vendor SDK and no HTTP client is reachable from either package. When the first real
-  adapter lands, that test is what will force it to be added deliberately rather than by
-  accident.
+  <strong>The suite still cannot make a paid call - now by four guards rather than by
+  absence.</strong> Stage 5 added two real vendor adapters, so "no code path exists" is
+  no longer the argument. What replaces it: the default provider is the free in-process
+  mock (asserted with the environment variable cleared); neither adapter can be
+  <em>constructed</em> without <code>BKA_LLM_API_KEY</code>, which the test settings do
+  not carry; every adapter test injects a fake client, so a test that forgot to would
+  fail rather than reach the internet; and an AST walk still asserts that every module
+  in <code>app/llm/</code> outside the two named adapters - and every module in
+  <code>app/agent/</code> - imports no vendor SDK and no HTTP client. See §20.5.7 and
+  §20.5.8.
 </div>
 
 <div class="note">
@@ -1199,7 +1231,11 @@ knowledge data stays available inside the image or a mounted volume.</p>
 
 <h3>In place today</h3>
 <ul>
-  <li>Secrets from environment variables only - never hardcoded, never a real default.</li>
+  <li>Secrets from environment variables only - never hardcoded, never a real default.
+      The two paid adapters read <code>BKA_LLM_API_KEY</code> and nothing else: they do
+      not fall through to <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>,
+      which both SDKs would otherwise pick up silently. A test asserts a 401 message
+      cannot echo the key.</li>
   <li><code>.env</code>, <code>*.pem</code>, <code>*.key</code>, <code>secrets/</code> and <code>logs/</code> are git-ignored.</li>
   <li>Traced function arguments are never logged.</li>
   <li>Pydantic validates every request and response at the boundary.</li>
@@ -1260,7 +1296,8 @@ Stage 13 reassesses the whole surface.</p>
 <div class="note">
   <strong>Secrets in Stage 4.</strong> <code>BKA_LLM_API_KEY</code> is read from the
   environment only and typed <code>SecretStr</code>, so it cannot be printed by accident;
-  it is unset by default and no provider in this build can use it. The LLM layer logs
+  it is unset by default. <span class="muted">(Stage 5 note: it is now readable by the
+  two paid adapters, which refuse to construct without it.)</span> The LLM layer logs
   request <em>shape</em> and cost - passage count, token counts, stop reason, prompt
   version - and never the prompt or the answer text, both of which embed document
   content. What a request record should contain is decided deliberately in Stage 10.
@@ -1274,6 +1311,21 @@ Stage 13 reassesses the whole surface.</p>
   again at the agent would double the exposure for no extra diagnostic value. The split
   between <code>RetrievalSummary</code> (shape - safe to log and to display) and the
   chunks themselves (document content - not) is a security boundary, not a tidiness one.
+</div>
+
+<div class="warn">
+  <strong>Spending is now possible, and is guarded in four independent places.</strong>
+  Before Stage 5's Checkpoint B no code path could reach a paid API. Two real adapters
+  exist now, so that argument is gone and is replaced by defence in depth:
+  <code>BKA_LLM_PROVIDER</code> still defaults to <code>mock</code>; neither adapter can
+  be constructed without <code>BKA_LLM_API_KEY</code>; every adapter test injects a fake
+  client; and both CLIs refuse a multi-question <code>demo</code> against a paid provider
+  unless <code>--paid</code> is passed, checking <em>before</em> building an index or a
+  client. Full reasoning in §20.5.7.
+  <br><br>
+  <strong>No live call has ever been made from this repository</strong>, in the suite or
+  by hand. Making one is a paid action and needs explicit confirmation at the time -
+  building the adapters did not authorise it.
 </div>
 </section>
 
@@ -1354,9 +1406,21 @@ infrastructure is built that the portfolio project does not need.</p>
       <td>Without the escaping step the fence is theatre - a document containing the closing tag would break out of it. Written now, while the corpus is synthetic and the risk is nil. See §20.4.3.</td></tr>
   <tr><td><strong>The API key is a <code>SecretStr</code></strong></td>
       <td>"Never log secrets" enforced by the type rather than by remembering, and asserted in the suite. See §20.4.8.</td></tr>
+  <tr><td><strong>The retrieval decision has one substantive branch, and says so</strong></td>
+      <td>Retrieval is the agent's only evidence until Stage 6, so "always yes" is the honest answer. A keyword classifier would be a guess about the corpus wearing the costume of a decision. See §20.5.1.</td></tr>
+  <tr><td><strong>One refusal path, and it is Stage 4's</strong></td>
+      <td>The insufficient-evidence sentence is load-bearing - the API, the UI and the evaluation harness all match it exactly. Two definitions is one too many. See §20.5.2.</td></tr>
+  <tr><td><strong>A provider failure raises; it never becomes a refusal</strong></td>
+      <td>An agent that never fails sounds good and is a defect. "Undocumented" means write the document; "timeout" means fix the provider. See §20.5.4.</td></tr>
+  <tr><td><strong>Two vendor adapters, not one - and no vendor is chosen</strong></td>
+      <td>One adapter proves an adapter can be written; two prove the abstraction. It also closes the vendor question permanently instead of leaving it to be re-litigated at Stage 9 and Stage 14. See §20.5.6.</td></tr>
+  <tr><td><strong>The default provider stays <code>mock</code></strong></td>
+      <td>Spending needs two deliberate acts - switch the provider <em>and</em> supply a key - so <code>git clone &amp;&amp; pytest</code> still costs nothing. See §20.5.7.</td></tr>
+  <tr><td><strong>The no-vendor test was narrowed, not deleted</strong></td>
+      <td>Adding adapters is exactly when that guard starts earning its keep. Two named modules are exempt; everything else is default-denied. See §20.5.8.</td></tr>
 </table>
 
-<p class="muted">The full reasoning behind each Stage 3 and Stage 4 decision - including
+<p class="muted">The full reasoning behind each Stage 3, 4 and 5 decision - including
 the alternatives that were rejected and why - is in §20.</p>
 </section>
 
@@ -2167,6 +2231,182 @@ and free.</p>
   <tr><td><strong>Agent constructs its own retriever and provider</strong></td><td>Would make every test build a real index and pick a real provider, and would put the <code>BKA_LLM_PROVIDER</code> decision in a second place. <code>get_agent()</code> does the composing, in one function.</td></tr>
   <tr><td><strong>Agent owns prompt construction</strong></td><td>Prompts are versioned source code in one module (4.x). A second place that assembles them is a second place that can drift from <code>SYSTEM_PROMPT_VERSION</code>.</td></tr>
   <tr><td><strong>Merge the agent into <code>LLMService</code></strong></td><td>Would make the service retrieve, ending the property that lets the LLM layer be tested with a hand-built <code>RetrievalResult</code> and no index at all.</td></tr>
+</table>
+</div>
+
+<h3 style="margin-top:32px">Stage 5 (Checkpoint B) - concrete LLM adapters</h3>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.6 &nbsp; Two adapters, not one - and no vendor is chosen</h3>
+
+<p><strong>Chosen.</strong> Build <code>AnthropicProvider</code> <em>and</em>
+<code>OpenAIProvider</code>, both implementing <code>LLMProvider</code>, both pinned in
+<code>requirements.txt</code>, both offline-tested against a mocked SDK client.
+<code>BKA_LLM_PROVIDER</code> accepts <code>mock</code>, <code>anthropic</code> or
+<code>openai</code>, and <strong>the default stays <code>mock</code></strong>.</p>
+
+<p><strong>Why two.</strong> One adapter proves an adapter can be written. Two prove the
+<em>abstraction</em> - that swapping vendors is a configuration change and nothing else.
+The difference is not rhetorical: writing the second one is what forces the first one's
+vendor assumptions out of the shared code, because the two APIs disagree about almost
+everything that crosses the seam.</p>
+
+<table>
+  <tr><th style="width:170px">Concern</th><th>Anthropic</th><th>OpenAI</th></tr>
+  <tr><td>System instructions</td><td>a top-level <code>system=</code> parameter</td><td>a <code>system</code>-role message inside <code>messages</code></td></tr>
+  <tr><td>Output ceiling</td><td><code>max_tokens</code></td><td><code>max_completion_tokens</code> (<code>max_tokens</code> is deprecated and rejected by reasoning models)</td></tr>
+  <tr><td>Why it stopped</td><td><code>stop_reason</code>, 7 values</td><td><code>finish_reason</code>, 5 values</td></tr>
+  <tr><td>A refusal</td><td><code>stop_reason="refusal"</code></td><td><code>message.refusal</code> is set - <em>while <code>finish_reason</code> still says <code>"stop"</code></em></td></tr>
+  <tr><td>The generated text</td><td>the <code>text</code> blocks of a content list, which may open with a thinking block</td><td><code>message.content</code>, which is nullable</td></tr>
+  <tr><td>Token accounting</td><td><code>input_tokens</code> / <code>output_tokens</code> / <code>cache_read_input_tokens</code></td><td><code>prompt_tokens</code> / <code>completion_tokens</code> / <code>prompt_tokens_details.cached_tokens</code></td></tr>
+</table>
+
+<p>Every one of those would otherwise have leaked upward. Two of them are outright traps:
+reading <code>content[0]</code> on Anthropic returns <em>reasoning</em> as the answer once
+thinking is on, and trusting <code>finish_reason</code> alone on OpenAI hands back an
+empty string labelled as a complete answer when the model actually refused. Both are
+passing tests rather than paragraphs.</p>
+
+<p><strong>What it also settles.</strong> The vendor question is now closed. It was
+deferred out of Stage 4, and had one adapter been built it would have come back at
+Stage 9 and again at Stage 14 as <em>"are we locked in?"</em>. The answer is in the
+repository: two vendors, one config line, no code change.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr>
+    <td><strong>One adapter</strong></td>
+    <td>Cheaper, and it proves strictly less. A single adapter is indistinguishable from
+        a wrapper shaped around one vendor's API - the abstraction is only tested by the
+        second implementation. It also leaves the vendor choice open to be re-litigated
+        later.</td>
+  </tr>
+  <tr>
+    <td><strong>Neither - stay on the mock</strong></td>
+    <td>Stage 4's position, and correct <em>then</em>. It is no longer: prompt quality,
+        response parsing and error translation are all untestable without real SDK
+        shapes, and the mock proves none of them.</td>
+  </tr>
+  <tr>
+    <td><strong>Change the default to a real provider</strong></td>
+    <td>Would make <code>git clone &amp;&amp; pytest</code> cost money, and would make the
+        no-spend property depend on nobody having a key exported. The default is the
+        thing protecting every future contributor.</td>
+  </tr>
+  <tr>
+    <td><strong>Delete the no-vendor AST test</strong></td>
+    <td>The obvious move once two modules legitimately import SDKs, and it would have
+        thrown away the guard exactly when it started mattering. Narrowed instead:
+        an explicit two-name allow-list, everything else default-denied.</td>
+  </tr>
+  <tr>
+    <td><strong>Make a single live call "just to check"</strong></td>
+    <td>A paid call needs the user's confirmation at the time, and it would prove less
+        than the offline suite: a live call exercises one happy path, while the fake
+        client exercises all nine error mappings and every stop-reason value.</td>
+  </tr>
+</table>
+
+<div class="warn">
+  <strong>What is deliberately still unproven.</strong> No live call has been made, so
+  nothing here shows that a real model <em>answers well</em> from these prompts. The
+  adapters are proven correct in what they send, parse and translate - not in what comes
+  back. That measurement needs a key and a budget, and it is Stage 11's evaluation set.
+</div>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.7 &nbsp; The default stays <code>mock</code>, and spending needs two deliberate acts</h3>
+
+<p><strong>Chosen.</strong> Four independent guards, not one:</p>
+<ol>
+  <li><code>BKA_LLM_PROVIDER</code> defaults to <code>mock</code> - asserted by a test
+      that clears the environment variable first.</li>
+  <li>Neither adapter can be <em>constructed</em> without <code>BKA_LLM_API_KEY</code>.
+      It raises before an SDK client object exists, so a half-made change fails loudly
+      instead of quietly reaching a vendor's own ambient environment variable.</li>
+  <li>The suite injects a fake client into every adapter test. Since the test settings
+      carry no key, a test that forgot to inject one fails rather than reaching the
+      internet.</li>
+  <li>Both CLIs print a cost banner when a paid provider is configured, and
+      <code>demo</code> <em>refuses</em> without <code>--paid</code>.</li>
+</ol>
+
+<p><strong>Why the CLI refuses rather than warns.</strong> <code>demo</code> asks seven
+questions. A warning that scrolls past costs seven billed calls, and there is no undo.
+The single-question <code>ask</code> only warns, because one call is a proportionate
+mistake and blocking it would make the adapters useless. The guard also runs
+<em>before</em> the index or the client is built - asserted by a test - since a check
+that happens after the work is not a check.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>An interactive confirmation prompt</strong></td><td>Unusable in CI and in Docker, and a prompt that always appears gets answered reflexively. An explicit flag is a decision recorded in shell history.</td></tr>
+  <tr><td><strong>Rely on the key being unset</strong></td><td>Works right up until a contributor exports one for another project. The provider default is the guard that does not depend on the environment.</td></tr>
+  <tr><td><strong>Read the vendor's own env var</strong> <span class="muted">(<code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>)</span></td><td>Both SDKs would pick these up silently. That turns "I forgot to set <code>BKA_LLM_API_KEY</code>" into a working, billing configuration - the exact failure the provider-neutral key name exists to prevent (4.8).</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.8 &nbsp; The no-vendor guard was narrowed, not deleted</h3>
+
+<p><strong>Chosen.</strong> The seam modules - <code>base.py</code>,
+<code>prompts.py</code>, <code>service.py</code>, <code>factory.py</code>,
+<code>mock.py</code>, and everything else in <code>app/llm/</code> - must import no
+vendor SDK. Exactly two modules are exempt, by an explicit allow-list:
+<code>anthropic_provider.py</code> and <code>openai_provider.py</code>.</p>
+
+<p><strong>Why an allow-list rather than a pattern.</strong> A rule like
+<code>*_provider.py</code> would silently exempt the next vendor module somebody adds.
+Naming the two files means a third one cannot appear without changing a constant - a
+visible line in a diff that a reviewer will ask about. Everything not on the list is
+guarded by default, so the protection extends to modules that do not exist yet.</p>
+
+<p><strong>A bug the narrowing exposed.</strong> The Stage 4 test matched the substring
+<code>"import anthropic"</code> against lower-cased source. The factory's own
+<code>from app.llm.anthropic_provider import AnthropicProvider</code> contains that
+substring - so the honest import would have failed the test, and the tempting fix would
+have been to hide it behind <code>importlib</code>, defeating the guard to satisfy it.
+The test is now anchored to real import statements and checked against the parsed import
+table, which is what it always meant. A separate test asserts the factory <em>may</em>
+name a vendor in a string while importing none.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Delete the test</strong></td><td>It was the thing making "no vendor above the seam" a fact instead of an intention, and adding adapters is precisely when it starts earning its keep.</td></tr>
+  <tr><td><strong>Keep it whole-package and hide the import</strong></td><td>Would have made the code worse to keep a test green - the definition of a bad test. The test was wrong; the test was fixed.</td></tr>
+  <tr><td><strong>Exempt adapters from the secrets rule too</strong></td><td>The exemption is for SDK imports only. Both adapters are still asserted to contain no hardcoded URL and no key literal.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.9 &nbsp; The adapters found a gap in the Stage 4 error taxonomy</h3>
+
+<p><strong>Chosen.</strong> Add one error type to the seam:
+<code>LLMConnectionError</code>, retryable, covering a failed connection and any 5xx.</p>
+
+<p><strong>Why.</strong> Stage 4 designed the taxonomy with no adapter to test it
+against, and its only retryable types were a timeout and a rate limit. Both SDKs raise a
+plain <code>APIConnectionError</code> and an <code>InternalServerError</code> that are
+neither. The two available mappings were both wrong in the one field callers actually
+branch on: <code>LLMTimeoutError</code> would misname it, and
+<code>LLMProviderError</code> would mark a transient 502 permanently broken. Shipping a
+knowingly-wrong <code>retryable</code> flag is worse than adding a class.</p>
+
+<p>That a real adapter found this within an hour - and that Stage 4's own tests could
+never have found it, because a mock raises whatever the test tells it to - is the
+concrete argument for 5.6. The abstraction was not <em>wrong</em>; it was
+<em>unvalidated</em>, and only an implementation can tell the difference.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Map connection failures to <code>LLMTimeoutError</code></strong></td><td>Retryability would be right and the name would be a lie, in the type a caller reads first while diagnosing an outage.</td></tr>
+  <tr><td><strong>Map 5xx to <code>LLMProviderError</code></strong></td><td>Marks a transient upstream failure non-retryable. A caller doing the correct thing with the flag would give up on a 503 that would have succeeded on the next attempt.</td></tr>
+  <tr><td><strong>Give <code>LLMError</code> a settable <code>retryable</code></strong></td><td>Moves the decision from the type to the call site, which is exactly the coupling 4.6 removed.</td></tr>
 </table>
 </div>
 </section>

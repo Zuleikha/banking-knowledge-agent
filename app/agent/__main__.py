@@ -5,9 +5,15 @@
     python -m app.agent ask "<question>"   # answer one question
     python -m app.agent demo               # the five seed questions, end to end
 
-Every run is offline and free: the embedding model is local, and the default
-provider is the in-process mock. ``python -m app.agent demo`` prints the provider
-it is using, so a run against a real adapter is never mistaken for a mock run.
+**By default every run is offline and free**: the embedding model is local, and
+the default provider is the in-process mock.
+
+If ``BKA_LLM_PROVIDER`` names a paid vendor, both commands say so before doing
+anything, and ``demo`` refuses outright unless ``--paid`` is passed. ``demo``
+asks seven questions, so an accidental paid run is seven billed calls rather
+than one -- the command that fans out is the one that needs the seatbelt. This
+is a deliberate guard, not a formality: nothing else in the repository stands
+between an exported key and a bill.
 
 What the output is designed to show is the *provenance*, not the prose. The mock
 provider's answer text is a wiring check, not a generated answer — the parts
@@ -25,6 +31,7 @@ from app.agent.factory import get_agent
 from app.agent.models import AgentAnswer
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.llm.factory import is_paid_provider
 
 SEED_QUESTIONS: tuple[str, ...] = (
     "Why would an ATM transaction fail after card authentication?",
@@ -66,7 +73,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask = subparsers.add_parser("ask", help="Answer one question.")
     ask.add_argument("question", help="The question to answer.")
 
-    subparsers.add_parser("demo", help="Answer the seed questions end to end.")
+    demo = subparsers.add_parser("demo", help="Answer the seed questions end to end.")
+    demo.add_argument(
+        "--paid",
+        action="store_true",
+        help="Allow the demo to run against a paid provider (7 billed calls).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -79,18 +91,46 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "ask":
         return _ask(args.question, settings)
-    return _demo(settings)
+    return _demo(settings, allow_paid=args.paid)
+
+
+def _warn_if_paid(settings: Settings) -> bool:
+    """Print a cost warning when a billed provider is configured.
+
+    Returns:
+        Whether the configured provider costs money.
+    """
+    if not is_paid_provider(settings):
+        return False
+    print(RULE)
+    print(f"!! BKA_LLM_PROVIDER={settings.llm_provider} - this is a PAID API.")
+    print("!! Every answered question is a billed call. Unset the variable, or")
+    print("!! set BKA_LLM_PROVIDER=mock, to run free.")
+    print(RULE)
+    return True
 
 
 def _ask(question: str, settings: Settings) -> int:
     """Answer and print a single question."""
+    _warn_if_paid(settings)
     agent = get_agent(settings)
     _print_answer(agent.ask(question))
     return 0
 
 
-def _demo(settings: Settings) -> int:
+def _demo(settings: Settings, allow_paid: bool = False) -> int:
     """Answer the seed questions and the two control questions."""
+    questions = SEED_QUESTIONS + CONTROL_QUESTIONS
+    if _warn_if_paid(settings) and not allow_paid:
+        # Refused rather than warned: this command asks seven questions, so the
+        # cost of getting it wrong is seven calls, and the user cannot take it
+        # back once it has run.
+        print(
+            f"REFUSED: demo would make up to {len(questions)} paid calls. "
+            "Re-run with --paid to confirm you accept the cost."
+        )
+        return 2
+
     agent = get_agent(settings)
     provider = agent.llm_service.provider
 
@@ -99,7 +139,7 @@ def _demo(settings: Settings) -> int:
     print(f"Retriever: {agent.retriever.embedder.model_id}")
     print(RULE)
 
-    for question in SEED_QUESTIONS + CONTROL_QUESTIONS:
+    for question in questions:
         print()
         _print_answer(agent.ask(question))
     return 0

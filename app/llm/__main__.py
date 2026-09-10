@@ -12,8 +12,13 @@ the frozen system instructions, the fenced passages with their citation numbers,
 and the question. What is *not* there -- the other 110 chunks of the knowledge
 base -- is the part worth looking at.
 
-Every command runs entirely offline against the mock provider. Nothing here can
-make a paid call, because no provider capable of one exists yet.
+``prompt`` never calls a model at all -- it builds the request and prints it, so
+it is free under every configuration.
+
+``ask`` and ``demo`` run against whatever ``BKA_LLM_PROVIDER`` names, which
+defaults to the free in-process mock. If it names a paid vendor they say so
+first, and ``demo`` refuses without ``--paid``, because it asks six questions
+and an accidental run is six billed calls.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ from collections.abc import Sequence
 
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
-from app.llm.factory import get_llm_service
+from app.llm.factory import get_llm_service, is_paid_provider
 from app.llm.models import GroundedAnswer
 from app.llm.prompts import build_request, select_context
 from app.llm.service import LLMService
@@ -67,7 +72,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask = subparsers.add_parser("ask", help="Retrieve and answer one question.")
     ask.add_argument("question", help="The question to answer.")
 
-    subparsers.add_parser("demo", help="Answer the seed questions end to end.")
+    demo = subparsers.add_parser("demo", help="Answer the seed questions end to end.")
+    demo.add_argument(
+        "--paid",
+        action="store_true",
+        help="Allow the demo to run against a paid provider (6 billed calls).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -82,7 +92,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _prompt(args.question, settings)
     if args.command == "ask":
         return _ask(args.question, settings)
-    return _demo(settings)
+    return _demo(settings, allow_paid=args.paid)
+
+
+def _warn_if_paid(settings: Settings) -> bool:
+    """Print a cost warning when a billed provider is configured."""
+    if not is_paid_provider(settings):
+        return False
+    print(RULE)
+    print(f"!! BKA_LLM_PROVIDER={settings.llm_provider} - this is a PAID API.")
+    print("!! Every answered question is a billed call. Set BKA_LLM_PROVIDER=mock")
+    print("!! (or unset it) to run free.")
+    print(RULE)
+    return True
 
 
 def _prompt(question: str, settings: Settings) -> int:
@@ -116,20 +138,30 @@ def _prompt(question: str, settings: Settings) -> int:
 
 def _ask(question: str, settings: Settings) -> int:
     """Retrieve, answer and print one question."""
+    _warn_if_paid(settings)
     service = get_llm_service(settings)
     retriever = get_retriever()
     _answer_one(service, retriever, question)
     return 0
 
 
-def _demo(settings: Settings) -> int:
+def _demo(settings: Settings, allow_paid: bool = False) -> int:
     """Answer every demo question end to end."""
+    paid = _warn_if_paid(settings)
+    if paid and not allow_paid:
+        print(
+            f"REFUSED: demo would make up to {len(DEMO_QUESTIONS)} paid calls. "
+            "Re-run with --paid to confirm you accept the cost."
+        )
+        return 2
+
     service = get_llm_service(settings)
     retriever = get_retriever()
 
     print(RULE)
     print(f"Provider: {service.provider.provider_id} / {service.provider.model_id}")
-    print("Deterministic and in-process. No network call, no API key, no cost.")
+    if not paid:
+        print("Deterministic and in-process. No network call, no API key, no cost.")
     print(RULE)
 
     for question in DEMO_QUESTIONS:

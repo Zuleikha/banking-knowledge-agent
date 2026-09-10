@@ -62,6 +62,26 @@ class LLMTimeoutError(LLMError):
     retryable = True
 
 
+class LLMConnectionError(LLMError):
+    """The request never completed: the transport failed, or the service did.
+
+    Covers a connection reset, a DNS or TLS failure, and any 5xx the provider
+    returns. Retryable, because nothing about the request is wrong.
+
+    **Added in Stage 5, and the reason is worth keeping.** Stage 4 defined this
+    taxonomy with no adapter to test it against, and it had a gap: the only
+    retryable types were a timeout and a rate limit. Writing the first two real
+    adapters immediately produced failures that are neither -- ``APIConnectionError``
+    and ``InternalServerError`` exist in both vendors' SDKs -- and the choices
+    were to mislabel them as timeouts or to mark them non-retryable through
+    :class:`LLMProviderError`. Both are wrong in the one field callers branch on.
+    That a concrete adapter found this within an hour is the argument for
+    building one at all.
+    """
+
+    retryable = True
+
+
 class LLMRateLimitError(LLMError):
     """The provider rejected the request for rate or quota reasons."""
 

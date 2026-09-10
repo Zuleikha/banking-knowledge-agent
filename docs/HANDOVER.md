@@ -7,36 +7,53 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-10** · Stage 4 approved, committed and pushed (`9a0b462`) ·
-Stage 5 **in progress** — split into two approval checkpoints (A: the agent, B: two
-concrete adapters). The previously-open provider decision is now **RESOLVED** — see
-*Stage 5 decision*.
+Last updated: **2026-09-10** · Stage 5 **Checkpoint A approved, committed (`1478631`) and
+pushed** · Checkpoint B **implemented and awaiting approval**. The previously-open
+provider decision is **RESOLVED** — two adapters, no vendor chosen, default stays `mock`,
+no live key. See *Stage 5 decision*.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** Stage 5 **in progress**, Checkpoint A.
+**Session state:** Stage 5 **Checkpoint B implemented, awaiting the user's approval.**
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 4 — LLM Abstraction** (approved 2026-09-09) |
-| `HEAD` at Stage 5 start | `9a0b462` `docs(stage-4)…` = `origin/main` — **verified 2026-09-10** |
-| Working tree at Stage 5 start | Clean |
-| Tests at Stage 5 start | **385 passed** · ruff clean · mypy strict clean (29 source files) |
+| Last **approved** work | **Stage 5 Checkpoint A** (approved 2026-09-10, `1478631`, pushed) |
+| `HEAD` | `1478631` = `origin/main` |
+| Working tree | 15 uncommitted Checkpoint B paths |
+| Tests | **601 passed** · ruff clean · mypy strict clean (37 source files) |
 | Current stage | **Stage 5 — Knowledge Agent + concrete LLM adapters** |
+
+> 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
+> defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
+> `BKA_LLM_API_KEY` makes every answered question a **paid** call. No live call has ever
+> been made from this repository.
+
+### To resume Stage 5 work
+
+```bash
+cd D:/PROJECTS/banking-knowledge-agent
+git log --oneline -3          # expect 1478631 feat(stage-5a) on top
+./.venv/Scripts/python.exe -m pytest        # expect 601 passed
+./.venv/Scripts/python.exe -m app.agent demo    # 5 grounded + 2 refusals, FREE
+```
+
+> If the venv is missing, recreate it per the Stage 4 instructions below — note that
+> `requirements.txt` now also installs `anthropic` and `openai` (small pure-Python
+> packages; the large artefact is still PyTorch).
 
 ### Stage 5 is split into two approval checkpoints
 
 | | Scope | Status |
 |---|---|---|
-| **Checkpoint A** | The knowledge agent itself (`prompt.md` §13), tested entirely against `MockLLMProvider`. No vendor involved | 🔄 **in progress** |
-| **Checkpoint B** | Two concrete adapters — `AnthropicProvider` **and** `OpenAIProvider` — offline-tested, default still `mock` | ⏳ not started; **requires Checkpoint A approval first** |
+| **Checkpoint A** | The knowledge agent itself (`prompt.md` §13), tested entirely against `MockLLMProvider`. No vendor involved | ✅ **Approved 2026-09-10, committed `1478631`, pushed** |
+| **Checkpoint B** | Two concrete adapters — `AnthropicProvider` **and** `OpenAIProvider` — offline-tested, default still `mock` | 🔄 **in progress** |
 
-> ⛔ Each checkpoint stops for explicit approval before any commit or push. Checkpoint B
-> must not begin until Checkpoint A is approved.
+> ⛔ Each checkpoint stops for explicit approval before any commit or push.
 
 ### To resume
 
@@ -85,9 +102,9 @@ git status                    # expect clean
 |---|---|
 | **Stage number** | 5 |
 | **Stage name** | Knowledge Agent + concrete LLM adapters |
-| **Status** | 🔄 **IN PROGRESS — Checkpoint A** |
-| **Last completed step** | HEAD verified against this file (`9a0b462` = `origin/main`, tree clean); Stage 5 provider decision recorded below **before** any code was written |
-| **Next step** | Implement Checkpoint A — the knowledge agent, against `MockLLMProvider` only |
+| **Status** | 🔄 **IN PROGRESS — Checkpoint B** |
+| **Last completed step** | Checkpoint A approved 2026-09-10; committed `1478631` and pushed to `origin/main`, push verified |
+| **Next step** | Implement Checkpoint B — `AnthropicProvider` and `OpenAIProvider`, offline-tested, default still `mock` |
 
 > ⛔ Each Stage 5 checkpoint must STOP after implementation and testing, and wait for
 > explicit approval before any commit or push. Checkpoint B must not begin until
@@ -136,7 +153,54 @@ Stage 14. Full record with rejected alternatives goes in
 
 ## Current Work
 
-### Implemented in Stage 5 — Checkpoint A (this session)
+### Implemented in Stage 5 — Checkpoint B (this session)
+
+- **`AnthropicProvider`** — `app/llm/anthropic_provider.py`. Official `anthropic` SDK.
+  Translates request, response and the whole exception hierarchy. Reads text from the
+  **text blocks**, not `content[0]` — with thinking on, the first block is reasoning, and
+  reading it positionally would put reasoning where the answer belongs.
+- **`OpenAIProvider`** — `app/llm/openai_provider.py`. Official `openai` SDK. Same seam,
+  different shape: system prompt as a message, `max_completion_tokens` (not the
+  deprecated `max_tokens`, which reasoning models reject), and a refusal reported on
+  `message.refusal` **while `finish_reason` still says `"stop"`**.
+- **Pinned** — `anthropic==1.4.0`, `openai==3.11.0` in `requirements.txt`, with a comment
+  stating that installing them does not enable spending.
+- **Factory extended** — `AVAILABLE_PROVIDERS = ("mock", "anthropic", "openai")`, plus
+  `PAID_PROVIDERS` and `is_paid_provider()`. **The default is unchanged: `mock`.** The
+  SDK import is *deferred into the branch that needs it*, so the app still starts, still
+  serves `/health` and still runs on the mock with neither SDK installed; a missing SDK
+  becomes a typed configuration error, not an `ImportError`.
+- **AST guard narrowed, not deleted** — `ADAPTER_MODULES` is an explicit two-name
+  allow-list; every other module in `app/llm/` is default-denied. The five seam modules
+  named in the instruction are asserted to exist, so a rename cannot empty the guarded
+  set. The adapters stay bound by the secrets rule (no hardcoded URL, no key literal).
+- **Cost guard** — both CLIs warn when a paid provider is configured, and `demo` (7
+  questions in `app.agent`, 6 in `app.llm`) **refuses** without `--paid`, checking before
+  an index or a client is built. `ask` only warns: one call is a proportionate mistake.
+- **Tests** — 112 new (489 → **601**): `tests/test_llm_adapters.py` (99) plus the
+  rewritten guard and default-provider tests in `tests/test_llm_provider.py`. **Entirely
+  offline** — every test injects a fake SDK client. No network call, no key, no cost.
+- **Docs** — guide §20.6–§20.9 (four records), §2, §3, §4, §9, §12, §14, §16, §19;
+  README gained an "LLM providers — two adapters, and why" section.
+
+> ⚠️ **No live API call has been made** — not in the suite, not by hand. Building the
+> adapters did not authorise one, and it still needs the user's explicit confirmation at
+> the time.
+
+#### One thing was added beyond the stated Checkpoint B scope, deliberately
+
+`LLMConnectionError` was added to `app/llm/base.py` (a seam module). **Why:** Stage 4
+designed the error taxonomy with no adapter to test it against, and it had a gap — the
+only retryable types were a timeout and a rate limit. Both SDKs raise a plain
+`APIConnectionError` and an `InternalServerError` that are neither. The two available
+mappings were each wrong in the one field callers branch on: `LLMTimeoutError` would
+misname a connection reset, and `LLMProviderError` would mark a transient 502 permanently
+broken. Shipping a knowingly-wrong `retryable` flag is worse than adding a class, so the
+class was added — additive, nothing else changed. Recorded in guide §20.9, and it is the
+clearest evidence that building a real adapter was worth doing: Stage 4's own tests could
+never have found this, because a mock raises whatever a test tells it to.
+
+### Implemented in Stage 5 — Checkpoint A (approved, committed `1478631`, pushed)
 
 - **Routing decision** — `app/agent/policy.py`. `decide_retrieval(question)` returns a
   frozen `RetrievalDecision` carrying the rule that produced it. Two reasons:
@@ -236,31 +300,32 @@ Stage 14. Full record with rejected alternatives goes in
 
 ### Currently being worked on
 
-**Stage 5 Checkpoint A is complete, tested and documented, and is waiting for the user's
-approval before any commit.** Checkpoint B has not been started and must not be started
-until Checkpoint A is approved.
+**Stage 5 Checkpoint B is complete, tested and documented, and is waiting for the user's
+approval before any commit.** Nothing from Checkpoint B is committed or pushed.
 
-### What remains unfinished in Checkpoint A
+### What remains unfinished in Checkpoint B
 
-Nothing that `prompt.md` §13 requires. Deliberately absent, recorded as deferred rather
-than missed:
+Nothing the instruction requires. Deliberately absent, recorded as deferred rather than
+missed:
 
-1. **Concrete adapters** — that is Checkpoint B of this same stage, already decided
-   (two adapters) and recorded above.
-2. **Answer quality evidence** — the agent is tested for *routing and wiring* with real
-   retrieval semantics, but the provider is a mock, so nothing here proves a real model
-   answers well from these prompts. Stage 11's evaluation set measures that. Carried
-   forward unchanged from Stage 4.
-3. **HTTP exposure** — the agent is reachable from the CLI only. Wiring it to FastAPI is
-   Stage 9, and doing it now would mean an endpoint with no interface and no request
-   observability (Stage 10) behind it.
+1. **Answer quality evidence — still unmeasured, and now for a different reason.** Real
+   adapters exist, but no live call has been made, so nothing proves a real model answers
+   *well* from these prompts. The adapters are proven correct in what they **send, parse
+   and translate**, not in what comes back. Measuring the rest needs a key, a budget and
+   explicit confirmation; it is Stage 11's evaluation set.
+2. **Streaming and async** — neither adapter streams. `CompletionRequest` carries no
+   streaming flag and the protocol is synchronous (Stage 4, guide §20.4.9). Adding either
+   now would be an untested interface with no caller until Stage 9.
+3. **Retry policy** — the errors carry `retryable`, and both SDK clients are constructed
+   with `BKA_LLM_MAX_RETRIES`, but nothing above the seam acts on the flag. Choosing a
+   backoff belongs with a real deadline, which arrives with the HTTP layer.
+4. **HTTP exposure** — the agent is still CLI-only. Stage 9.
 
 ### Not yet implemented (later stages)
 
-Concrete LLM adapters (5, **Checkpoint B**) · MCP tools (6) · Tool selection (7) ·
-Conversation context (8) · Web interface (9) · Request observability (10) ·
-Evaluation framework (11) · Docker (12) · Security review (13) ·
-Production architecture (14) · Final review (15)
+MCP tools (6) · Tool selection (7) · Conversation context (8) · Web interface (9) ·
+Request observability (10) · Evaluation framework (11) · Docker (12) ·
+Security review (13) · Production architecture (14) · Final review (15)
 
 ---
 
@@ -378,6 +443,20 @@ GET /health → FastAPI router → HealthResponse
 | `app/agent/agent.py` | `KnowledgeAgent.ask` / `ask_many` — decide, retrieve, generate |
 | `app/agent/factory.py` | `get_agent` — composition from configuration |
 | `app/agent/__main__.py` | CLI: ask / demo |
+| `app/llm/anthropic_provider.py` | Anthropic adapter — **paid**; one of two vendor modules |
+| `app/llm/openai_provider.py` | OpenAI adapter — **paid**; the other |
+
+### Important design decisions (Stage 5 — Checkpoint B)
+
+Summary only — the **full reasoning, with rejected alternatives, is in
+`docs/architecture-guide.html` §20.6–§20.9**, which is the authoritative record.
+
+| Decision | Reasoning (short) |
+|---|---|
+| **Two adapters, not one; no vendor chosen** (5.6) | One adapter proves an adapter can be written; two prove the *abstraction*. Writing the second is what forces the first's assumptions out of shared code — the two APIs disagree on system-prompt placement, the token-ceiling parameter, stop reasons, where a refusal is reported, how text is returned and every usage field name. It also closes the vendor question instead of leaving it to return at Stage 9 and Stage 14 |
+| **Default stays `mock`; four independent guards** (5.7) | Spending needs two deliberate acts. The provider default is the guard that does not depend on the environment — "the key isn't set" fails the moment a contributor exports one for another project. `demo` refuses rather than warns because it is 7 calls with no undo; `ask` warns because 1 is proportionate |
+| **AST guard narrowed, not deleted** (5.8) | Adding adapters is exactly when that guard starts earning its keep. Explicit two-name allow-list, everything else default-denied. Narrowing also exposed a real bug: the old substring match on `"import anthropic"` would have failed the factory's own honest `from app.llm.anthropic_provider import …`, and the tempting fix was to hide the import behind `importlib` — defeating the guard to satisfy it. The test was wrong; the test was fixed |
+| **`LLMConnectionError` added to the taxonomy** (5.9) | Stage 4 wrote the taxonomy with nothing to test it against and left a gap: no retryable type for a connection failure or a 5xx. Both mappings available were wrong in the one field callers read. A concrete adapter found it in an hour; a mock never could |
 
 ### Important design decisions (Stage 5 — Checkpoint A)
 
@@ -434,7 +513,36 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 5 Checkpoint A (8 files, uncommitted)
+### Added in Stage 5 Checkpoint B (3 files, uncommitted)
+
+| File | Purpose |
+|---|---|
+| `app/llm/anthropic_provider.py` | Anthropic adapter — request/response/error translation |
+| `app/llm/openai_provider.py` | OpenAI adapter — the same seam, a different vendor |
+| `tests/test_llm_adapters.py` | 99 tests — both adapters, offline against a fake client |
+
+### Modified in Stage 5 Checkpoint B (8 files, uncommitted)
+
+| File | Change |
+|---|---|
+| `app/llm/base.py` | Added `LLMConnectionError` (retryable) — the gap the adapters exposed |
+| `app/llm/factory.py` | 3 providers, `PAID_PROVIDERS`, `is_paid_provider()`, deferred SDK import |
+| `app/llm/__init__.py` | Exports `LLMConnectionError`; docstring rewritten for two adapters |
+| `app/llm/__main__.py` | Paid-provider warning; `demo --paid` guard |
+| `app/agent/__main__.py` | Paid-provider warning; `demo --paid` guard |
+| `app/core/config.py` | Comments only — `llm_provider`, `llm_api_key`, transport |
+| `requirements.txt` | `anthropic==1.4.0`, `openai==3.11.0`, pinned, with a no-spend note |
+| `.env.example` | LLM and secrets sections rewritten for three providers |
+| `tests/test_llm_provider.py` | Guard narrowed to seam modules; new no-paid-call-by-default class |
+| `README.md` | Status, stack, layout, test count, new "LLM providers" section |
+| `docs/architecture-guide.html` | §20.6–§20.9 added; §2, §3, §4, §9, §12, §14, §16, §19 |
+| `docs/HANDOVER.md` | This file |
+
+> The venv gained `anthropic`, `openai` and 5 transitive packages
+> (`httpx2`, `httpcore2`, `jiter`, `docstring-parser`, `truststore`). This is a package
+> download, not an API call — the same category as Stage 3's model download.
+
+### Added in Stage 5 Checkpoint A (8 files, committed in `1478631`)
 
 | File | Purpose |
 |---|---|
@@ -447,7 +555,7 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 | `tests/test_agent.py` | 77 tests — policy, wiring, both refusal routes, record, errors |
 | `tests/test_agent_integration.py` | 27 tests — real model, the 5 seed questions + controls |
 
-### Modified in Stage 5 Checkpoint A (4 files, uncommitted)
+### Modified in Stage 5 Checkpoint A (4 files, committed in `1478631`)
 
 | File | Change |
 |---|---|
@@ -532,7 +640,71 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Testing
 
-### Result (Stage 5 — Checkpoint A)
+### Result (Stage 5 — Checkpoint B)
+
+**601 passed, 0 failed** (489 from Stages 1–5A, **112 new**). Runtime ~52 s.
+`ruff check .` → *All checks passed!*
+`mypy` (strict) → *Success: no issues found in 37 source files*
+
+> ⚠️ Measured inside the Claude Code session, which is **elevated** (Problems §15).
+> Please confirm 601 in your own shell before approving.
+
+| Checkpoint B test file | Tests | Covers |
+|---|---|---|
+| `tests/test_llm_adapters.py` | 99 | **Both adapters, entirely offline** — every test injects a fake SDK client. **Construction**: a missing key refuses before a client exists; an injected client needs no key; each adapter owns its own default model. **What is sent**: system prompt placement (top-level vs a message), `max_tokens` vs `max_completion_tokens`, the user turn verbatim, and *no* sampling or thinking parameters. **What is parsed**: every stop-reason and finish-reason value including unknown and `None`; a leading thinking block not mistaken for the answer; an OpenAI refusal arriving labelled `"stop"`; null content; a reply with no choices raising; usage translated from differently-named fields; the *answering* model recorded rather than the requested one. **Error translation**: all nine mappings per vendor with the right `retryable` flag, the ordering traps asserted (`APITimeoutError` **is** an `APIConnectionError`), `retry-after` parsed, absent and HTTP-date forms both degrading to `None`, the cause preserved, and a 401 message asserted not to echo the key. **The cost guard**: `demo` refuses before building anything; the free path is not blocked. **The seam is proved**: identical assertions run against *both* adapters, through `LLMService` and through `KnowledgeAgent` |
+| `tests/test_llm_provider.py` | 13 changed / added | The guard narrowed to seam modules with an explicit two-name exemption; the seam module names asserted to exist; the factory asserted to *name* vendors while importing none; both adapters asserted free of hardcoded URLs and key literals; and a new `TestNoPaidCallByDefault` class — `mock` is the default with the env var cleared, the registry lists it first, `PAID_PROVIDERS` excludes it, and each paid provider without a key raises naming `BKA_LLM_API_KEY` and the word `PAID` |
+
+### Commands used (Checkpoint B)
+
+```bash
+./.venv/Scripts/python.exe -m pytest                            # 601 passed, ~52 s
+./.venv/Scripts/python.exe -m pytest tests/test_llm_adapters.py # 99 passed, ~4 s
+./.venv/Scripts/python.exe -m ruff check .                      # All checks passed!
+./.venv/Scripts/python.exe -m mypy                              # 37 source files
+```
+
+### The no-spend properties, verified by hand (2026-09-10)
+
+```
+1. default, no env set
+   -> llm.provider_selected  paid=False provider=mock
+   -> grounded answer, 5 passages, free
+
+2. BKA_LLM_PROVIDER=anthropic, python -m app.agent demo
+   -> "!! BKA_LLM_PROVIDER=anthropic - this is a PAID API."
+   -> "REFUSED: demo would make up to 7 paid calls. Re-run with --paid"
+   -> exit code 2, no agent built, no call made
+
+3. BKA_LLM_PROVIDER=anthropic, python -m app.agent ask "test"   (no key)
+   -> warning printed, then LLMConfigurationError:
+      "needs BKA_LLM_API_KEY, which is unset ... a real call is a PAID call"
+   -> no SDK client was ever constructed
+
+4. env restored
+   -> provider = mock | key set = False
+```
+
+**No live API call was made at any point.**
+
+### Checkpoint B required coverage (the user's instruction)
+
+| Requirement | Status |
+|---|---|
+| 1. `AnthropicProvider` using the official `anthropic` SDK | ✅ `app/llm/anthropic_provider.py` |
+| 2. `OpenAIProvider` using the official `openai` SDK | ✅ `app/llm/openai_provider.py` |
+| 3. Both pinned in `requirements.txt` | ✅ `anthropic==1.4.0`, `openai==3.11.0` |
+| 4. Factory + `AVAILABLE_PROVIDERS` accept `anthropic`/`openai`; **default stays `mock`** | ✅ Default unchanged and asserted with the env var cleared |
+| 5. `BKA_LLM_API_KEY` environment-only, optional, unset; no key wired in; no live call | ✅ Verified by hand and by test; nothing hardcoded anywhere |
+| 6. AST guard **narrowed, not deleted**; seam modules vendor-free; only adapters exempt | ✅ Explicit two-name allow-list, everything else default-denied |
+| 6b. Test that `mock` is still the default when `BKA_LLM_PROVIDER` is unset | ✅ `test_mock_is_the_default_provider_when_the_env_var_is_unset` |
+| 7. Adapter tests offline; SDK/HTTP mocked; no paid call in CI or here | ✅ 99 tests, fake client injected throughout |
+| 8. Guide §20.6 — why two adapters, what/why/rejected | ✅ §20.6, plus §20.7–§20.9 |
+| 9. Handover updated, decision recorded as previously deferred → resolved | ✅ *Stage 5 decision* near the top, written **before** any code |
+| 10. STAGE COMPLETE report, then STOP | ✅ Below |
+
+---
+
+### Result (Stage 5 — Checkpoint A, for reference)
 
 **489 passed, 0 failed** (385 from Stages 1–4, **104 new**). Runtime ~51 s.
 `ruff check .` → *All checks passed!*
@@ -953,6 +1125,30 @@ Decisions already taken with the user's explicit answer:
 - The mock's token counts are a crude `len(text) // 4` estimate, named as an estimate in
   the source. They exist so usage accounting is exercised end to end, not to be accurate.
 
+### Security check (Stage 5 — Checkpoint B)
+
+⚠️ **The "no code path can make a paid call" property is deliberately gone.** Two real
+adapters exist now. It is replaced by four independent guards, all tested:
+✅ **`BKA_LLM_PROVIDER` still defaults to `mock`** — asserted by a test that clears the
+environment variable first. This is the guard that does not depend on the environment.
+✅ **Neither adapter can be constructed without `BKA_LLM_API_KEY`** — it raises before an
+SDK client object exists, and it does **not** fall through to `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY`, which both SDKs would read silently. That fall-through would turn a
+forgotten setting into a working, billing configuration.
+✅ **Every adapter test injects a fake client.** The test settings carry no key, so a test
+that forgot would fail rather than reach the internet.
+✅ **Both CLIs refuse a multi-question `demo` against a paid provider** without `--paid`,
+checking *before* an index or a client is built. Verified by hand and by test.
+✅ **No key anywhere.** No `sk-`/`sk-ant-` prefixes, no `.env`, nothing hardcoded. The one
+secret-shaped literal in the suite is the synthetic `"not-a-real-key-for-tests"`, which
+exists so a test can assert a 401 message does **not** contain it.
+✅ **The no-vendor AST guard survives, narrowed.** Seam modules stay vendor-free by an
+explicit two-name allow-list; `app/agent/` is guarded whole.
+✅ **Neither adapter hardcodes a URL** — asserted by test. Endpoints come from the SDKs.
+✅ **Adapter logs record shape and cost only** — model, stop reason, token counts. Never
+the prompt or the answer, both of which embed document text.
+✅ **No live API call has been made**, in the suite or by hand.
+
 ### Security check (Stage 4)
 
 ✅ **No paid API call is possible.** The only provider is in-process. A test parses every
@@ -1002,12 +1198,38 @@ source for reassessment in Stage 13.
 | **Stage 3 docs commit** | `docs(stage-3): record commit hash and push result in handover` — this file's own commit, directly on top of `be9297c` |
 | **Stage 4 commit** | `bee4b22` — `feat(stage-4): LLM abstraction — provider seam, prompts, context injection` |
 | **Stage 4 docs commit** | `9a0b462` — `docs(stage-4): record commit hash and push result in handover` |
-| **Stage 5 Checkpoint A commit** | ⏳ **not created** — awaiting the user's approval |
-| **Push status** | ✅ `origin/main == local HEAD == 9a0b462`, verified 2026-09-10 at Stage 5 start |
-| **Working tree** | 12 uncommitted Checkpoint A paths (listed below), plus git-ignored local files |
+| **Stage 5 Checkpoint A commit** | `1478631` — `feat(stage-5a): knowledge agent - decide, retrieve, ground, answer` |
+| **Stage 5 Checkpoint B commit** | ⏳ **not created** — awaiting the user's approval |
+| **Push status** | ✅ `origin/main == 1478631` (Checkpoint A); Checkpoint B unpushed |
+| **Working tree** | 15 uncommitted Checkpoint B paths (listed below), plus git-ignored local files |
+| **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
 | **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
 | **Deliberately not committed** | `prompt.md`, `prompt1.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
+
+### The exact Stage 5 Checkpoint B file set — verified with `git add -An`, 2026-09-10
+
+15 paths, and **no others**. `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`,
+`prompt.md`, `prompt1.md` and `ccp.txt` are all absent from the listing.
+
+```
+add '.env.example'                    add 'app/llm/anthropic_provider.py'
+add 'README.md'                       add 'app/llm/openai_provider.py'
+add 'app/agent/__main__.py'           add 'tests/test_llm_adapters.py'
+add 'app/core/config.py'
+add 'app/llm/__init__.py'             add 'app/llm/base.py'
+add 'app/llm/__main__.py'             add 'app/llm/factory.py'
+add 'docs/HANDOVER.md'                add 'requirements.txt'
+add 'docs/architecture-guide.html'    add 'tests/test_llm_provider.py'
+```
+
+**Secret scan.** No vendor key prefixes (`sk-`, `sk-ant-`), no base64/hex literals over
+40 characters, no card-number-shaped digit runs, no `.env` file. **One deliberate hit,
+reviewed and kept:** `tests/test_llm_adapters.py:158` assigns
+`llm_api_key = "not-a-real-key-for-tests"`. It is a synthetic, self-labelling placeholder
+whose only purpose is the test asserting that a 401 error message cannot echo the key —
+the test would be meaningless without a value to look for. **Git locks:** none; no
+`git.exe` running. **No nested `banking-knowledge-agent/` directory.**
 
 ### The exact Stage 5 Checkpoint A file set — verified with `git add -An`, 2026-09-10
 
@@ -1083,44 +1305,38 @@ edit.
 
 ## Next Action
 
-**STOP. Stage 5 Checkpoint A is implemented, tested and documented, and is waiting for
-the user's explicit approval.** Nothing is committed. Nothing is pushed.
+**STOP. Stage 5 Checkpoint B is implemented, tested and documented, and is waiting for
+the user's explicit approval.** Nothing from Checkpoint B is committed or pushed.
 
-### On approval of Checkpoint A, in this order
+### On approval of Checkpoint B, in this order
 
-1. Re-run `pytest` (expect 489), `ruff check .`, `mypy` (expect 35 source files).
+1. Re-run `pytest` (expect 601), `ruff check .`, `mypy` (expect 37 source files).
 2. Run the pre-commit checklist in the *Git* section below — `git add -An` first, and
    confirm `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`, `prompt.md`,
-   `prompt1.md`, `ccp.txt` are absent from the list.
-3. Commit the 12-file Checkpoint A set, push, verify `origin/main == HEAD`, record the
-   hash here.
-4. **Then, and only then, begin Checkpoint B.**
+   `prompt1.md`, `ccp.txt` are absent from the list. Scan the new files for
+   secret-shaped values with particular care this time: two files now legitimately
+   contain the words "api_key".
+3. Commit the Checkpoint B set, push, verify `origin/main == HEAD`, record the hash here.
+4. **Then Stage 5 is complete.** Do not continue automatically into Stage 6 — wait for
+   the user to start it.
 
-### Checkpoint B scope, for when it starts (do not start it unapproved)
+### Stage 6 scope, for when it is started (`prompt.md` §14)
 
-The decision is already taken and recorded above under *Stage 5 decision*. The work:
+MCP tools: synthetic banking support tools (system configuration, transaction status,
+component status, error-code lookup, system version, service health), synthetic data
+only, with knowledge retrieval kept clearly separate from live/tool information. Two
+things Stage 5 leaves ready for it:
 
-1. `AnthropicProvider` in `app/llm/anthropic_provider.py`, using the official
-   `anthropic` SDK.
-2. `OpenAIProvider` in `app/llm/openai_provider.py`, using the official `openai` SDK.
-3. Both SDKs pinned in `requirements.txt`.
-4. `app/llm/factory.py` + `AVAILABLE_PROVIDERS` extended so `BKA_LLM_PROVIDER` accepts
-   `anthropic` and `openai` as well as `mock`. **The default stays `mock`** — nothing
-   calls a real API unless someone deliberately sets the variable. A test asserts that.
-5. `BKA_LLM_API_KEY` stays environment-only, optional, unset. No key wired in anywhere.
-   **No live call is made in this stage, in the suite or by hand.**
-6. **Narrow, do not delete, the AST guard** in `tests/test_llm_provider.py`: the seam
-   modules (`base.py`, `prompts.py`, `service.py`, `factory.py`, `mock.py`) must stay
-   vendor-free; only the two adapter modules are exempt from that assertion.
-7. Adapter tests stay offline — mock the SDK client / HTTP layer. No network, no cost.
-8. Guide §20.6 in the same what / why / rejected form: why two adapters rather than one.
-9. Update this handover continuously.
-10. **STOP** and wait for approval again.
+- `DecisionReason` in `app/agent/models.py` is the literal Stage 6 extends when the agent
+  gains a second real branch. Guide §20.5.1 records why it has only two values today.
+- Tool results are untrusted input in exactly the way retrieved documents are. The
+  fencing and escaping in `app/llm/prompts.py` were built for documents; Stage 6 should
+  extend the same treatment rather than inventing a second scheme.
 
-> ⚠️ **Building two adapters does not authorise a live call, now or later.** A real LLM
-> call is a paid call and needs the user's explicit confirmation, given separately at the
-> time. Checkpoint B must leave the repository in a state where cloning it and running
-> the suite still costs nothing.
+> ⚠️ **The two adapters still do not authorise a live call.** A real LLM call is a paid
+> call and needs the user's explicit confirmation, given separately at the time. The
+> repository is in a state where cloning it and running the suite costs nothing, and that
+> property should be preserved.
 
 ### Decision taken before Stage 4 implementation begins — LLM provider
 

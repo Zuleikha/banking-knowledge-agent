@@ -4,14 +4,24 @@ Mirrors :func:`app.rag.embeddings.get_embedder`: one function, driven by
 configuration, so adding a vendor is a new module plus a branch here — never a
 change to the service, the agent, or the API layer.
 
-**Stage 4 registers exactly one provider: the mock.** No vendor has been chosen
-yet, so there is deliberately nothing here that can reach the network, read a
-key, or spend money.
+**Three providers are registered, and the default is the free one.**
+``BKA_LLM_PROVIDER`` accepts ``mock`` (default), ``anthropic`` and ``openai``.
+The default is deliberately unchanged by Stage 5: cloning this repository and
+running the suite still costs nothing, and a real API call — a **paid** call —
+happens only when somebody deliberately sets that variable *and* supplies a key.
+Two properties keep that honest rather than aspirational: the default is
+asserted by a test, and neither adapter can be constructed without a key.
 
-**An unknown provider is a loud failure, not a fallback.** Configuring
-``BKA_LLM_PROVIDER=anthropic`` today raises
-:class:`~app.llm.base.LLMConfigurationError` and names Stage 5. Falling back to
-the mock would be far worse than an error: the application would start, answer
+**Vendor names appear here; vendor code does not.** The two SDK imports live in
+the adapter modules, and are reached through a deferred import inside the branch
+that needs one. So this module stays importable — and the whole application
+stays runnable on the mock — even if neither SDK is installed. An
+:class:`ImportError` from a missing SDK is translated into a configuration
+error, because "the package is not installed" is an environment problem and
+should read like one.
+
+**An unknown provider is a loud failure, not a fallback.** Falling back to the
+mock would be far worse than an error: the application would start, answer
 questions, and look entirely healthy while a deterministic stub stood in for a
 model — and the only evidence would be a wording change nobody reads.
 """
@@ -27,8 +37,25 @@ from app.llm.service import LLMService
 
 logger = get_logger(__name__)
 
-AVAILABLE_PROVIDERS = (MOCK_PROVIDER_ID,)
-"""Providers this build can construct. Grows when an adapter is added."""
+ANTHROPIC_PROVIDER_ID = "anthropic"
+OPENAI_PROVIDER_ID = "openai"
+
+AVAILABLE_PROVIDERS = (MOCK_PROVIDER_ID, ANTHROPIC_PROVIDER_ID, OPENAI_PROVIDER_ID)
+"""Providers this build can construct. The mock is first, and is the default."""
+
+PAID_PROVIDERS = (ANTHROPIC_PROVIDER_ID, OPENAI_PROVIDER_ID)
+"""Providers whose ``complete()`` costs money. Named so the fact is greppable
+rather than folklore — the CLI reads this to warn before it runs."""
+
+
+def is_paid_provider(settings: Settings | None = None) -> bool:
+    """Whether the configured provider bills for every ``complete()`` call.
+
+    Exists so the CLIs can warn before spending rather than after. The knowledge
+    of which providers cost money lives here, beside the registry, so a future
+    adapter cannot be added to one list and forgotten in the other.
+    """
+    return (settings or get_settings()).llm_provider in PAID_PROVIDERS
 
 
 @traced
@@ -43,21 +70,56 @@ def get_provider(settings: Settings | None = None) -> LLMProvider:
 
     Raises:
         LLMConfigurationError: If ``BKA_LLM_PROVIDER`` names a provider this
-            build cannot construct.
+            build cannot construct, if the named provider's SDK is not
+            installed, or if a paid provider is configured without a key.
     """
     resolved = settings or get_settings()
     requested = resolved.llm_provider
 
     if requested == MOCK_PROVIDER_ID:
-        logger.info("llm.provider_selected", provider=requested)
+        logger.info("llm.provider_selected", provider=requested, paid=False)
         return MockLLMProvider()
+
+    if requested in PAID_PROVIDERS:
+        provider = _build_paid_provider(requested, resolved)
+        logger.info(
+            "llm.provider_selected",
+            provider=requested,
+            model=provider.model_id,
+            # Loud in the log, because this is the line that separates a free
+            # run from a billed one.
+            paid=True,
+        )
+        return provider
 
     raise LLMConfigurationError(
         f"BKA_LLM_PROVIDER='{requested}' is not available in this build. "
-        f"Available: {', '.join(AVAILABLE_PROVIDERS)}. A concrete provider "
-        "adapter is deferred to a decision before Stage 5; until then the mock "
-        "is the only implementation, and it is not substituted silently."
+        f"Available: {', '.join(AVAILABLE_PROVIDERS)}. The mock is the default "
+        "and is never substituted silently for a provider that was asked for."
     )
+
+
+def _build_paid_provider(requested: str, settings: Settings) -> LLMProvider:
+    """Import and construct one of the vendor adapters.
+
+    The import is deferred to here so that a missing SDK cannot stop the
+    application from starting, running on the mock, or serving ``/health``.
+    """
+    try:
+        if requested == ANTHROPIC_PROVIDER_ID:
+            from app.llm.anthropic_provider import AnthropicProvider
+
+            return AnthropicProvider(settings)
+
+        from app.llm.openai_provider import OpenAIProvider
+
+        return OpenAIProvider(settings)
+    except ImportError as exc:
+        raise LLMConfigurationError(
+            f"BKA_LLM_PROVIDER='{requested}' needs its SDK, which is not "
+            f"installed in this environment ({exc}). Install the pinned "
+            "dependencies: pip install -r requirements.txt"
+        ) from exc
 
 
 @traced

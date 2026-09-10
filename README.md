@@ -18,12 +18,17 @@ containerisation and clean architecture.
 | | |
 |---|---|
 | **Current stage** | Stage 5 — Knowledge Agent |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, **the knowledge agent: question → decide → retrieve → ground → source-backed answer, or an explicit refusal** |
-| **Not yet implemented** | A concrete LLM provider, MCP tools, tool selection, conversation context, web UI, Docker |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, **the knowledge agent**, **two concrete LLM adapters (Anthropic + OpenAI)** |
+| **Not yet implemented** | MCP tools, tool selection, conversation context, web UI, Docker |
 
-> **No paid API call exists in this repository.** The only LLM provider that ships is a
-> deterministic in-process mock, so the whole project clones, runs and tests with no
-> account, no API key and no spend.
+> **Cloning this repository and running its tests costs nothing.** `BKA_LLM_PROVIDER`
+> defaults to a deterministic in-process **mock** — no account, no API key, no spend.
+>
+> Two real vendor adapters ship (see [Knowledge agent](#knowledge-agent) below), but
+> spending needs **two** deliberate acts: switch `BKA_LLM_PROVIDER` **and** set
+> `BKA_LLM_API_KEY`. Neither adapter can even be constructed without a key, and the
+> multi-question `demo` commands refuse to run against a paid provider without `--paid`.
+> **No live API call has ever been made from this repository.**
 
 Detailed progress and the exact next action live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md).
@@ -69,6 +74,7 @@ for the full reference.
 | **Pydantic / pydantic-settings** | Validation at the boundary; typed env-based config |
 | **structlog** | Log *events with fields*, not formatted strings — required for Stage 10 |
 | **sentence-transformers** | Local `all-MiniLM-L6-v2` embeddings — semantic search with no API key and no per-query cost |
+| **`anthropic` + `openai`** | Two adapters behind one seam, so a vendor swap is a config line. Neither is the default; installing them does not enable spending |
 | **NumPy** | The vector index *is* a NumPy matrix; search is one `matrix @ query` |
 | **pytest** | Test suite, including async API tests |
 | **ruff / mypy** | Formatting, linting and strict type checking |
@@ -145,7 +151,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 489 tests
+.venv/Scripts/python.exe -m pytest                       # 601 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -195,14 +201,18 @@ banking-knowledge-agent/
 │   │   ├── vectorstore.py   # VectorStore protocol + NumPy implementation
 │   │   ├── retriever.py     # Question -> embedding -> search -> sources
 │   │   └── pipeline.py      # build_index / load_retriever / fingerprint
-│   ├── llm/                 # No vendor SDK is imported anywhere in here
+│   ├── llm/
 │   │   ├── __main__.py      # CLI: prompt | ask | demo
 │   │   ├── models.py        # CompletionRequest, LLMResponse, GroundedAnswer
-│   │   ├── base.py          # LLMProvider protocol + error taxonomy
-│   │   ├── prompts.py       # Versioned instructions, context budget + fencing
-│   │   ├── mock.py          # Deterministic in-process provider (the only one)
-│   │   ├── service.py       # Context injection -> generate -> validate -> answer
-│   │   └── factory.py       # Provider selection from configuration
+│   │   ├── base.py          # LLMProvider protocol + error taxonomy    <- seam
+│   │   ├── prompts.py       # Versioned instructions, budget + fencing <- seam
+│   │   ├── mock.py          # Deterministic in-process provider (default)
+│   │   ├── service.py       # Context injection -> generate -> validate
+│   │   ├── factory.py       # Provider selection from configuration
+│   │   ├── anthropic_provider.py  # Anthropic adapter  <- 1 of 2 vendor modules
+│   │   └── openai_provider.py     # OpenAI adapter     <- the other
+│   │   #  ^ these two are the ONLY files allowed to import a vendor SDK,
+│   │   #    enforced by an AST test over the rest of the package
 │   └── agent/               # The seam between rag/ and llm/
 │       ├── __main__.py      # CLI: ask | demo
 │       ├── models.py        # RetrievalDecision, RetrievalSummary, AgentAnswer
@@ -226,6 +236,7 @@ banking-knowledge-agent/
 │   ├── test_llm_prompts.py       # Context budget, fencing, injection defence
 │   ├── test_llm_provider.py      # Protocol, mock, factory, errors, no-network
 │   ├── test_llm_service.py       # Injection, refusal, errors, provenance
+│   ├── test_llm_adapters.py      # Both vendors, offline — shapes + error mapping
 │   ├── test_agent.py             # Routing, wiring, refusals, execution record
 │   └── test_agent_integration.py # Real model — the 5 seed questions end to end
 ├── docs/
@@ -410,13 +421,73 @@ A  The knowledge base does not contain enough information to answer this questio
 | **Error handling** | Six typed errors, each carrying `retryable`. Truncated, refused and empty generations **raise** — a half-finished sentence about a transaction limit reads as complete, which makes it worse than an error. |
 | **No evidence → no call** | When retrieval finds nothing, the service refuses without calling the provider at all. A generation with zero context can only refuse or invent. |
 
-**The only provider is a deterministic in-process mock.** No network, no key, no
-cost — and that is structural rather than a discipline: no code path exists that
-calls anything. Setting `BKA_LLM_PROVIDER` to anything else **raises** rather than
-falling back to the mock, because an application that answers questions with a stub
-while looking healthy is worse than one that refuses to start.
-
 Full reasoning, including rejected alternatives, is in §20.4 of
+[`docs/architecture-guide.html`](docs/architecture-guide.html).
+
+---
+
+## LLM providers — two adapters, and why
+
+```bash
+BKA_LLM_PROVIDER=mock       # DEFAULT · deterministic, in-process, FREE
+BKA_LLM_PROVIDER=anthropic  # real Anthropic API · PAID · needs BKA_LLM_API_KEY
+BKA_LLM_PROVIDER=openai     # real OpenAI API    · PAID · needs BKA_LLM_API_KEY
+```
+
+Switching vendor is **that one line**. No application code changes — not the
+service, not the agent, not the CLI. That is the claim an abstraction makes, and
+building the *second* adapter is what turns it into evidence: with one adapter,
+a seam is indistinguishable from a wrapper shaped around a single vendor's API.
+
+Neither is "the" chosen vendor. The point was to prove the seam and close the
+question, not to pick a supplier.
+
+**What the seam actually absorbs** — the two APIs disagree about nearly
+everything that crosses it:
+
+| Concern | Anthropic | OpenAI |
+|---|---|---|
+| System instructions | top-level `system=` | a `system`-role message |
+| Output ceiling | `max_tokens` | `max_completion_tokens` |
+| Why it stopped | `stop_reason`, 7 values | `finish_reason`, 5 values |
+| A refusal | `stop_reason="refusal"` | `message.refusal` — while `finish_reason` still says `"stop"` |
+| The generated text | text blocks in a list, possibly after a thinking block | `message.content`, nullable |
+| Token counts | `input_tokens` / `output_tokens` | `prompt_tokens` / `completion_tokens` |
+
+Two of those are traps, and both are passing tests: reading `content[0]` on
+Anthropic returns *reasoning* as the answer once thinking is on, and trusting
+`finish_reason` alone on OpenAI hands back an empty string labelled complete
+when the model actually refused.
+
+### Spending is guarded in four places
+
+1. **`BKA_LLM_PROVIDER` defaults to `mock`** — asserted by a test that clears
+   the environment variable first.
+2. **Neither adapter can be constructed without `BKA_LLM_API_KEY`.** It raises
+   *before* an SDK client exists, and it does **not** fall through to
+   `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, which both SDKs would read silently.
+3. **Every adapter test injects a fake client.** The test settings carry no key,
+   so a test that forgot would fail rather than reach the internet.
+4. **The `demo` commands refuse a paid run** without `--paid`, checking before
+   an index or a client is built. `ask` only warns — one call is a
+   proportionate mistake; seven is not.
+
+```
+$ BKA_LLM_PROVIDER=anthropic python -m app.agent demo
+!! BKA_LLM_PROVIDER=anthropic - this is a PAID API.
+!! Every answered question is a billed call. Unset the variable, or
+!! set BKA_LLM_PROVIDER=mock, to run free.
+REFUSED: demo would make up to 7 paid calls. Re-run with --paid to confirm.
+```
+
+**No live API call has ever been made from this repository** — not in the suite,
+not by hand. The adapters are proven correct in what they *send, parse and
+translate*; whether a real model answers *well* is unmeasured, and is Stage 11's
+job. The 99 adapter tests run offline against a fake SDK client, which covers
+more than a live call would: every stop-reason value and all nine error mappings,
+rather than one happy path.
+
+Full reasoning is in §20.5.6–§20.5.9 of
 [`docs/architecture-guide.html`](docs/architecture-guide.html).
 
 ---

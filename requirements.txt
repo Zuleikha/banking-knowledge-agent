@@ -21,3 +21,15 @@ PyYAML==6.0.2
 sentence-transformers==5.7.0
 torch==2.14.0
 numpy==2.5.3
+
+# --- LLM provider adapters (Stage 5) ---------------------------------------
+# TWO vendor SDKs, deliberately. One adapter proves an adapter can be written;
+# two prove the abstraction -- that swapping providers is a configuration
+# change and nothing else. Neither is "the" chosen vendor.
+#
+# Installing these does NOT enable spending. BKA_LLM_PROVIDER still defaults to
+# "mock", and neither adapter can be constructed without BKA_LLM_API_KEY, which
+# is unset. A paid call needs a deliberate change to both. The test suite mocks
+# the SDK clients and makes no network call.
+anthropic==1.4.0
+openai==3.11.0
