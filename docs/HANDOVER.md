@@ -7,26 +7,27 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-10** · Stage 5 **Checkpoint A approved, committed (`1478631`) and
-pushed** · Checkpoint B **implemented and awaiting approval**. The previously-open
+Last updated: **2026-09-10** · **Stage 5 complete and approved** — Checkpoint A
+(`1478631`) and Checkpoint B (`6ebe947`) both committed and pushed. The previously-open
 provider decision is **RESOLVED** — two adapters, no vendor chosen, default stays `mock`,
-no live key. See *Stage 5 decision*.
+no live key, no live call. See *Stage 5 decision*.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** Stage 5 **Checkpoint B implemented, awaiting the user's approval.**
+**Session state:** Stage 5 complete and approved, both checkpoints committed and pushed.
+**Nothing is in progress.** No half-finished work, no blockers, no open questions.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** work | **Stage 5 Checkpoint A** (approved 2026-09-10, `1478631`, pushed) |
-| `HEAD` | `1478631` = `origin/main` |
-| Working tree | 15 uncommitted Checkpoint B paths |
+| Last **approved** stage | **Stage 5 — Knowledge Agent + LLM adapters** (approved 2026-09-10) |
+| `HEAD` | `6ebe947` = `origin/main` — verified |
+| Working tree | Clean, apart from git-ignored local files |
 | Tests | **601 passed** · ruff clean · mypy strict clean (37 source files) |
-| Current stage | **Stage 5 — Knowledge Agent + concrete LLM adapters** |
+| Next stage | **Stage 6 — MCP Tools** (not started) |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -51,9 +52,11 @@ git log --oneline -3          # expect 1478631 feat(stage-5a) on top
 | | Scope | Status |
 |---|---|---|
 | **Checkpoint A** | The knowledge agent itself (`prompt.md` §13), tested entirely against `MockLLMProvider`. No vendor involved | ✅ **Approved 2026-09-10, committed `1478631`, pushed** |
-| **Checkpoint B** | Two concrete adapters — `AnthropicProvider` **and** `OpenAIProvider` — offline-tested, default still `mock` | 🔄 **in progress** |
+| **Checkpoint B** | Two concrete adapters — `AnthropicProvider` **and** `OpenAIProvider` — offline-tested, default still `mock` | ✅ **Approved 2026-09-10, committed `6ebe947`, pushed** |
 
-> ⛔ Each checkpoint stops for explicit approval before any commit or push.
+**Stage 5 is therefore complete and fully approved.** Next stage: **Stage 6 — MCP tools**
+(`prompt.md` §14). It has **not** been started, and must not be started without the
+user's instruction.
 
 ### To resume
 
@@ -102,9 +105,9 @@ git status                    # expect clean
 |---|---|
 | **Stage number** | 5 |
 | **Stage name** | Knowledge Agent + concrete LLM adapters |
-| **Status** | 🔄 **IN PROGRESS — Checkpoint B** |
-| **Last completed step** | Checkpoint A approved 2026-09-10; committed `1478631` and pushed to `origin/main`, push verified |
-| **Next step** | Implement Checkpoint B — `AnthropicProvider` and `OpenAIProvider`, offline-tested, default still `mock` |
+| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — both checkpoints committed and pushed** |
+| **Last completed step** | Checkpoint B approved 2026-09-10; committed `6ebe947` and pushed to `origin/main`, push verified |
+| **Next step** | **Stage 6 — MCP Tools** (`prompt.md` §14). Not started; wait for the user to start it |
 
 > ⛔ Each Stage 5 checkpoint must STOP after implementation and testing, and wait for
 > explicit approval before any commit or push. Checkpoint B must not begin until
@@ -300,8 +303,8 @@ never have found this, because a mock raises whatever a test tells it to.
 
 ### Currently being worked on
 
-**Stage 5 Checkpoint B is complete, tested and documented, and is waiting for the user's
-approval before any commit.** Nothing from Checkpoint B is committed or pushed.
+**Nothing.** Stage 5 is complete, approved, committed (`1478631`, `6ebe947`) and pushed.
+Stage 6 has not been started.
 
 ### What remains unfinished in Checkpoint B
 
@@ -1199,10 +1202,11 @@ source for reassessment in Stage 13.
 | **Stage 4 commit** | `bee4b22` — `feat(stage-4): LLM abstraction — provider seam, prompts, context injection` |
 | **Stage 4 docs commit** | `9a0b462` — `docs(stage-4): record commit hash and push result in handover` |
 | **Stage 5 Checkpoint A commit** | `1478631` — `feat(stage-5a): knowledge agent - decide, retrieve, ground, answer` |
-| **Stage 5 Checkpoint B commit** | ⏳ **not created** — awaiting the user's approval |
-| **Push status** | ✅ `origin/main == 1478631` (Checkpoint A); Checkpoint B unpushed |
-| **Working tree** | 15 uncommitted Checkpoint B paths (listed below), plus git-ignored local files |
+| **Stage 5 Checkpoint B commit** | `6ebe947` — `feat(stage-5b): two concrete LLM adapters - Anthropic and OpenAI` |
+| **Push status** | ✅ Pushed to `origin/main` (`1478631..6ebe947`); verified `origin/main == local HEAD == 6ebe947` |
+| **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
+| **Committed in Checkpoint B** | 15 files: 3 added, 12 modified — 2,533 insertions, 245 deletions |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
 | **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
 | **Deliberately not committed** | `prompt.md`, `prompt1.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
@@ -1305,20 +1309,11 @@ edit.
 
 ## Next Action
 
-**STOP. Stage 5 Checkpoint B is implemented, tested and documented, and is waiting for
-the user's explicit approval.** Nothing from Checkpoint B is committed or pushed.
+**Stage 5 is complete and approved. Both checkpoints are committed and pushed.**
+`origin/main == HEAD == 6ebe947`, working tree clean, 601 tests passing.
 
-### On approval of Checkpoint B, in this order
-
-1. Re-run `pytest` (expect 601), `ruff check .`, `mypy` (expect 37 source files).
-2. Run the pre-commit checklist in the *Git* section below — `git add -An` first, and
-   confirm `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`, `prompt.md`,
-   `prompt1.md`, `ccp.txt` are absent from the list. Scan the new files for
-   secret-shaped values with particular care this time: two files now legitimately
-   contain the words "api_key".
-3. Commit the Checkpoint B set, push, verify `origin/main == HEAD`, record the hash here.
-4. **Then Stage 5 is complete.** Do not continue automatically into Stage 6 — wait for
-   the user to start it.
+**The next action is to begin Stage 6 — MCP Tools — when the user asks for it.**
+Do not start it unprompted. Stage 5's approval does not carry over.
 
 ### Stage 6 scope, for when it is started (`prompt.md` §14)
 
