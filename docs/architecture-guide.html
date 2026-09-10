@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 4 - LLM Abstraction &nbsp;·&nbsp; Last updated 2026-09-09</div>
+    <div class="pill">Stage 5 - Knowledge Agent &nbsp;·&nbsp; Last updated 2026-09-10</div>
   </div>
 </header>
 
@@ -125,7 +125,7 @@ containerisation, each behind a clean boundary.</p>
    └────────┬─────────┘
             ▼
    ┌──────────────────┐
-   │   Agent / LLM    │   Stages 4, 5, 7
+   │   Agent / LLM    │   Stages 4 ✅, 5 ✅, 7
    └────────┬─────────┘
             │
             ├──▶ RAG Knowledge Retrieval    Stages 2, 3  ✅
@@ -143,7 +143,7 @@ containerisation, each behind a clean boundary.</p>
   <tr><td>2</td><td>Domain knowledge - synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>3</td><td>RAG pipeline - chunking, embeddings, vector store, retrieval</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>4</td><td>LLM abstraction - provider-agnostic prompt &amp; response layer</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>6</td><td>MCP tools - synthetic banking support tools</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>7</td><td>Agent decision &amp; tool selection</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>8</td><td>Conversation context</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -191,14 +191,20 @@ containerisation, each behind a clean boundary.</p>
 │   │   ├── vectorstore.py        VectorStore protocol + NumPy implementation
 │   │   ├── retriever.py          Question → embedding → search → sources
 │   │   └── pipeline.py           build_index / load_retriever / fingerprint
-│   └── llm/                      LLM abstraction - NO vendor named in here
-│       ├── __main__.py           CLI: prompt | ask | demo
-│       ├── models.py             CompletionRequest, LLMResponse, GroundedAnswer
-│       ├── base.py               LLMProvider protocol + error taxonomy
-│       ├── prompts.py            Versioned instructions, context budget + fencing
-│       ├── mock.py               Deterministic in-process provider (the only one)
-│       ├── service.py            Context injection → generate → validate → answer
-│       └── factory.py            Provider selection from configuration
+│   ├── llm/                      LLM abstraction - NO vendor named in here
+│   │   ├── __main__.py           CLI: prompt | ask | demo
+│   │   ├── models.py             CompletionRequest, LLMResponse, GroundedAnswer
+│   │   ├── base.py               LLMProvider protocol + error taxonomy
+│   │   ├── prompts.py            Versioned instructions, context budget + fencing
+│   │   ├── mock.py               Deterministic in-process provider (the only one)
+│   │   ├── service.py            Context injection → generate → validate → answer
+│   │   └── factory.py            Provider selection from configuration
+│   └── agent/                    Knowledge agent - the seam between rag/ and llm/
+│       ├── __main__.py           CLI: ask | demo
+│       ├── models.py             RetrievalDecision, RetrievalSummary, AgentAnswer
+│       ├── policy.py             decide_retrieval - is a search required?
+│       ├── agent.py              KnowledgeAgent.ask - route, retrieve, generate
+│       └── factory.py            get_agent - composition from configuration
 ├── data/
 │   ├── knowledge/                Synthetic banking documents (15 .md files)
 │   │   ├── api/  atm/  cards/  configuration/
@@ -220,7 +226,9 @@ containerisation, each behind a clean boundary.</p>
 │   ├── test_rag_integration.py   Real model - retrieval quality
 │   ├── test_llm_prompts.py       Context budget, fencing, injection defence
 │   ├── test_llm_provider.py      Protocol, mock, factory, errors, no-network
-│   └── test_llm_service.py       Injection, refusal, error handling, provenance
+│   ├── test_llm_service.py       Injection, refusal, error handling, provenance
+│   ├── test_agent.py             Routing, wiring, refusals, execution record
+│   └── test_agent_integration.py Real model - the 5 seed questions end to end
 ├── docs/
 │   ├── HANDOVER.md               Session recovery point
 │   └── architecture-guide.html   ← this file
@@ -232,7 +240,7 @@ containerisation, each behind a clean boundary.</p>
 └── README.md</pre>
 
 <p><strong>Directories added in later stages:</strong>
-<code>app/agent/</code> (5, 7), <code>app/mcp/</code> (6), <code>app/web/</code> (9),
+<code>app/mcp/</code> (6), <code>app/web/</code> (9),
 <code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
 
 <div class="note">
@@ -432,13 +440,43 @@ containerisation, each behind a clean boundary.</p>
         injection is this stage's claim, and a claim you cannot see is one you cannot
         check. <code>ask</code> and <code>demo</code> run it end to end, offline.</td>
   </tr>
+  <tr>
+    <td><code>app/agent/models.py</code><br><span class="muted">RetrievalDecision, RetrievalSummary, AgentAnswer</span></td>
+    <td>The execution record as a returned value. <code>AgentAnswer</code> wraps the LLM
+        layer's <code>GroundedAnswer</code> unmodified and adds the route taken and what
+        retrieval considered - so Stage 9 renders provenance instead of scraping logs.
+        The summary carries shape, never passage text.</td>
+  </tr>
+  <tr>
+    <td><code>app/agent/policy.py</code><br><span class="muted">decide_retrieval()</span></td>
+    <td>Is a knowledge search required? One substantive branch in Stage 5, and the
+        module says why a keyword classifier or an LLM router would be a guess rather
+        than a decision. Stages 6 and 7 add branches here.</td>
+  </tr>
+  <tr>
+    <td><code>app/agent/agent.py</code><br><span class="muted">KnowledgeAgent.ask()</span></td>
+    <td>The seam between <code>rag/</code> and <code>llm/</code>: decide → retrieve →
+        generate → record. Builds no prompts and owns no model. A question it declines to
+        search is routed through Stage 4's empty-evidence guard, so there is exactly one
+        refusal sentence in the system. Provider failures propagate.</td>
+  </tr>
+  <tr>
+    <td><code>app/agent/factory.py</code><br><span class="muted">get_agent()</span></td>
+    <td>Composition in one place: retriever + provider + settings. It does not choose a
+        provider itself - that stays in <code>app/llm/factory.py</code>, so
+        <code>BKA_LLM_PROVIDER</code> is interpreted once.</td>
+  </tr>
+  <tr>
+    <td><code>app/agent/__main__.py</code></td>
+    <td>CLI: <code>ask</code> and <code>demo</code>. Prints the decision, the retrieval
+        record and the citations, because the mock's prose is a wiring check and the
+        provenance is the part worth reading.</td>
+  </tr>
 </table>
 
 <h3>Planned</h3>
 <table>
   <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
-  <tr><td><code>app/llm/&lt;vendor&gt;_provider.py</code></td><td>The first concrete adapter. Which vendor, and whether a live key is wired in, is a decision deferred to before Stage 5.</td><td>5</td></tr>
-  <tr><td><code>app/agent/agent.py</code></td><td>Orchestrates retrieve → ground → answer, and refuses when evidence is thin.</td><td>5, 7</td></tr>
   <tr><td><code>app/mcp/tools/</code></td><td>Synthetic support tools: config lookup, transaction status, component status, error codes, versions, service health.</td><td>6</td></tr>
   <tr><td><code>app/agent/context.py</code></td><td>Session handling and bounded conversation history.</td><td>8</td></tr>
 </table>
@@ -448,31 +486,40 @@ containerisation, each behind a clean boundary.</p>
 <section id="dataflow">
 <h2>5. Data flow</h2>
 
-<h3>Today (Stage 3)</h3>
-<p>Two independent paths. Retrieval and generation are now joined, but neither is
-reachable over HTTP - the API does not call them until Stage 5, when the agent exists to
-sit between them.</p>
+<h3>Today (Stage 5)</h3>
+<p>Two independent paths. Retrieval and generation are now joined by the agent, but the
+whole chain is still only reachable from the CLI - the API does not call it until
+Stage 9.</p>
 
-<pre class="plain">HTTP GET /health                     python -m app.llm ask "..."
+<pre class="plain">HTTP GET /health                     python -m app.agent ask "..."
    │                                    │
    ▼                                    ▼
-FastAPI router                       Retriever
-   │  SettingsDep reads                 │  embed → filter → cosine → top-k → floor
-   │  request.app.state.settings        ▼
-   ▼                                 RetrievalResult (chunks + sources + why)
-HealthResponse (Pydantic)               │
-   │                                    ├──▶ logs/app.log  "rag.retrieved"
-   ├──▶ logs/app.log                    ▼
-   └──▶ HTTP 200 JSON               LLMService.answer()
+FastAPI router                       KnowledgeAgent.ask()
+   │  SettingsDep reads                 │  decide_retrieval → RetrievalDecision
+   │  request.app.state.settings        │
+   ▼                                    ├── no searchable content ──▶ empty result
+HealthResponse (Pydantic)               ▼
+   │                                 Retriever
+   ├──▶ logs/app.log                    │  embed → filter → cosine → top-k → floor
+   └──▶ HTTP 200 JSON                   ▼
+                                     RetrievalResult (chunks + sources + why)
+                                        │
+                                        ├──▶ logs/app.log  "rag.retrieved"
+                                        ▼
+                                     LLMService.answer()
                                         │  budget → fence → generate → validate
                                         │
                                         ├── empty result ──▶ refuse, NO model call
                                         ▼
                                      GroundedAnswer (text + sources + provenance)
                                         │
-                                        └──▶ logs/app.log  "llm.answered"
-                                                 provider, model, chunks, tokens
-                                                 — never the prompt or the answer</pre>
+                                        ├──▶ logs/app.log  "llm.answered"
+                                        ▼        provider, model, chunks, tokens
+                                     AgentAnswer  + decision + retrieval summary
+                                        │
+                                        └──▶ logs/app.log  "agent.answered"
+                                                 route and shape only — never the
+                                                 question, passages or answer text</pre>
 
 <h3>Target (Stage 9 complete)</h3>
 <pre class="plain">Question
@@ -649,45 +696,131 @@ Windows and inside a container.</p>
 <!-- ================================================================== -->
 <section id="agent">
 <h2>7. Agent flow</h2>
-<span class="tag t-todo">PLANNED - Stages 5 &amp; 7</span>
+<span class="tag t-done">BUILT - Stage 5</span>
+
+<p>Stage 5 is the first component that owns a complete request. Stages 3 and 4 each built
+one half and were deliberately kept ignorant of the other - the retriever has no LLM
+dependency, and <code>LLMService</code> does not retrieve. The agent is the seam between
+them, and it is a thin one on purpose.</p>
 
 <pre class="plain">Question
    │
-   ▼
-Does this need knowledge, live data, both, or neither?
+   ▼  ask()                app/agent/agent.py     blank → ValueError
    │
-   ├── knowledge ────▶ RAG retrieval
-   ├── live data ────▶ MCP tool call
-   ├── both ─────────▶ retrieval + tool call
-   └── insufficient ─▶ say so explicitly
+   ▼  decide_retrieval()   app/agent/policy.py    RetrievalDecision
    │
-   ▼
-Assemble context (retrieved chunks + tool results + bounded history)
+   ├── retrieve = False ──▶ empty RetrievalResult      no embedding, no search
+   │      "no_searchable_content"                      e.g. "!!! ???"
    │
-   ▼
-LLM generation, grounded in that context only
+   └── retrieve = True  ──▶ Retriever.retrieve()       Stage 3
+          "knowledge_required"                         115 chunks scored, floor 0.25
    │
+   ▼  LLMService.answer(question, retrieval)           Stage 4, UNCHANGED
+   │        no evidence ──▶ fixed refusal sentence, and ZERO provider calls
+   │        evidence    ──▶ budget · fence · generate · validate
    ▼
-Answer + sources + tool activity</pre>
+AgentAnswer      text · sources · decision · retrieval summary · GroundedAnswer
+   │
+   └──▶ logs/app.log  "agent.answered"   route and shape only - never the question,
+                                         the passages or the answer text</pre>
+
+<h3>Three outcomes, and a caller can tell them apart without reading the prose</h3>
+<table>
+  <tr><th style="width:190px">Outcome</th><th>How it is identified</th><th>What it means</th></tr>
+  <tr>
+    <td><strong>Grounded answer</strong></td>
+    <td><code>is_grounded</code> - a model was consulted with ≥1 passage in front of it</td>
+    <td>Answer the documentation supports, with citations</td>
+  </tr>
+  <tr>
+    <td><strong>Refused after searching</strong></td>
+    <td><code>refused</code> + <code>retrieval.performed</code></td>
+    <td>The corpus was searched; nothing cleared the floor. <em>"We don't document this."</em></td>
+  </tr>
+  <tr>
+    <td><strong>Refused without searching</strong></td>
+    <td><code>refused</code> + <code>not retrieval.performed</code></td>
+    <td>The question had nothing to search for. <em>"That isn't a question."</em></td>
+  </tr>
+</table>
+<p>All three are correct outcomes. Only the first is an answer. A provider failure is
+<strong>none</strong> of them - it raises, because a broken model and an undocumented
+answer need different responses from whoever is reading.</p>
 
 <h3>The grounding rule</h3>
 <p>The agent must not invent technical facts. When the knowledge base does not contain
 enough evidence, the correct output is an explicit statement to that effect - not a
 plausible guess. In a banking support context a confident wrong answer is worse than
 "I don't have that documented."</p>
+<p>This is enforced in three places that each remove a different route to a fabricated
+answer, and none of them is a prompt instruction alone:</p>
+<ul>
+  <li><strong>The score floor</strong> (Stage 3, calibrated at 0.25) turns "nothing here is
+      relevant" into an empty result instead of five least-bad passages.</li>
+  <li><strong>The empty-evidence guard</strong> (Stage 4) refuses without calling the model
+      at all, so there is no request that <em>could</em> return an invention.</li>
+  <li><strong>The system prompt</strong> (Stage 4, v1.0.0) disqualifies the model's own
+      knowledge as a source and requires a citation per claim.</li>
+</ul>
+<div class="warn">
+  <strong>One definition of "insufficient".</strong> A question the agent declines to
+  search is routed through Stage 4's existing guard rather than getting a refusal of its
+  own. The API, the web interface and Stage 11's evaluation harness all detect a refusal
+  by matching that exact sentence - two sources for it is one too many.
+</div>
 
 <h3>What is exposed</h3>
-<p>Execution information is surfaced - retrieval performed, documents used, tool called,
-tool result, final answer. Hidden chain-of-thought is <strong>not</strong> exposed.</p>
+<p>Execution information is surfaced as a returned value, not only as a log line -
+<code>AgentAnswer.decision</code> and <code>AgentAnswer.retrieval</code> carry the route
+taken, how many passages were considered, how many cleared the floor, the top score and
+which documents they came from. Stage 9 renders that directly instead of scraping its own
+logs. Hidden chain-of-thought is <strong>not</strong> exposed.</p>
+<p>The retrieval <em>summary</em> is deliberately separate from the passages themselves:
+the summary is safe to log and to display, the passage text is document content and is
+not.</p>
 
-<h3>Example questions the agent must handle</h3>
-<ul>
-  <li>Why would an ATM transaction fail after card authentication?</li>
-  <li>What component handles card authentication?</li>
-  <li>Which API is used for payment authorisation?</li>
-  <li>How would I troubleshoot a failed cash withdrawal?</li>
-  <li>What configuration controls transaction limits?</li>
-</ul>
+<h3>The five seed questions, run end to end</h3>
+<p>Real output from <code>python -m app.agent demo</code> - real corpus, real embedding
+model, mock provider. The answer prose is a wiring check; the provenance is the part
+worth reading.</p>
+<pre class="plain">Q  Why would an ATM transaction fail after card authentication?
+   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.790]
+   → atm-transaction-lifecycle
+
+Q  What component handles card authentication?
+   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.804]
+   → card-authentication  (+ card-pin-verification at [5])
+
+Q  Which API is used for payment authorisation?
+   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.784]
+   → payment-authorisation-api
+
+Q  How would I troubleshoot a failed cash withdrawal?
+   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.819]
+   → atm-cash-withdrawal-troubleshooting
+
+Q  What configuration controls transaction limits?
+   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.775]
+   → transaction-limits-configuration
+
+--- the two controls -------------------------------------------------------
+
+Q  What is the capital of France?
+   [decision: knowledge_required]   [0 of 115 passages cleared 0.25 · top none]
+   REFUSED after searching · provider calls: 0
+
+Q  !!! ???
+   [decision: no_searchable_content] [retrieval: not performed]
+   REFUSED without searching · provider calls: 0</pre>
+
+<h3>What Stage 5 deliberately does not do</h3>
+<table>
+  <tr><th style="width:210px">Not here</th><th>Where it belongs, and why not now</th></tr>
+  <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduces MCP; Stage 7 introduces choosing between knowledge and tools. There is nothing to choose between yet.</td></tr>
+  <tr><td><strong>Conversation history</strong></td><td>Stage 8. Every question here is independent, and the request contract already carries a message tuple so history appends rather than reshapes.</td></tr>
+  <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors carry a <code>retryable</code> flag from Stage 4; deciding a retry policy without a real provider's failure behaviour would be guessing at numbers.</td></tr>
+  <tr><td><strong>Latency in the answer</strong></td><td>Stage 10 decides deliberately what a request record contains. <code>@traced</code> already records per-call duration to <code>logs/traces.log</code>.</td></tr>
+</table>
 </section>
 
 <!-- ================================================================== -->
@@ -972,7 +1105,7 @@ the architecturally correct layer for it anyway.</p>
 
 <table>
   <tr><th style="width:200px">File</th><th>Covers</th></tr>
-  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root, corpus and retriever, and for Stage 4 a mock provider, a wired <code>LLMService</code>, and both a populated and an empty <code>RetrievalResult</code> over the real corpus.</td></tr>
+  <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root, corpus and retriever, for Stage 4 a mock provider, a wired <code>LLMService</code>, and both a populated and an empty <code>RetrievalResult</code> over the real corpus, and for Stage 5 an <code>agent</code> composed from those - offline, deterministic and free.</td></tr>
   <tr><td><code>tests/test_config.py</code></td><td>Defaults, environment overrides, rejection of invalid port and environment, caching, immutability.</td></tr>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
@@ -985,20 +1118,23 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_llm_prompts.py</code></td><td>The system instructions (grounding rules, citation requirement, the exact refusal sentence, no vendor and no proprietary reference in the text), the context budget (chunk and character limits, order preserved, never truncated, always at least one passage), rendering and citation metadata, and the <strong>injection defence</strong>: attribute escaping, and a passage containing the literal closing fence failing to escape it. Ends with the stage's central claim asserted against the real corpus - only the selected passages reach the prompt, and every other document is absent from it.</td></tr>
   <tr><td><code>tests/test_llm_provider.py</code></td><td>Protocol conformance (including a structurally-typed implementation that inherits nothing), the full error taxonomy and its <code>retryable</code> flags, the mock's three modes, the factory refusing an unavailable provider without falling back, and configuration - including that a key set in the environment appears in <em>neither</em> a repr nor a dump. Ends with the safety property: an AST walk over every module in <code>app/llm/</code> asserting no vendor SDK, no HTTP client and no URL.</td></tr>
   <tr><td><code>tests/test_llm_service.py</code></td><td>What actually reaches the provider (versioned system prompt, question present once, passages fenced, knowledge base absent, budgets honoured), the refusal path making <em>no</em> provider call at all, and error handling: timeout and rate limit propagate with their retry hints, an untyped vendor exception is wrapped with its cause preserved, and refused / truncated / empty generations raise rather than being shown.</td></tr>
+  <tr><td><code>tests/test_agent.py</code></td><td>The routing policy (every real question retrieves; a question with no searchable content does not; a keyword classifier's two failure cases would break and are asserted against), the wiring (the question reaches the retriever verbatim, one question is one retrieval and one generation, the retrieved passages reach the prompt and the whole knowledge base does not), <strong>both refusal routes</strong> - after searching and without searching - producing the identical sentence with <em>zero</em> provider calls, the execution record, and failures propagating rather than being disguised as refusals. Ends with the stage boundary: no tools, no conversation state, no vendor import.</td></tr>
+  <tr><td><code>tests/test_agent_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>The seed questions, with real semantics.</strong> Each of the five is answered from its own document, cites it, and clears the floor above 0.5; three off-topic controls are refused after being searched, at zero model cost; and two paraphrases with no shared vocabulary still find the right document. Shares one module-scoped index across the file - the transformer is loaded once, the provider is fresh per test so call counts stay meaningful.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 385 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 489 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
 
 <div class="note">
-  <strong>The Stage 4 suite cannot make a paid call, and that is structural.</strong>
+  <strong>The suite cannot make a paid call, and that is structural.</strong>
   It is not that the network is mocked out - it is that no code path exists which calls
   anything. The only provider is in-process, and a test parses every import in
-  <code>app/llm/</code> to assert that no vendor SDK and no HTTP client is reachable
-  from the package. When the first real adapter lands, that test is what will force it
-  to be added deliberately rather than by accident.
+  <code>app/llm/</code> - and, from Stage 5, in <code>app/agent/</code> - to assert that
+  no vendor SDK and no HTTP client is reachable from either package. When the first real
+  adapter lands, that test is what will force it to be added deliberately rather than by
+  accident.
 </div>
 
 <div class="note">
@@ -1072,8 +1208,9 @@ knowledge data stays available inside the image or a mounted volume.</p>
       construct arbitrary Python objects.</li>
   <li>The test suite scans the whole corpus on every run for secret-shaped values
       (private keys, assigned passwords or API keys) and card-number-shaped digit runs.</li>
-  <li>Knowledge documents are treated as untrusted data, not instructions - they become
-      LLM input in Stage 5.</li>
+  <li>Knowledge documents are treated as untrusted data, not instructions. From Stage 5
+      they <em>are</em> LLM input on every answered question, so the Stage 4 guards below
+      are now on the live path rather than waiting for one.</li>
   <li>The embedding model runs <strong>locally</strong>: no document text and no user
       question leaves the machine during indexing or retrieval. That is a data-privacy
       property, not just a cost one - a hosted embedding API would send every question
@@ -1127,6 +1264,16 @@ Stage 13 reassesses the whole surface.</p>
   request <em>shape</em> and cost - passage count, token counts, stop reason, prompt
   version - and never the prompt or the answer text, both of which embed document
   content. What a request record should contain is decided deliberately in Stage 10.
+</div>
+
+<div class="note">
+  <strong>What Stage 5 added to the logging surface, and what it deliberately did not.</strong>
+  <code>agent.answered</code> records the route taken, the counts, the top score and the
+  document <em>ids</em> - not the question, not the passages, not the answer. The question
+  is already recorded once by the retriever (a deliberate, flagged decision); logging it
+  again at the agent would double the exposure for no extra diagnostic value. The split
+  between <code>RetrievalSummary</code> (shape - safe to log and to display) and the
+  chunks themselves (document content - not) is a security boundary, not a tidiness one.
 </div>
 </section>
 
@@ -1863,11 +2010,170 @@ caller until Stage 9.</p>
   <tr><td><strong>A single <code>prompt: str</code></strong></td><td>Simplest today, but conflates system instructions with user input - the distinction the injection defence in 4.3 depends on.</td></tr>
 </table>
 </div>
+
+<h3 style="margin-top:32px">Stage 5 - Knowledge agent</h3>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.1 &nbsp; The retrieval decision has one substantive branch, and says so</h3>
+
+<p><strong>Chosen.</strong> <code>decide_retrieval()</code> returns a
+<code>RetrievalDecision</code> with two possible reasons:
+<code>knowledge_required</code> - search the corpus - and
+<code>no_searchable_content</code> - the question contains no alphanumeric character at
+all, so skip the search. Every real question takes the first branch.</p>
+
+<p><strong>Why.</strong> <code>prompt.md</code> §13 requires the agent to
+<em>"determine whether knowledge retrieval is required"</em>, and the honest answer in
+Stage 5 is <em>always yes</em>. Retrieval is the agent's only evidence: it holds no tools
+until Stage 6, and the system prompt explicitly disqualifies the model's own knowledge as
+a source. A second substantive branch would be fiction dressed as sophistication. What
+the policy <em>can</em> decide honestly is when searching is pointless - <code>"!!! ???"</code>
+is a real input a web form produces, and skipping the embedding call gives a more precise
+diagnosis ("nothing to search for") than the alternative ("searched 115 passages, found
+nothing"). The decision point exists, is named, is tested and is returned to the caller,
+so Stages 6 and 7 add branches to a structure that is already there rather than
+introducing the concept late.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr>
+    <td><strong>A keyword / topic classifier</strong> <span class="muted">("contains 'ATM' or 'card' → retrieve")</span></td>
+    <td>Fails in both directions, and both were tested. <em>"Why did the withdrawal
+        reverse?"</em> contains no listed keyword and would skip retrieval that in fact
+        succeeds; <em>"what is a payment in cricket?"</em> contains one and would retrieve
+        regardless. It is a guess about the corpus wearing the costume of a decision - and
+        the score floor already answers relevance properly, with calibration behind the
+        number.</td>
+  </tr>
+  <tr>
+    <td><strong>An LLM router</strong> <span class="muted">(ask the model whether to retrieve)</span></td>
+    <td>A model call per question to choose between one option and itself, paid for in
+        latency and cost, and non-deterministic so it cannot be asserted offline. Worth
+        revisiting at Stage 7 when there is a real choice to make.</td>
+  </tr>
+  <tr>
+    <td><strong>No decision at all - just always retrieve</strong></td>
+    <td>Delivers the same behaviour but leaves nothing to extend and nothing to report.
+        The <em>route taken</em> is information Stage 9 has to display and Stage 11 has to
+        evaluate; deriving it later from an absent record is not possible.</td>
+  </tr>
+  <tr>
+    <td><strong>A minimum question length</strong> <span class="muted">("under 3 words → refuse")</span></td>
+    <td>Judging a question's substance is the score floor's job and it has measured
+        evidence behind it. <em>"PIN?"</em> is one word and retrieves correctly.</td>
+  </tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.2 &nbsp; One refusal path, and it is Stage 4's</h3>
+
+<p><strong>Chosen.</strong> When the agent decides not to search, it does not write its
+own refusal. It constructs an empty <code>RetrievalResult</code> and hands it to
+<code>LLMService.answer()</code>, which takes the guard it already had: the fixed
+<code>INSUFFICIENT_EVIDENCE</code> sentence, and no provider call.</p>
+
+<p><strong>Why.</strong> The refusal sentence is a load-bearing string, not prose. The
+API, the web interface and Stage 11's evaluation harness all detect "no answer" by
+matching it exactly - which is why Stage 4 froze it as a constant rather than letting a
+model improvise it. A second refusal branch inside the agent would create a second place
+that has to agree with the first, and drift between them would be invisible until a
+harness silently stopped counting refusals. Routing through the existing guard also means
+the "no model call" property is enforced in exactly one place, so it cannot be true on one
+path and forgotten on the other. The user's instruction for this stage was explicit on
+this point: build on Stage 4's guard, do not replace it.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>The agent returns its own refusal directly</strong></td><td>Shorter by four lines, and it duplicates the one string the whole system detects refusals by.</td></tr>
+  <tr><td><strong>Raise an exception for an unsearchable question</strong></td><td>A refusal is a correct outcome, not a failure. Making it an error would force every caller to catch a non-error, and would make "cannot answer" indistinguishable from "provider is down".</td></tr>
+  <tr><td><strong>Let the empty question reach the model with no context</strong></td><td>Exactly the request Stage 4's guard exists to prevent: zero evidence, so the only possible outputs are a refusal or an invention.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.3 &nbsp; The execution record is a returned value, not a log line</h3>
+
+<p><strong>Chosen.</strong> <code>AgentAnswer</code> carries the
+<code>RetrievalDecision</code> and a <code>RetrievalSummary</code> - performed or not,
+candidates considered, chunks returned, top score, floor applied, distinct document ids -
+alongside the answer and the LLM layer's own <code>GroundedAnswer</code>, unmodified.</p>
+
+<p><strong>Why.</strong> <code>prompt.md</code> §15 requires the interface to show
+retrieval performed, documents used, tool activity and the final answer. If that
+information exists only in <code>logs/app.log</code>, Stage 9 has to parse its own logs to
+render a page and Stage 11 has to parse them to score a run. Returning it makes the
+agent's decisions assertable in a test and displayable in a UI without either party
+reading prose. The summary is kept separate from the chunks themselves for a security
+reason rather than a tidiness one: the <em>shape</em> of a retrieval is safe to log and to
+display, the passage text is document content and is not - a distinction that matters from
+the moment a real document enters the corpus.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Return only the answer text</strong></td><td>Indistinguishable from a guess. The entire point of this project is that the difference is visible.</td></tr>
+  <tr><td><strong>Flatten <code>GroundedAnswer</code> into <code>AgentAnswer</code></strong></td><td>Would put agent concerns - which route was taken, what retrieval considered - into a model the LLM layer owns and that knows nothing about routing. The wrapper keeps each layer's contract its own.</td></tr>
+  <tr><td><strong>Put the chunks in the summary too</strong></td><td>Convenient, and it makes the safe-to-log object carry document text. Callers that need the passages already have the retriever.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.4 &nbsp; A provider failure raises; it never becomes a refusal</h3>
+
+<p><strong>Chosen.</strong> A timeout, a rate limit, a truncated generation or a model-side
+decline propagates out of <code>agent.ask()</code> as the typed
+<code>LLMError</code> subclass the seam defined. The agent catches nothing.</p>
+
+<p><strong>Why.</strong> The tempting behaviour - wrap everything and return
+<em>"the knowledge base does not contain enough information"</em> - produces an agent that
+never fails, which sounds good and is a defect. Those two situations need opposite
+responses: an undocumented answer means <em>write the document</em>; a timeout means
+<em>fix the provider</em>. Collapsing them sends whoever is reading to fix the wrong thing,
+and it would make the refusal rate - the metric Stage 11 evaluates hallucination
+resistance with - quietly include infrastructure noise.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Catch <code>LLMError</code> and refuse</strong></td><td>Hides an outage behind a sentence about documentation coverage, and corrupts the one metric that measures grounding.</td></tr>
+  <tr><td><strong>Retry inside the agent</strong></td><td>The errors already carry a <code>retryable</code> flag. Choosing a backoff without a real provider's failure behaviour would be inventing numbers; the caller that owns the request deadline should own the retry.</td></tr>
+  <tr><td><strong>Return a partial answer on truncation</strong></td><td>Stage 4 already settled this: a cut-off sentence about a transaction limit reads as complete. 4.5.</td></tr>
+</table>
+</div>
+
+<!-- ---------------------------------------------------------------- -->
+<div class="card">
+<h3 style="margin-top:0">5.5 &nbsp; The agent is a seam, not a layer of logic</h3>
+
+<p><strong>Chosen.</strong> <code>KnowledgeAgent</code> takes a <code>Retriever</code> and
+an <code>LLMService</code> as constructor arguments and adds one thing: which of them to
+call and in what order. It builds no prompts, owns no model, and does no scoring.</p>
+
+<p><strong>Why.</strong> The two layers below were built independently on purpose - the
+retriever has no LLM dependency, so retrieval quality can be measured on its own, and the
+service does not retrieve, so prompt construction can be tested without an index. If the
+agent had absorbed either job, that separation would have quietly ended at the moment it
+became useful. Injection also carries straight down from Stages 3 and 4: the tests run
+this class with a hashing embedder and a mock provider, production passes a
+sentence-transformers retriever and whichever provider is configured, and neither the
+class nor its callers change. That is what makes 104 agent tests offline, deterministic
+and free.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Agent constructs its own retriever and provider</strong></td><td>Would make every test build a real index and pick a real provider, and would put the <code>BKA_LLM_PROVIDER</code> decision in a second place. <code>get_agent()</code> does the composing, in one function.</td></tr>
+  <tr><td><strong>Agent owns prompt construction</strong></td><td>Prompts are versioned source code in one module (4.x). A second place that assembles them is a second place that can drift from <code>SYSTEM_PROMPT_VERSION</code>.</td></tr>
+  <tr><td><strong>Merge the agent into <code>LLMService</code></strong></td><td>Would make the service retrieve, ending the property that lets the LLM layer be tested with a hand-built <code>RetrievalResult</code> and no index at all.</td></tr>
+</table>
+</div>
 </section>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 4 (LLM Abstraction) · Last updated 2026-09-09<br>
+  Stage 5 (Knowledge Agent) · Last updated 2026-09-10<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

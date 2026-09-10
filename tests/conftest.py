@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.agent.agent import KnowledgeAgent
 from app.core.config import Settings
 from app.core.logging import reset_logging
 from app.knowledge.loader import load_knowledge_base
@@ -138,3 +139,17 @@ def empty_retrieval(retriever: Retriever) -> RetrievalResult:
     result = retriever.retrieve("xylophone quokka meringue", min_score=0.99)
     assert result.is_empty, "fixture precondition: this query must match nothing"
     return result
+
+
+@pytest.fixture
+def agent(
+    retriever: Retriever, llm_service: LLMService, llm_settings: Settings
+) -> KnowledgeAgent:
+    """An agent over the real corpus: hashing embedder, mock provider.
+
+    Offline, deterministic and free. The hashing embedder is not semantic, so
+    these tests assert *agent behaviour* -- routing, wiring, provenance,
+    refusals -- and never retrieval quality. Quality with the real model is
+    asserted in ``test_agent_integration.py``.
+    """
+    return KnowledgeAgent(retriever, llm_service, llm_settings)

@@ -17,14 +17,13 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 4 — LLM Abstraction |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, **prompt management, context injection, provider seam, grounded answers** |
-| **Not yet implemented** | A concrete LLM provider, agent, MCP, web UI, Docker |
+| **Current stage** | Stage 5 — Knowledge Agent |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, **the knowledge agent: question → decide → retrieve → ground → source-backed answer, or an explicit refusal** |
+| **Not yet implemented** | A concrete LLM provider, MCP tools, tool selection, conversation context, web UI, Docker |
 
 > **No paid API call exists in this repository.** The only LLM provider that ships is a
 > deterministic in-process mock, so the whole project clones, runs and tests with no
-> account, no API key and no spend. Which real provider the first adapter targets is a
-> decision deferred to Stage 5.
+> account, no API key and no spend.
 
 Detailed progress and the exact next action live in
 [`docs/HANDOVER.md`](docs/HANDOVER.md).
@@ -43,7 +42,7 @@ Web Interface            ── Stage 9
 API  (FastAPI)           ── Stage 1  ✅
  │
  ▼
-Agent / LLM              ── Stage 4 ✅ (LLM layer) · Stages 5, 7 (agent)
+Agent / LLM              ── Stages 4 ✅, 5 ✅ · Stage 7 (tool selection)
  │
  ├── RAG Knowledge Retrieval   ── Stages 2, 3  ✅
  ├── MCP Tools                 ── Stage 6
@@ -146,7 +145,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 385 tests
+.venv/Scripts/python.exe -m pytest                       # 489 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -196,14 +195,20 @@ banking-knowledge-agent/
 │   │   ├── vectorstore.py   # VectorStore protocol + NumPy implementation
 │   │   ├── retriever.py     # Question -> embedding -> search -> sources
 │   │   └── pipeline.py      # build_index / load_retriever / fingerprint
-│   └── llm/                 # No vendor SDK is imported anywhere in here
-│       ├── __main__.py      # CLI: prompt | ask | demo
-│       ├── models.py        # CompletionRequest, LLMResponse, GroundedAnswer
-│       ├── base.py          # LLMProvider protocol + error taxonomy
-│       ├── prompts.py       # Versioned instructions, context budget + fencing
-│       ├── mock.py          # Deterministic in-process provider (the only one)
-│       ├── service.py       # Context injection -> generate -> validate -> answer
-│       └── factory.py       # Provider selection from configuration
+│   ├── llm/                 # No vendor SDK is imported anywhere in here
+│   │   ├── __main__.py      # CLI: prompt | ask | demo
+│   │   ├── models.py        # CompletionRequest, LLMResponse, GroundedAnswer
+│   │   ├── base.py          # LLMProvider protocol + error taxonomy
+│   │   ├── prompts.py       # Versioned instructions, context budget + fencing
+│   │   ├── mock.py          # Deterministic in-process provider (the only one)
+│   │   ├── service.py       # Context injection -> generate -> validate -> answer
+│   │   └── factory.py       # Provider selection from configuration
+│   └── agent/               # The seam between rag/ and llm/
+│       ├── __main__.py      # CLI: ask | demo
+│       ├── models.py        # RetrievalDecision, RetrievalSummary, AgentAnswer
+│       ├── policy.py        # decide_retrieval — is a knowledge search required?
+│       ├── agent.py         # KnowledgeAgent.ask — decide, retrieve, generate, record
+│       └── factory.py       # get_agent — composition from configuration
 ├── data/
 │   ├── knowledge/           # 15 synthetic banking documents, by domain
 │   └── vectorstore/         # Built index — git-ignored build artefact
@@ -220,7 +225,9 @@ banking-knowledge-agent/
 │   ├── test_rag_integration.py   # Real model — retrieval quality
 │   ├── test_llm_prompts.py       # Context budget, fencing, injection defence
 │   ├── test_llm_provider.py      # Protocol, mock, factory, errors, no-network
-│   └── test_llm_service.py       # Injection, refusal, errors, provenance
+│   ├── test_llm_service.py       # Injection, refusal, errors, provenance
+│   ├── test_agent.py             # Routing, wiring, refusals, execution record
+│   └── test_agent_integration.py # Real model — the 5 seed questions end to end
 ├── docs/
 │   ├── HANDOVER.md          # Session recovery point — read this first
 │   └── architecture-guide.html
@@ -410,6 +417,66 @@ falling back to the mock, because an application that answers questions with a s
 while looking healthy is worse than one that refuses to start.
 
 Full reasoning, including rejected alternatives, is in §20.4 of
+[`docs/architecture-guide.html`](docs/architecture-guide.html).
+
+---
+
+## Knowledge agent
+
+Question → **decide** → retrieve → ground → a source-backed answer, or an explicit
+refusal. This is the first component that owns a complete request.
+
+```bash
+# Answer one question
+.venv/Scripts/python.exe -m app.agent ask "Why would an ATM transaction fail after card authentication?"
+
+# The five seed questions, plus two the agent must decline for different reasons
+.venv/Scripts/python.exe -m app.agent demo
+```
+
+Example output — the prose is the mock's wiring check, the **provenance** is the
+part worth reading:
+
+```
+Q  Why would an ATM transaction fail after card authentication?
+A  Answering from the retrieved documentation. ... [1][2][3][4][5]
+   [decision: knowledge_required — ... the knowledge base was searched ...]
+   [retrieval: 5 of 115 passages cleared 0.25 · top score 0.790]
+   [grounded: 5 passage(s) in the prompt · prompt v1.0.0]
+   [1] ATM Transaction Lifecycle — Why a transaction can fail after card
+       authentication (atm/atm-transaction-lifecycle.md)
+
+Q  What is the capital of France?
+A  The knowledge base does not contain enough information to answer this question.
+   [retrieval: 0 of 115 passages cleared 0.25 · top score none]
+   [refused: no supporting evidence; no model call was made]
+
+Q  !!! ???
+A  The knowledge base does not contain enough information to answer this question.
+   [decision: no_searchable_content — ... the knowledge base was not searched.]
+   [retrieval: not performed]
+```
+
+**Three outcomes, distinguishable without reading the prose:**
+
+| Outcome | How it is identified | What it means |
+|---|---|---|
+| Grounded answer | `is_grounded` | The documentation supports this, and here are the citations |
+| Refused **after** searching | `refused` + `retrieval.performed` | We searched; nothing was close enough. *"We don't document this."* |
+| Refused **without** searching | `refused` + `not retrieval.performed` | There was nothing to search for. *"That isn't a question."* |
+
+A provider failure is none of the three — it **raises**. A broken model and an
+undocumented answer need different responses from whoever is reading, and
+collapsing them would quietly fold infrastructure noise into the refusal rate.
+
+| Piece | What it does |
+|---|---|
+| **Routing decision** | `decide_retrieval()` returns a `RetrievalDecision` with the rule that produced it. Stage 5 has one substantive branch, and the module says why a keyword classifier or an LLM router would be a guess rather than a decision. |
+| **One refusal path** | A question the agent declines to search is routed through the Stage 4 empty-evidence guard, not given a refusal of its own — so the insufficient-evidence sentence has exactly one definition in the system. |
+| **Execution record** | `AgentAnswer` returns the decision and a retrieval summary alongside the answer, so a UI renders provenance instead of scraping logs. The summary carries *shape*; passage text stays out of it. |
+| **A seam, not a layer** | The agent builds no prompts, owns no model and does no scoring. Retriever and service are injected, which is what keeps 104 agent tests offline, deterministic and free. |
+
+Full reasoning, including rejected alternatives, is in §20.5 of
 [`docs/architecture-guide.html`](docs/architecture-guide.html).
 
 ---

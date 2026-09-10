@@ -7,28 +7,36 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-09** · Stage 3 approved, committed and pushed ·
-Stage 4 **in progress** (LLM provider decision recorded — mock only, no concrete provider).
+Last updated: **2026-09-10** · Stage 4 approved, committed and pushed (`9a0b462`) ·
+Stage 5 **in progress** — split into two approval checkpoints (A: the agent, B: two
+concrete adapters). The previously-open provider decision is now **RESOLVED** — see
+*Stage 5 decision*.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** Stage 4 approved by the user, committed and pushed.
-**Nothing is in progress.** No half-finished work, no blockers.
+**Session state:** Stage 5 **in progress**, Checkpoint A.
 
 ### State at checkpoint
 
 | | |
 |---|---|
 | Last **approved** stage | **Stage 4 — LLM Abstraction** (approved 2026-09-09) |
-| `HEAD` | the `docs(stage-4)` commit sitting on top of `bee4b22` (= `origin/main`) |
-| Working tree | Clean, apart from git-ignored local files |
-| Tests | **385 passed** · ruff clean · mypy strict clean (29 source files) |
-| Next stage | **Stage 5 — Knowledge Agent** (not started) |
+| `HEAD` at Stage 5 start | `9a0b462` `docs(stage-4)…` = `origin/main` — **verified 2026-09-10** |
+| Working tree at Stage 5 start | Clean |
+| Tests at Stage 5 start | **385 passed** · ruff clean · mypy strict clean (29 source files) |
+| Current stage | **Stage 5 — Knowledge Agent + concrete LLM adapters** |
 
-> ⚠️ **One decision is open and blocks Stage 5:** which concrete LLM provider the first
-> adapter targets, and whether a live API key is ever wired in. See *Next Action*.
+### Stage 5 is split into two approval checkpoints
+
+| | Scope | Status |
+|---|---|---|
+| **Checkpoint A** | The knowledge agent itself (`prompt.md` §13), tested entirely against `MockLLMProvider`. No vendor involved | 🔄 **in progress** |
+| **Checkpoint B** | Two concrete adapters — `AnthropicProvider` **and** `OpenAIProvider` — offline-tested, default still `mock` | ⏳ not started; **requires Checkpoint A approval first** |
+
+> ⛔ Each checkpoint stops for explicit approval before any commit or push. Checkpoint B
+> must not begin until Checkpoint A is approved.
 
 ### To resume
 
@@ -75,14 +83,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 4 |
-| **Stage name** | LLM Abstraction |
-| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Stage 4 approved 2026-09-09; committed `bee4b22` and pushed to `origin/main` |
-| **Next step** | **Begin Stage 5 — Knowledge Agent.** First settle the open decision: which concrete LLM provider, and whether a live key is wired in |
+| **Stage number** | 5 |
+| **Stage name** | Knowledge Agent + concrete LLM adapters |
+| **Status** | 🔄 **IN PROGRESS — Checkpoint A** |
+| **Last completed step** | HEAD verified against this file (`9a0b462` = `origin/main`, tree clean); Stage 5 provider decision recorded below **before** any code was written |
+| **Next step** | Implement Checkpoint A — the knowledge agent, against `MockLLMProvider` only |
 
-> ⛔ Stage 5 must STOP after implementation and testing, and wait for explicit approval
-> before any commit or push.
+> ⛔ Each Stage 5 checkpoint must STOP after implementation and testing, and wait for
+> explicit approval before any commit or push. Checkpoint B must not begin until
+> Checkpoint A is approved.
 
 ### Previous stages
 
@@ -95,9 +104,77 @@ git status                    # expect clean
 
 ---
 
+## Stage 5 decision — the concrete LLM provider (previously deferred, now RESOLVED)
+
+**Decided by the user, 2026-09-10.** This resolves the question left open at the end of
+Stage 4 (*"which vendor, and is a live key ever wired in?"*) and supersedes the
+"decision required before Stage 5" note that previously stood in *Next Action*.
+
+| | |
+|---|---|
+| **How many adapters** | **Two, not one** — `AnthropicProvider` and `OpenAIProvider` |
+| **Which vendor is "the" vendor** | **None.** No vendor is exclusively chosen; the seam is proved rather than asserted |
+| **Default provider** | **`mock`, unchanged.** Nothing calls a real API unless someone deliberately sets `BKA_LLM_PROVIDER` |
+| **API key** | `BKA_LLM_API_KEY` stays environment-only, optional, **unset**. Not wired in, not hardcoded, not committed |
+| **Live calls** | **None.** No live call in Checkpoint A, in Checkpoint B, in the test suite, or by hand. Building two adapters does **not** authorise a live call, now or later |
+| **Adapter tests** | Offline — the SDK client / HTTP layer is mocked. No network, no cost, in CI or locally |
+| **The AST guard** | **Narrowed, not deleted.** `base.py` · `prompts.py` · `service.py` · `factory.py` · `mock.py` must stay vendor-free; only the two adapter modules are exempt |
+
+**Why two adapters rather than one.** One adapter proves an adapter can be written. Two
+prove the *abstraction* — that a vendor swap is a configuration change and nothing else.
+It also retires the vendor question permanently instead of re-litigating it at Stage 9 or
+Stage 14. Full record with rejected alternatives goes in
+`docs/architecture-guide.html` §20.6.
+
+> ⚠️ This reverses the Stage 4 rejected-alternative *"Two adapters, to 'prove' the seam"*
+> (guide §20.4.1), which was rejected on the grounds that a second implementation means a
+> second paid vendor account. That objection does not survive the "no live call" rule:
+> both adapters are offline-tested, so neither requires an account. Recorded because the
+> file must show what was reversed, not only what was decided.
+
+---
+
 ## Current Work
 
-### Implemented in Stage 4 (this session)
+### Implemented in Stage 5 — Checkpoint A (this session)
+
+- **Routing decision** — `app/agent/policy.py`. `decide_retrieval(question)` returns a
+  frozen `RetrievalDecision` carrying the rule that produced it. Two reasons:
+  `knowledge_required` (search) and `no_searchable_content` (a question with no
+  alphanumeric character at all — skip the search, say so). Every real question takes the
+  first branch, and the module states plainly why a second substantive branch would be
+  fiction in Stage 5: retrieval is the agent's only evidence until MCP lands in Stage 6.
+- **The agent** — `app/agent/agent.py`. `KnowledgeAgent.ask` = decide → retrieve →
+  generate → record. Both collaborators injected as in Stages 3 and 4, so the tests run
+  it with a hashing embedder and `MockLLMProvider` and production changes nothing.
+- **One refusal path, and it is Stage 4's.** A question the agent declines to search is
+  turned into an empty `RetrievalResult` and handed to `LLMService.answer()`, which takes
+  the guard it already had: the fixed sentence, and **zero** provider calls. The agent
+  writes no refusal of its own. This is the user's Checkpoint A requirement 2 — build on
+  the existing guard, do not replace it — and it is asserted by a test that both routes
+  produce the identical string.
+- **Execution record as a returned value** — `app/agent/models.py`. `AgentAnswer` wraps
+  the LLM layer's `GroundedAnswer` unmodified and adds `RetrievalDecision` +
+  `RetrievalSummary` (performed, candidates, returned, top score, floor, document ids).
+  Stage 9 renders provenance rather than scraping its own logs. The summary carries
+  *shape* only — passage text stays out of the object that is safe to log and display.
+- **Failures propagate.** A timeout, rate limit or truncated generation raises out of
+  `ask()` as its typed `LLMError`. Turning an outage into "the knowledge base does not
+  contain enough information" would send the reader to fix the wrong thing and would fold
+  infrastructure noise into the refusal rate Stage 11 measures grounding with.
+- **Factory** — `app/agent/factory.py`. `get_agent()` composes retriever + service. It
+  does **not** choose a provider; that stays in `app/llm/factory.py`, so
+  `BKA_LLM_PROVIDER` is interpreted in exactly one place.
+- **CLI** — `python -m app.agent ask | demo`. The demo runs the five seed questions plus
+  two controls that must be declined for two *different* reasons.
+- **Tests** — 104 new tests across 2 files (385 → **489**). No new dependency, no new
+  setting: Checkpoint A adds no configuration surface.
+- **Docs** — architecture guide §7 rewritten as BUILT, new §20.5 (five decision records
+  in the Stage 3/4 what–why–rejected form), plus §1 stage table, §2 structure, §4
+  components, §5 data flow, §14 testing, §16 security, header and footer. README gained a
+  "Knowledge agent" section.
+
+### Implemented in Stage 4
 
 - **`LLMProvider` protocol** — `app/llm/base.py`. The vendor-agnostic seam, plus the
   six-type error taxonomy (`LLMConfigurationError`, `LLMTimeoutError`,
@@ -159,23 +236,28 @@ git status                    # expect clean
 
 ### Currently being worked on
 
-Nothing is in progress. Stage 4 is complete, tested and documented, and is waiting for
-the user's approval before any commit.
+**Stage 5 Checkpoint A is complete, tested and documented, and is waiting for the user's
+approval before any commit.** Checkpoint B has not been started and must not be started
+until Checkpoint A is approved.
 
-### What remains unfinished in Stage 4
+### What remains unfinished in Checkpoint A
 
-Nothing that Stage 4's scope requires. Two things are **deliberately** absent and are
-recorded as deferred, not missed:
+Nothing that `prompt.md` §13 requires. Deliberately absent, recorded as deferred rather
+than missed:
 
-1. **A concrete provider adapter** — deferred to a decision before Stage 5, by the
-   user's instruction. See the decision record in *Next Action*.
-2. **Prompt quality evidence** — the prompt is tested for *structure* (what is sent,
-   what is not, what is escaped) but not for *answer quality*, because no real model has
-   run against it. That measurement is Stage 11's evaluation set.
+1. **Concrete adapters** — that is Checkpoint B of this same stage, already decided
+   (two adapters) and recorded above.
+2. **Answer quality evidence** — the agent is tested for *routing and wiring* with real
+   retrieval semantics, but the provider is a mock, so nothing here proves a real model
+   answers well from these prompts. Stage 11's evaluation set measures that. Carried
+   forward unchanged from Stage 4.
+3. **HTTP exposure** — the agent is reachable from the CLI only. Wiring it to FastAPI is
+   Stage 9, and doing it now would mean an endpoint with no interface and no request
+   observability (Stage 10) behind it.
 
 ### Not yet implemented (later stages)
 
-Concrete LLM provider (5) · Knowledge agent (5) · MCP tools (6) · Tool selection (7) ·
+Concrete LLM adapters (5, **Checkpoint B**) · MCP tools (6) · Tool selection (7) ·
 Conversation context (8) · Web interface (9) · Request observability (10) ·
 Evaluation framework (11) · Docker (12) · Security review (13) ·
 Production architecture (14) · Final review (15)
@@ -221,6 +303,24 @@ RetrievalResult(chunks, sources, candidates_considered, min_score, top_score)
    │
    └──▶ logs/app.log  "rag.retrieved"
 
+AGENT (Stage 5 — the seam; the first component that owns a whole request)
+
+Question
+   │
+   ▼  KnowledgeAgent.ask        blank ──▶ ValueError, nothing is called
+   ▼  decide_retrieval          RetrievalDecision(retrieve, reason, explanation)
+   │
+   ├── retrieve=False ──▶ empty RetrievalResult      no embedding, no search
+   │   "no_searchable_content"                       e.g. "!!! ???"
+   └── retrieve=True  ──▶ Retriever.retrieve()       the RETRIEVAL block above
+   │
+   ▼  LLMService.answer()       the GENERATION block below, UNCHANGED
+   ▼
+AgentAnswer   text · sources · decision · RetrievalSummary · GroundedAnswer
+   │
+   └──▶ logs/app.log  "agent.answered"   route, counts, top score, document ids —
+                                         never the question, passages or answer
+
 GENERATION (Stage 4 — per question, no vendor involved)
 
 RetrievalResult
@@ -242,8 +342,8 @@ GroundedAnswer            text + sources + chunks_used + llm_called + prompt_ver
    └──▶ logs/app.log  "llm.answered"   shape and cost only — never the prompt or
                                        the answer, both of which embed document text
 
-HTTP (unchanged from Stage 1 — not yet wired to retrieval or generation; that is
-Stage 5)
+HTTP (unchanged from Stage 1 — the agent is reachable from the CLI only; wiring it
+to an endpoint is Stage 9)
 GET /health → FastAPI router → HealthResponse
 ```
 
@@ -273,6 +373,24 @@ GET /health → FastAPI router → HealthResponse
 | `app/llm/service.py` | `LLMService.answer` — inject, generate, validate, attribute |
 | `app/llm/factory.py` | `get_provider`, `get_llm_service` — configuration → provider |
 | `app/llm/__main__.py` | CLI: prompt / ask / demo |
+| `app/agent/models.py` | `RetrievalDecision`, `RetrievalSummary`, `AgentAnswer` |
+| `app/agent/policy.py` | `decide_retrieval` — is a knowledge search required? |
+| `app/agent/agent.py` | `KnowledgeAgent.ask` / `ask_many` — decide, retrieve, generate |
+| `app/agent/factory.py` | `get_agent` — composition from configuration |
+| `app/agent/__main__.py` | CLI: ask / demo |
+
+### Important design decisions (Stage 5 — Checkpoint A)
+
+Summary only — the **full reasoning, with rejected alternatives, is in
+`docs/architecture-guide.html` §20.5**, which is the authoritative record.
+
+| Decision | Reasoning (short) |
+|---|---|
+| **The decision has one substantive branch, and says so** (5.1) | Retrieval is the agent's only evidence until Stage 6, so "always yes" is the honest answer. A keyword classifier fails in both directions — *"why did the withdrawal reverse?"* has no keyword and retrieves fine; *"what is a payment in cricket?"* has one and shouldn't. The floor already answers relevance, with calibration behind it |
+| **One refusal path, and it is Stage 4's** (5.2) | The refusal sentence is load-bearing: the API, the web UI and Stage 11 all detect "no answer" by matching it exactly. A second branch is a second thing that must agree, and drift would be invisible until a harness stopped counting refusals |
+| **Execution record is a returned value, not a log line** (5.3) | `prompt.md` §15 requires the interface to show what happened. If it only exists in `app.log`, Stage 9 parses its own logs to render a page. Summary and passages are split on a *security* line: shape is safe to log and display, document text is not |
+| **A provider failure raises; it never becomes a refusal** (5.4) | An agent that never fails sounds good and is a defect. "Undocumented" means *write the document*; "timeout" means *fix the provider*. Collapsing them also folds infrastructure noise into the grounding metric |
+| **The agent is a seam, not a layer of logic** (5.5) | The retriever still has no LLM dependency and the service still does not retrieve. Absorbing either job would end that separation exactly when it became useful — and injection is what keeps 104 agent tests offline and free |
 
 ### Important design decisions (Stage 4)
 
@@ -316,7 +434,33 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 4 (11 files, uncommitted)
+### Added in Stage 5 Checkpoint A (8 files, uncommitted)
+
+| File | Purpose |
+|---|---|
+| `app/agent/__init__.py` | Package exports and the layer overview docstring |
+| `app/agent/models.py` | `RetrievalDecision`, `RetrievalSummary`, `AgentAnswer` |
+| `app/agent/policy.py` | `decide_retrieval` + the reasoning against a classifier/router |
+| `app/agent/agent.py` | `KnowledgeAgent` — the seam between `rag/` and `llm/` |
+| `app/agent/factory.py` | `get_agent` |
+| `app/agent/__main__.py` | CLI: ask / demo |
+| `tests/test_agent.py` | 77 tests — policy, wiring, both refusal routes, record, errors |
+| `tests/test_agent_integration.py` | 27 tests — real model, the 5 seed questions + controls |
+
+### Modified in Stage 5 Checkpoint A (4 files, uncommitted)
+
+| File | Change |
+|---|---|
+| `tests/conftest.py` | `KnowledgeAgent` import; new `agent` fixture |
+| `README.md` | Status, architecture, layout, test count, new "Knowledge agent" section |
+| `docs/architecture-guide.html` | §7 rewritten as BUILT; §20.5 added (5 records); §1, §2, §4, §5, §14, §16, header, footer |
+| `docs/HANDOVER.md` | This file |
+
+> `requirements.txt`, `app/core/config.py` and `.env.example` are **unchanged** by
+> Checkpoint A. The agent added no dependency and no setting — it composes what Stages 3
+> and 4 already configured, which is the point of it being a seam.
+
+### Added in Stage 4 (11 files, committed in `bee4b22`)
 
 | File | Purpose |
 |---|---|
@@ -332,7 +476,7 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 | `tests/test_llm_provider.py` | 61 tests — protocol, errors, mock, factory, no-network |
 | `tests/test_llm_service.py` | 46 tests — injection, refusal, errors, provenance |
 
-### Modified in Stage 4 (7 files, uncommitted)
+### Modified in Stage 4 (7 files, committed in `bee4b22`)
 
 | File | Change |
 |---|---|
@@ -388,7 +532,76 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Testing
 
-### Result (Stage 4)
+### Result (Stage 5 — Checkpoint A)
+
+**489 passed, 0 failed** (385 from Stages 1–4, **104 new**). Runtime ~51 s.
+`ruff check .` → *All checks passed!*
+`mypy` (strict) → *Success: no issues found in 35 source files*
+
+> ⚠️ **Context this was measured in** (Problems §15 lesson, applied again): run inside
+> the Claude Code session, which is **elevated**. `--basetemp=.pytest_tmp` means a
+> non-elevated run should behave identically, but the user should confirm 489 passed in
+> their own shell before approving.
+
+| Checkpoint A test file | Tests | Covers |
+|---|---|---|
+| `tests/test_agent.py` | 77 | **The policy** — every seed question retrieves; six no-searchable-content inputs do not; a one-character question still retrieves; blank raises; and the two cases a keyword classifier would get wrong are asserted as passing. **The wiring** — the question reaches the retriever verbatim; one question is exactly one retrieval and one generation; the passages reach the prompt and the knowledge base does not; the agent adds no prompt of its own. **Both refusal routes** — after searching and without searching — producing the identical sentence with **zero** provider calls, and the no-search route making zero *retriever* calls too. **The record** — chunks used never exceeds chunks returned, documents deduplicated, and the summary asserted to contain no passage text. **Errors** — timeout, rate limit, malformed and truncated all propagate; a broken retriever propagates. **The boundary** — no tools, no history, the `DecisionReason` literal pinned to its two Stage 5 values, and an AST walk over `app/agent/` asserting no vendor SDK |
+| `tests/test_agent_integration.py` | 27 | **Real model, real corpus.** Each of the five seed questions is answered from its own document, cites that document, and scores > 0.5; all five retrieve and generate. Three off-topic controls are refused *after* being searched, with a provider call count of 0 — the agent does not pre-judge relevance, the calibrated floor does. Two paraphrases with no shared vocabulary still find the right document. One module-scoped index shared across the file; a fresh mock provider per test so call counts stay meaningful (227 s → 18 s) |
+
+### Commands used (Checkpoint A)
+
+```bash
+./.venv/Scripts/python.exe -m pytest                          # 489 passed, ~51 s
+./.venv/Scripts/python.exe -m pytest tests/test_agent.py      # 77 passed, ~5 s
+./.venv/Scripts/python.exe -m pytest tests/test_agent_integration.py  # 27, ~18 s
+./.venv/Scripts/python.exe -m ruff check .                    # All checks passed!
+./.venv/Scripts/python.exe -m mypy                            # 35 source files
+
+./.venv/Scripts/python.exe -m app.agent demo
+./.venv/Scripts/python.exe -m app.agent ask "Why would an ATM transaction fail after card authentication?"
+```
+
+### Measured results worth keeping (Checkpoint A)
+
+```
+python -m app.agent demo   (real corpus, real embedding model, mock provider)
+
+  seed question                            passages  top score  document (rank 1)
+  ATM fail after card auth                  5 / 115    0.790     atm-transaction-lifecycle
+  what component handles card auth          5 / 115    0.804     card-authentication
+  which API for payment authorisation       5 / 115    0.784     payment-authorisation-api
+  troubleshoot a failed cash withdrawal     5 / 115    0.819     atm-cash-withdrawal-troubleshooting
+  what config controls transaction limits   5 / 115    0.775     transaction-limits-configuration
+
+  controls
+  "What is the capital of France?"   0 / 115 cleared 0.25
+                                     REFUSED after searching · provider calls 0
+  "!!! ???"                          retrieval not performed
+                                     REFUSED without searching · provider calls 0
+
+Note: the card-authentication question cites card-pin-verification at [5] as well —
+correct, and visible because the summary deduplicates documents rather than passages.
+```
+
+### Checkpoint A required coverage (`prompt.md` §13)
+
+| Requirement | Status |
+|---|---|
+| Receive a technical question | ✅ `KnowledgeAgent.ask` |
+| Determine whether knowledge retrieval is required | ✅ `app/agent/policy.py` → `RetrievalDecision`, returned to the caller. Reasoning and rejected alternatives in guide §20.5.1 |
+| Retrieve relevant information | ✅ Stage 3's `Retriever`, injected |
+| Pass context to the LLM | ✅ Stage 4's `LLMService`, unchanged |
+| Produce a source-backed answer | ✅ `AgentAnswer.sources` + `chunks_used` + prompt version |
+| Clearly indicate when information is insufficient | ✅ Two routes, one fixed sentence, both asserted identical |
+| Must avoid inventing technical facts | ✅ Three enforcement points: score floor (S3), no-evidence-no-call (S4), system prompt (S4). None is a prompt instruction alone |
+| Five example questions | ✅ Worked examples in the CLI demo, the guide §7, the README, and asserted in both test files |
+| Agent tests | ✅ 104 new tests, offline, deterministic, free |
+| Handover updated | ✅ This file, continuously — the provider decision was written **before** any code |
+| Architecture guide §7 + §20.5 | ✅ §7 rewritten as BUILT; §20.5 = five records in the what/why/rejected form |
+
+---
+
+### Result (Stage 4, for reference)
 
 **385 passed, 0 failed** (240 from Stages 1–3, **145 new**). Runtime ~36 s.
 `ruff check .` → *All checks passed!*
@@ -709,9 +922,11 @@ The process lesson recorded then still stands and applied again this stage:
 
 ### Open questions for the user
 
-**One, and it blocks Stage 5, not Stage 4:** which concrete LLM provider the first
-adapter targets, and whether a live API key is ever wired in. Detail in *Next Action →
-Decision required before Stage 5 implementation begins*.
+**None.** The provider question that blocked Stage 5 was answered on 2026-09-10 and is
+recorded under *Stage 5 decision* near the top of this file.
+
+The only thing outstanding is **approval of Checkpoint A**, which is a stop in the
+workflow, not an open question.
 
 Decisions already taken with the user's explicit answer:
 
@@ -722,6 +937,12 @@ Decisions already taken with the user's explicit answer:
    before Stage 5.** Full record in *Next Action → Decision taken before Stage 4
    implementation begins*. Superseded an earlier instruction in the same session
    (Problems §16).
+3. **The concrete provider** (Stage 5, 2026-09-10) — **two adapters, Anthropic and
+   OpenAI; no vendor exclusively chosen; default stays `mock`; no live key and no live
+   call.** Full record in *Stage 5 decision* near the top of this file. It reverses a
+   Stage 4 rejected alternative, and says why.
+4. **Stage 5 is split into two approval checkpoints** (2026-09-10) — A: the agent, tested
+   against the mock only; B: the two adapters. B does not begin until A is approved.
 
 ### Assumptions added in Stage 4
 
@@ -780,11 +1001,33 @@ source for reassessment in Stage 13.
 | **Stage 3 commit** | `be9297c` — `feat(stage-3): RAG pipeline — chunking, embeddings, vector store, retrieval` |
 | **Stage 3 docs commit** | `docs(stage-3): record commit hash and push result in handover` — this file's own commit, directly on top of `be9297c` |
 | **Stage 4 commit** | `bee4b22` — `feat(stage-4): LLM abstraction — provider seam, prompts, context injection` |
-| **Push status** | ✅ Pushed to `origin/main`; verified `origin/main == local HEAD == bee4b22` |
-| **Working tree** | Clean, apart from git-ignored local files |
+| **Stage 4 docs commit** | `9a0b462` — `docs(stage-4): record commit hash and push result in handover` |
+| **Stage 5 Checkpoint A commit** | ⏳ **not created** — awaiting the user's approval |
+| **Push status** | ✅ `origin/main == local HEAD == 9a0b462`, verified 2026-09-10 at Stage 5 start |
+| **Working tree** | 12 uncommitted Checkpoint A paths (listed below), plus git-ignored local files |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
 | **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
 | **Deliberately not committed** | `prompt.md`, `prompt1.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
+
+### The exact Stage 5 Checkpoint A file set — verified with `git add -An`, 2026-09-10
+
+12 paths, and **no others**. `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`,
+`prompt.md`, `prompt1.md` and `ccp.txt` are all absent from the listing, confirmed by
+reading it rather than by assuming.
+
+```
+add 'README.md'                       add 'app/agent/__init__.py'
+add 'docs/HANDOVER.md'                add 'app/agent/__main__.py'
+add 'docs/architecture-guide.html'    add 'app/agent/agent.py'
+add 'tests/conftest.py'               add 'app/agent/factory.py'
+                                      add 'app/agent/models.py'
+add 'tests/test_agent.py'             add 'app/agent/policy.py'
+add 'tests/test_agent_integration.py'
+```
+
+**Secret scan of the new files:** no secret-shaped assignments, no base64/hex literals
+over 40 characters, no card-number-shaped digit runs. **Git locks:** none; no `git.exe`
+running.
 
 ### The exact Stage 4 file set — verified with `git add -An`, 2026-09-09
 
@@ -840,50 +1083,52 @@ edit.
 
 ## Next Action
 
-**Begin Stage 5 — Knowledge Agent.** Stage 4 is approved, committed (`bee4b22`) and
-pushed. Settle the decision below **before** implementation begins, and write the answer
-into this file before writing code.
+**STOP. Stage 5 Checkpoint A is implemented, tested and documented, and is waiting for
+the user's explicit approval.** Nothing is committed. Nothing is pushed.
 
-### Stage 5 scope (from `prompt.md` §13), for when it starts
+### On approval of Checkpoint A, in this order
 
-1. An agent that receives a technical question, decides whether retrieval is required,
-   retrieves, passes context to the LLM, and produces a source-backed answer.
-2. It must clearly indicate when the knowledge base is insufficient, and must not invent
-   technical facts. Stage 4's `LLMService` already refuses without a model call when
-   retrieval is empty — the agent builds on that guard rather than replacing it.
-3. The five seed questions in `prompt.md` §13 are the worked examples.
-4. Agent tests. They can stay offline against `MockLLMProvider`, exactly as Stage 4 did,
-   regardless of how the provider decision below is answered.
-5. Update `docs/architecture-guide.html` (§7 agent flow, and a §20.5 decision record in
-   the same what / why / rejected form).
-6. Update this handover. **STOP** and wait for approval.
+1. Re-run `pytest` (expect 489), `ruff check .`, `mypy` (expect 35 source files).
+2. Run the pre-commit checklist in the *Git* section below — `git add -An` first, and
+   confirm `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`, `prompt.md`,
+   `prompt1.md`, `ccp.txt` are absent from the list.
+3. Commit the 12-file Checkpoint A set, push, verify `origin/main == HEAD`, record the
+   hash here.
+4. **Then, and only then, begin Checkpoint B.**
 
-### Decision required before Stage 5 implementation begins
+### Checkpoint B scope, for when it starts (do not start it unapproved)
 
-**Which concrete LLM provider the first adapter targets, and whether a live API key is
-ever wired in.** This was explicitly deferred out of Stage 4 by the user. The seam,
-the prompt layer, the error taxonomy and the configuration are all in place, so the
-adapter is an additive change: one class implementing `LLMProvider`, one branch in
-`app/llm/factory.py`, one entry in `AVAILABLE_PROVIDERS`, and a pinned SDK in
-`requirements.txt`.
+The decision is already taken and recorded above under *Stage 5 decision*. The work:
 
-Points the answer needs to cover:
+1. `AnthropicProvider` in `app/llm/anthropic_provider.py`, using the official
+   `anthropic` SDK.
+2. `OpenAIProvider` in `app/llm/openai_provider.py`, using the official `openai` SDK.
+3. Both SDKs pinned in `requirements.txt`.
+4. `app/llm/factory.py` + `AVAILABLE_PROVIDERS` extended so `BKA_LLM_PROVIDER` accepts
+   `anthropic` and `openai` as well as `mock`. **The default stays `mock`** — nothing
+   calls a real API unless someone deliberately sets the variable. A test asserts that.
+5. `BKA_LLM_API_KEY` stays environment-only, optional, unset. No key wired in anywhere.
+   **No live call is made in this stage, in the suite or by hand.**
+6. **Narrow, do not delete, the AST guard** in `tests/test_llm_provider.py`: the seam
+   modules (`base.py`, `prompts.py`, `service.py`, `factory.py`, `mock.py`) must stay
+   vendor-free; only the two adapter modules are exempt from that assertion.
+7. Adapter tests stay offline — mock the SDK client / HTTP layer. No network, no cost.
+8. Guide §20.6 in the same what / why / rejected form: why two adapters rather than one.
+9. Update this handover continuously.
+10. **STOP** and wait for approval again.
 
-- **Which vendor.** Anthropic was proposed and then withdrawn earlier in this session
-  (Problems §16); no vendor is currently chosen.
-- **Whether a real key is used at all.** Stage 5's agent can be built and tested entirely
-  against the mock, exactly as Stage 4 was. A live call is a **paid** call and needs the
-  user's explicit confirmation at the time — this decision does not pre-authorise one.
-- **What happens to the no-network guarantee.** The AST test in
-  `tests/test_llm_provider.py` currently asserts that no vendor SDK is importable from
-  `app/llm/`. Adding an adapter must consciously amend that test rather than delete it —
-  ideally narrowing it so the seam modules stay vendor-free and only the adapter is
-  exempt.
+> ⚠️ **Building two adapters does not authorise a live call, now or later.** A real LLM
+> call is a paid call and needs the user's explicit confirmation, given separately at the
+> time. Checkpoint B must leave the repository in a state where cloning it and running
+> the suite still costs nothing.
 
 ### Decision taken before Stage 4 implementation begins — LLM provider
 
-**Decided by the user, 2026-09-09.** This supersedes the "decision required" note that
-previously stood here.
+**Decided by the user, 2026-09-09.** Kept as the historical record of Stage 4.
+
+> ✅ **The deferral this record created is now resolved** — see *Stage 5 decision* near
+> the top of this file: two adapters, no vendor exclusively chosen, no live key, default
+> stays `mock`.
 
 | | |
 |---|---|
