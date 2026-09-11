@@ -17,6 +17,8 @@ from app.knowledge.models import KnowledgeDocument
 from app.llm.mock import MockLLMProvider
 from app.llm.service import LLMService
 from app.main import create_app
+from app.mcp.factory import build_tool_registry
+from app.mcp.registry import ToolRegistry
 from app.rag.models import RetrievalResult
 from app.rag.pipeline import build_index
 from app.rag.retriever import Retriever
@@ -153,3 +155,31 @@ def agent(
     asserted in ``test_agent_integration.py``.
     """
     return KnowledgeAgent(retriever, llm_service, llm_settings)
+
+
+@pytest.fixture
+def tool_registry() -> ToolRegistry:
+    """A fresh registry holding all six synthetic support tools.
+
+    Built rather than fetched from the cached singleton so that a test which
+    registers an extra tool cannot leak it into another test.
+    """
+    return build_tool_registry()
+
+
+@pytest.fixture
+def tool_agent(
+    retriever: Retriever,
+    llm_service: LLMService,
+    llm_settings: Settings,
+    tool_registry: ToolRegistry,
+) -> KnowledgeAgent:
+    """An agent with tools: real corpus, hashing embedder, mock provider.
+
+    The Stage 6 counterpart of ``agent``. That fixture deliberately keeps no
+    registry, so Stage 5's tests continue to assert Stage 5's behaviour rather
+    than quietly acquiring a live dependency.
+    """
+    return KnowledgeAgent(
+        retriever, llm_service, llm_settings, tools=tool_registry
+    )

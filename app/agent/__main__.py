@@ -10,7 +10,7 @@ the default provider is the in-process mock.
 
 If ``BKA_LLM_PROVIDER`` names a paid vendor, both commands say so before doing
 anything, and ``demo`` refuses outright unless ``--paid`` is passed. ``demo``
-asks seven questions, so an accidental paid run is seven billed calls rather
+asks twelve questions, so an accidental paid run is twelve billed calls rather
 than one -- the command that fans out is the one that needs the seatbelt. This
 is a deliberate guard, not a formality: nothing else in the repository stands
 between an exported key and a bill.
@@ -41,6 +41,24 @@ SEED_QUESTIONS: tuple[str, ...] = (
     "What configuration controls transaction limits?",
 )
 """The five worked examples from ``prompt.md`` §13."""
+
+TOOL_QUESTIONS: tuple[str, ...] = (
+    # Each names an identifier a tool can act on, so each takes the Stage 6
+    # route: documentation for the vocabulary, a live reading for the fact.
+    "What does error code LIM-4001 mean?",
+    "What is the status of transaction TXN-20260911-004473?",
+    "Is CoreBankingAdapter healthy?",
+    "What version is CardSecurityModule running?",
+    # A tool call that finds nothing. The answer must report that, not refuse.
+    "What is the status of transaction TXN-19990101-000001?",
+)
+"""Five questions that exercise Agent -> MCP -> Tool -> Result (Stage 6).
+
+Chosen so the demo shows the point rather than merely the plumbing: two of these
+return a live value that *disagrees with the documentation* -- the effective ATM
+limit and the version CardSecurityModule is actually running -- which is the
+whole argument for having tools alongside retrieval.
+"""
 
 CONTROL_QUESTIONS: tuple[str, ...] = (
     # Answerable-looking, and outside the corpus: it must be refused after a
@@ -120,7 +138,7 @@ def _ask(question: str, settings: Settings) -> int:
 
 def _demo(settings: Settings, allow_paid: bool = False) -> int:
     """Answer the seed questions and the two control questions."""
-    questions = SEED_QUESTIONS + CONTROL_QUESTIONS
+    questions = SEED_QUESTIONS + TOOL_QUESTIONS + CONTROL_QUESTIONS
     if _warn_if_paid(settings) and not allow_paid:
         # Refused rather than warned: this command asks seven questions, so the
         # cost of getting it wrong is seven calls, and the user cannot take it
@@ -162,6 +180,10 @@ def _print_answer(answer: AgentAnswer) -> None:
     else:
         print("   [retrieval: not performed]")
 
+    for call, invocation in zip(answer.tools, answer.decision.tools, strict=True):
+        outcome = "ok" if call.ok else f"not found ({call.error_code})"
+        print(f"   [tool: {call.tool} -> {outcome} · {invocation.reason}]")
+
     if answer.refused:
         print("   [refused: no supporting evidence; no model call was made]")
         return
@@ -172,6 +194,8 @@ def _print_answer(answer: AgentAnswer) -> None:
     )
     for index, source in enumerate(answer.sources, start=1):
         print(f"   [{index}] {source}")
+    for index, result in enumerate(answer.tool_results, start=1):
+        print(f"   [T{index}] {result.tool} · {result.summary}")
 
 
 if __name__ == "__main__":  # pragma: no cover - process entry point

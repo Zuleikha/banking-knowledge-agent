@@ -7,7 +7,15 @@ which embedder, which store or which provider is behind it.
 
 Nothing here chooses a provider itself — that is
 :func:`app.llm.factory.get_llm_service`'s job, and duplicating the decision would
-create a second place where ``BKA_LLM_PROVIDER`` is interpreted.
+create a second place where ``BKA_LLM_PROVIDER`` is interpreted. The same applies
+to the tool registry: :func:`app.mcp.factory.get_tool_registry` decides what is
+in it, and this function only asks for it.
+
+**Stage 6 gave the agent a third collaborator and changed nothing else here.**
+The agent is composed from a retriever, an LLM service and a tool registry, all
+injected. That the addition of an entire MCP layer cost this file two lines is
+the point of the seam: Stage 9 will still ask for an agent and still learn
+nothing about what is behind it.
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ from app.agent.agent import KnowledgeAgent
 from app.core.config import Settings, get_settings
 from app.core.tracing import traced
 from app.llm.factory import get_llm_service
+from app.mcp.factory import get_tool_registry
 from app.rag.pipeline import get_retriever
 
 
@@ -27,7 +36,8 @@ def get_agent(settings: Settings | None = None) -> KnowledgeAgent:
         settings: Application settings. Defaults to the cached singleton.
 
     Returns:
-        An agent wired to the configured retriever and provider.
+        An agent wired to the configured retriever and provider, and to all six
+        synthetic MCP support tools.
 
     Raises:
         LLMConfigurationError: If ``BKA_LLM_PROVIDER`` names a provider this
@@ -39,4 +49,5 @@ def get_agent(settings: Settings | None = None) -> KnowledgeAgent:
         retriever=get_retriever(resolved),
         llm_service=get_llm_service(resolved),
         settings=resolved,
+        tools=get_tool_registry(),
     )

@@ -142,10 +142,17 @@ class GroundedAnswer(BaseModel):
     The provenance fields exist so a caller can tell these three apart without
     reading the prose, which is exactly the distinction a support engineer needs:
 
-    * a **grounded answer** — ``llm_called`` and ``chunks_used > 0``;
-    * an **honest refusal** — ``refused``, because retrieval found nothing, so no
-      model was consulted and nothing could be invented;
+    * a **grounded answer** — ``llm_called`` and at least one piece of evidence,
+      whether a retrieved passage or a live tool result;
+    * an **honest refusal** — ``refused``, because there was no evidence at all,
+      so no model was consulted and nothing could be invented;
     * a **model-side decline** — never returned; the service raises instead.
+
+    ``chunks_used`` and ``tools_used`` are counted separately rather than summed
+    into one "evidence" number, for the reason the whole of Stage 6 exists: an
+    answer built from three documents is a different kind of claim from one built
+    from a live reading of the running system, and a caller deciding how much to
+    trust it needs to be able to tell.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -162,6 +169,11 @@ class GroundedAnswer(BaseModel):
         default=0,
         ge=0,
         description="Passages retrieval offered, before the context budget applied.",
+    )
+    tools_used: int = Field(
+        default=0,
+        ge=0,
+        description="Live tool results placed in the prompt (Stage 6).",
     )
     refused: bool = Field(
         default=False,

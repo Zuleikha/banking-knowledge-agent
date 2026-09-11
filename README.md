@@ -17,14 +17,14 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 5 — Knowledge Agent |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, **the knowledge agent**, **two concrete LLM adapters (Anthropic + OpenAI)** |
-| **Not yet implemented** | MCP tools, tool selection, conversation context, web UI, Docker |
+| **Current stage** | Stage 6 — MCP Tools |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), **six MCP support tools**, **an in-process tool registry**, **a real MCP server over stdio** |
+| **Not yet implemented** | LLM-driven tool selection, conversation context, web UI, Docker |
 
 > **Cloning this repository and running its tests costs nothing.** `BKA_LLM_PROVIDER`
 > defaults to a deterministic in-process **mock** — no account, no API key, no spend.
 >
-> Two real vendor adapters ship (see [Knowledge agent](#knowledge-agent) below), but
+> Two real vendor adapters ship (see [LLM providers](#llm-providers--two-adapters-and-why) below), but
 > spending needs **two** deliberate acts: switch `BKA_LLM_PROVIDER` **and** set
 > `BKA_LLM_API_KEY`. Neither adapter can even be constructed without a key, and the
 > multi-question `demo` commands refuse to run against a paid provider without `--paid`.
@@ -75,6 +75,7 @@ for the full reference.
 | **structlog** | Log *events with fields*, not formatted strings — required for Stage 10 |
 | **sentence-transformers** | Local `all-MiniLM-L6-v2` embeddings — semantic search with no API key and no per-query cost |
 | **`anthropic` + `openai`** | Two adapters behind one seam, so a vendor swap is a config line. Neither is the default; installing them does not enable spending |
+| **`mcp`** | The official Model Context Protocol SDK. Used only by the protocol server; the in-process registry the agent calls needs no SDK. Pinned to `1.12.4` — 2.x requires a Starlette that breaks the pinned FastAPI |
 | **NumPy** | The vector index *is* a NumPy matrix; search is one `matrix @ query` |
 | **pytest** | Test suite, including async API tests |
 | **ruff / mypy** | Formatting, linting and strict type checking |
@@ -151,7 +152,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 601 tests
+.venv/Scripts/python.exe -m pytest                       # 775 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -193,6 +194,14 @@ banking-knowledge-agent/
 │   ├── knowledge/
 │   │   ├── models.py        # DocumentMetadata, KnowledgeDocument
 │   │   └── loader.py        # Markdown + YAML front-matter loader
+│   ├── mcp/
+│   │   ├── __main__.py      # CLI: list | call | demo | serve
+│   │   ├── models.py        # ToolSpec, ToolResult, ToolInvocation  (the contract)
+│   │   ├── base.py          # Tool protocol + error taxonomy        (the contract)
+│   │   ├── registry.py      # register / list / call — what the agent uses
+│   │   ├── factory.py       # get_tool_registry — explicit registration
+│   │   ├── server.py        # REAL MCP server over stdio (mcp SDK)
+│   │   └── tools/           # One module per tool, each owning its own data
 │   ├── rag/
 │   │   ├── __main__.py      # CLI: build | search | demo | calibrate
 │   │   ├── models.py        # Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult
@@ -213,11 +222,12 @@ banking-knowledge-agent/
 │   │   └── openai_provider.py     # OpenAI adapter     <- the other
 │   │   #  ^ these two are the ONLY files allowed to import a vendor SDK,
 │   │   #    enforced by an AST test over the rest of the package
-│   └── agent/               # The seam between rag/ and llm/
+│   └── agent/               # The seam across rag/, mcp/ and llm/
 │       ├── __main__.py      # CLI: ask | demo
-│       ├── models.py        # RetrievalDecision, RetrievalSummary, AgentAnswer
-│       ├── policy.py        # decide_retrieval — is a knowledge search required?
-│       ├── agent.py         # KnowledgeAgent.ask — decide, retrieve, generate, record
+│       ├── models.py        # AgentDecision, RetrievalSummary, ToolCallSummary, AgentAnswer
+│       ├── policy.py        # decide — search? tools? neither?
+│       ├── tool_policy.py   # select_tools — route on identifiers, not topics
+│       ├── agent.py         # KnowledgeAgent.ask — decide, retrieve, call tools, generate
 │       └── factory.py       # get_agent — composition from configuration
 ├── data/
 │   ├── knowledge/           # 15 synthetic banking documents, by domain
@@ -542,13 +552,105 @@ collapsing them would quietly fold infrastructure noise into the refusal rate.
 
 | Piece | What it does |
 |---|---|
-| **Routing decision** | `decide_retrieval()` returns a `RetrievalDecision` with the rule that produced it. Stage 5 has one substantive branch, and the module says why a keyword classifier or an LLM router would be a guess rather than a decision. |
+| **Routing decision** | `decide()` returns an `AgentDecision` carrying the rule that produced it and any tool calls to make. Stage 6 added a second real branch — tools alongside retrieval — selected on *identifiers* in the question rather than on topic keywords. |
 | **One refusal path** | A question the agent declines to search is routed through the Stage 4 empty-evidence guard, not given a refusal of its own — so the insufficient-evidence sentence has exactly one definition in the system. |
 | **Execution record** | `AgentAnswer` returns the decision and a retrieval summary alongside the answer, so a UI renders provenance instead of scraping logs. The summary carries *shape*; passage text stays out of it. |
 | **A seam, not a layer** | The agent builds no prompts, owns no model and does no scoring. Retriever and service are injected, which is what keeps 104 agent tests offline, deterministic and free. |
 
 Full reasoning, including rejected alternatives, is in §20.5 of
 [`docs/architecture-guide.html`](docs/architecture-guide.html).
+
+---
+
+## MCP tools
+
+Six synthetic banking support tools, reachable two ways: in-process through a tool
+registry (what the agent uses), and over the real Model Context Protocol via stdio
+(what any MCP client can use). The tools exist once; the protocol server is a thin
+wrapper over the same registry, not a second implementation.
+
+Built with **parallel sub-agent development**: the shared tool contract was written
+first, then six sub-agents implemented one tool each concurrently against it, then the
+results were integrated and reconciled in a single pass. The method, including the
+inconsistencies it produced and how they were resolved, is documented in §21 of the
+architecture guide.
+
+| Tool | Arguments | Answers |
+|---|---|---|
+| `get_system_configuration` | `component`, `key` | The **effective** value of a config key, its version, and which precedence level supplied it |
+| `check_transaction_status` | `transaction_reference` | How far a transaction got through the eight lifecycle stages, why it stopped, its reversal state |
+| `get_component_status` | `component` | Operational state: instances, error rate, throughput, backlog, active incident |
+| `look_up_error_code` | `error_code` | Meaning, owning component, class, whether it is a wrapper code, the config key it breached |
+| `retrieve_system_version` | `component` *(optional)* | Running version per component or fleet-wide, and any drift from the platform build |
+| `check_service_health` | `component` *(optional)* | The liveness probe and its dependency checks — one service or all nine |
+
+```bash
+.venv/Scripts/python.exe -m app.mcp list      # the six specs and their arguments
+.venv/Scripts/python.exe -m app.mcp demo      # one worked call of each, plus a miss
+.venv/Scripts/python.exe -m app.mcp call look_up_error_code error_code=PAY-8003
+.venv/Scripts/python.exe -m app.mcp serve     # the real MCP server, stdio JSON-RPC
+```
+
+All six are synthetic and offline by construction — each reads a dictionary defined in
+its own module. There is no socket, no clock and no filesystem access anywhere in the
+layer, so `invoke` is pure: the same arguments always give the same result.
+
+### Documentation is not live information
+
+This is the point of the stage, not a detail of it. RAG answers *what the documentation
+says*; a tool answers *what the system is reportedly doing now*. The two are kept apart
+all the way through — separate collection, separate fences in the prompt, separate
+citation forms, separate fields on the answer:
+
+| | Documentation | Live tool reading |
+|---|---|---|
+| In the prompt | `<retrieved_documentation>` | `<tool_results>` |
+| Cited as | `[1]`, `[2]` | `[T1]`, `[T2]` |
+| On the answer | `sources`, `chunks_used` | `tool_results`, `tools_used` |
+
+They are kept apart because they can **disagree**, and when they do the disagreement is
+usually the answer:
+
+```
+Q: What is LimitService limits.atm.per_transaction_amount set to?
+
+  [1]  documentation   "limits.atm.per_transaction_amount | decimal | 500.00"
+  [T1] live tool        value = 250.00, precedence = account_override,
+                        reason = "Fraud pattern FP-2291: temporary account-level cap"
+```
+
+Both are true. Reporting only the documented default would be confidently wrong. The
+system prompt requires the model to report both and say which is which, and
+`AgentAnswer.used_live_information` tells a caller in one boolean whether any part of an
+answer came from a tool.
+
+### Tool results are untrusted input
+
+They get **the same** injection defence Stage 4 built for retrieved passages — the same
+escaping function, one delimiter list, a second fence — rather than a parallel scheme
+that could drift from it. A tool result that contains `</tool_results>`, or that tries to
+forge a `<retrieved_documentation>` block, is defused and visibly so.
+
+That matters more for tools than for documents: a document is written once and reviewed,
+while a tool result is assembled at request time from whatever the backing system holds —
+which in a real deployment includes fields an attacker can write.
+
+`get_system_configuration` additionally refuses any key that looks like a credential
+(ConfigurationStore holds operational values only), and refuses it *before* checking
+whether the component exists, so the refusal cannot be used to discover which components
+are real.
+
+### Finding nothing is not failing
+
+| Situation | Result |
+|---|---|
+| No transaction has that reference | `ok=False`, **returned** — a true, useful answer |
+| The service is `DOWN` | `ok=True`, returned — the tool *did* determine the health |
+| A required argument is missing | `ToolInputError`, **raised** — the call is wrong, not the answer |
+| No such tool | `ToolNotFoundError`, raised |
+
+`ok` describes the lookup, never the thing looked at. Getting that backwards would make
+"the service is down" indistinguishable from "there is no such service".
 
 ---
 

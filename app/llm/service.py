@@ -16,7 +16,7 @@ the sequence that turns evidence into an answer::
 agent loop are Stage 5 and Stage 7; putting any of that here would make this
 class the agent under a different name and leave the seam untested.
 
-**Why an empty retrieval short-circuits.** When retrieval returns nothing, this
+**Why empty evidence short-circuits.** When there is nothing to answer from, this
 service answers with :data:`~app.llm.prompts.INSUFFICIENT_EVIDENCE` and does not
 call the provider. A generation request with zero evidence has exactly two
 possible outcomes — a refusal, or an answer invented from the model's own
@@ -24,6 +24,18 @@ training — and one of those is the failure mode this entire architecture exist
 to prevent. Not sending it is cheaper, faster, deterministic, and removes the
 only path by which an ungrounded answer could be produced. Stage 5's agent
 builds its decision logic on top of this guard; it does not replace it.
+
+**Stage 6 widened what counts as evidence, and nothing else.** A tool result is
+evidence, so a question with no matching documents but a successful tool call is
+answered rather than refused. The guard itself is unchanged in shape: it still
+asks "is there anything to reason from?", it is still the only place that
+question is asked, and it still makes zero provider calls when the answer is no.
+
+**A tool result that found nothing still counts.** ``ok=False`` — *no transaction
+has that reference* — is a fact about the world, not an absence of evidence, and
+the model is instructed to report it. Treating it as emptiness would collapse
+"the system says it does not exist" into "we have no information", which are
+different answers and lead a support engineer to different next steps.
 
 **Failures are raised, never returned as text.** A truncated or refused
 generation is not quietly handed back as an answer. It raises, because a
@@ -50,6 +62,7 @@ from app.llm.prompts import (
     build_request,
     select_context,
 )
+from app.mcp.models import ToolResult
 from app.rag.models import RetrievalResult
 
 logger = get_logger(__name__)
@@ -83,16 +96,24 @@ class LLMService:
         return self._provider
 
     @traced
-    def answer(self, question: str, retrieval: RetrievalResult) -> GroundedAnswer:
-        """Answer ``question`` using only the passages in ``retrieval``.
+    def answer(
+        self,
+        question: str,
+        retrieval: RetrievalResult,
+        tool_results: tuple[ToolResult, ...] = (),
+    ) -> GroundedAnswer:
+        """Answer ``question`` from the passages and tool results supplied.
 
         Args:
             question: The user's question, in natural language.
             retrieval: Evidence gathered by the RAG layer. An empty result is a
-                valid input and produces an honest refusal.
+                valid input.
+            tool_results: Evidence gathered by the MCP layer. Empty by default,
+                which is exactly the Stage 4 and Stage 5 behaviour.
 
         Returns:
-            The answer together with its sources and provenance.
+            The answer together with its sources and provenance. A refusal is
+            returned only when there is neither a passage nor a tool result.
 
         Raises:
             ValueError: If the question is blank.
@@ -105,13 +126,18 @@ class LLMService:
             raise ValueError("Cannot answer an empty question.")
 
         selected = select_context(retrieval, self._settings)
-        if not selected:
+        if not selected and not tool_results:
             return self._refuse(question, retrieval)
 
-        request = build_request(question, selected, self._settings)
+        request = build_request(question, selected, self._settings, tool_results)
         response = self._complete(request)
         self._validate(response)
 
+        # Document citations only. A tool is not a "source" in the sense this
+        # field means -- it is not something a reader can open and check -- and
+        # merging tool names into the same tuple would undo at the last moment
+        # the documentation/live separation the prompt just spent two fences
+        # establishing. Tool provenance travels on the agent's own record.
         sources = tuple(scored.chunk.citation for scored in selected)
         answer = GroundedAnswer(
             question=question,
@@ -119,6 +145,7 @@ class LLMService:
             sources=sources,
             chunks_used=len(selected),
             chunks_available=len(retrieval.chunks),
+            tools_used=len(tool_results),
             refused=False,
             llm_called=True,
             response=response,
@@ -128,12 +155,15 @@ class LLMService:
             "llm.answered",
             # Neither the prompt nor the answer text is logged: both embed
             # document content, and Stage 10 decides deliberately what a request
-            # record contains. Shape, cost and provenance only.
+            # record contains. Shape, cost and provenance only. Tool *names* are
+            # safe here; their payloads are not, and are not logged.
             provider=response.provider_id,
             model=response.model_id,
             prompt_version=SYSTEM_PROMPT_VERSION,
             chunks_used=answer.chunks_used,
             chunks_available=answer.chunks_available,
+            tools_used=answer.tools_used,
+            tools=[result.tool for result in tool_results],
             sources=len(sources),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,

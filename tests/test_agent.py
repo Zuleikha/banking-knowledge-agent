@@ -512,14 +512,29 @@ class TestAgentFactory:
         assert agent.ask("What component handles card authentication?").text
 
 
-# --- The Stage 5 boundary -------------------------------------------------
+# --- The stage boundary ---------------------------------------------------
 
 
 class TestStageBoundary:
-    def test_the_agent_holds_no_tools_yet(self, agent: KnowledgeAgent):
-        """MCP is Stage 6. Nothing here should have grown a tool interface."""
-        assert not hasattr(agent, "tools")
-        assert not hasattr(agent, "call_tool")
+    """Guards that pin what the agent may and may not do at the current stage.
+
+    Two of these were written in Stage 5 to fail the moment MCP arrived, and in
+    Stage 6 they did exactly that. They are moved forward rather than deleted:
+    their value is not the specific values they assert but that changing them is
+    a deliberate act which forces a decision record to be written first (see
+    ``docs/HANDOVER.md`` §6.F for the one this move required).
+    """
+
+    def test_an_agent_built_without_a_registry_still_has_no_tools(
+        self, agent: KnowledgeAgent
+    ):
+        """The Stage 5 composition must remain valid and tool-free.
+
+        The ``agent`` fixture passes no registry, which is how every Stage 5
+        test runs. Tools are opt-in: the attribute exists now, but it is
+        ``None``, so nothing in this file silently acquired a live dependency.
+        """
+        assert agent.tools is None
 
     def test_the_agent_holds_no_conversation_state(self, agent: KnowledgeAgent):
         """Conversation context is Stage 8. Each question is independent."""
@@ -528,7 +543,7 @@ class TestStageBoundary:
         assert first.text == second.text
         assert not hasattr(agent, "history")
 
-    def test_the_decision_literal_has_exactly_the_stage_5_values(self):
+    def test_the_decision_literal_has_exactly_the_stage_6_values(self):
         """Guards against a branch being added without a decision record."""
         from typing import get_args
 
@@ -536,8 +551,27 @@ class TestStageBoundary:
 
         assert set(get_args(DecisionReason)) == {
             "knowledge_required",
+            "knowledge_and_live_status_required",
             "no_searchable_content",
         }
+
+    def test_there_is_still_no_tool_only_branch(self):
+        """Stage 6 adds tools *alongside* retrieval, never instead of it.
+
+        A tool-only value would mean answering from a live reading with no
+        documentation to interpret it. Stage 7 may add one deliberately; until
+        then its absence is a decision (``docs/HANDOVER.md`` §6.F), not an
+        oversight.
+        """
+        from typing import get_args
+
+        from app.agent.models import DecisionReason
+
+        assert not [
+            value
+            for value in get_args(DecisionReason)
+            if "tool" in value and "knowledge" not in value
+        ]
 
     def test_the_agent_package_imports_no_vendor_sdk(self):
         import ast

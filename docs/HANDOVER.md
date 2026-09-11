@@ -7,27 +7,35 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-10** · **Stage 5 complete and approved** — Checkpoint A
-(`1478631`) and Checkpoint B (`6ebe947`) both committed and pushed. The previously-open
-provider decision is **RESOLVED** — two adapters, no vendor chosen, default stays `mock`,
-no live key, no live call. See *Stage 5 decision*.
+Last updated: **2026-09-11** · **Stage 6 — MCP Tools — IN PROGRESS.** Stage 5 remains
+complete and approved (Checkpoint A `1478631`, Checkpoint B `6ebe947`, both pushed; two
+later docs-only commits `26fa239` and `96204f1` sit on top). Stage 6 scope and build
+methodology were decided and written here **before any code was written** — see
+*Stage 6 decisions*.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** Stage 5 complete and approved, both checkpoints committed and pushed.
-**Nothing is in progress.** No half-finished work, no blockers, no open questions.
+**Session state:** **Stage 6 (MCP Tools) is IN PROGRESS.** Stage 5 is complete, approved,
+committed and pushed. Stage 6 is uncommitted work in the tree (20 new files, 14
+modified), awaiting the user's approval. No blockers.
+
+> Stage 6 decisions were written into this file **before** implementation began, per §2.
+> If this session is lost mid-stage, read *Stage 6 decisions* first: it records the scope,
+> the shared tool contract and the sub-agent build method, all of which were settled
+> before a line of code existed.
 
 ### State at checkpoint
 
 | | |
 |---|---|
 | Last **approved** stage | **Stage 5 — Knowledge Agent + LLM adapters** (approved 2026-09-10) |
-| `HEAD` | `6ebe947` = `origin/main` — verified |
-| Working tree | Clean, apart from git-ignored local files |
-| Tests | **601 passed** · ruff clean · mypy strict clean (37 source files) |
-| Next stage | **Stage 6 — MCP Tools** (not started) |
+| Stage **awaiting approval** | **Stage 6 — MCP Tools.** Implemented and tested, **not committed** |
+| `HEAD` | `96204f1` = `origin/main` — the last Stage 5 docs commit. Stage 6 is uncommitted work on top |
+| Working tree | **Dirty** — 20 new files, 14 modified (34 total, verified with `git add -An`). Nothing staged, nothing committed |
+| Tests | **775 passed** · ruff clean · mypy strict clean (52 source files) |
+| Next stage | **Stage 7 — Agent decision and tool selection** (not started; do not begin until Stage 6 is approved) |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -40,25 +48,35 @@ no live key, no live call. See *Stage 5 decision*.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -4        # expect 26fa239 docs(stage-5) on top
-git status                  # expect clean
+git log --oneline -3        # expect 96204f1 docs(stage-5) on top
+git status                  # expect Stage 6's files as UNTRACKED and MODIFIED
 
-# 2. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 601 passed
+# 2. Install the Stage 6 dependency if the venv predates it
+uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
+./.venv/Scripts/python.exe -c "import mcp; print('mcp ok')"
+
+# 3. Re-establish the baseline
+./.venv/Scripts/python.exe -m pytest        # expect 775 passed
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect 37 source files
+./.venv/Scripts/python.exe -m mypy          # expect 52 source files
 
-# 3. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
+# 4. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
 ./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
 
-# 4. See Stage 5 working, entirely FREE
-./.venv/Scripts/python.exe -m app.agent demo    # 5 grounded + 2 refusals
+# 5. See Stage 6 working, entirely FREE
+./.venv/Scripts/python.exe -m app.mcp list      # the six tool specs
+./.venv/Scripts/python.exe -m app.mcp demo      # 7 tool calls, incl. a deliberate miss
+./.venv/Scripts/python.exe -m app.agent demo    # RAG + MCP together, [1] vs [T1]
 
-# 5. Then read "Next Action" at the bottom of this file.
+# 6. Then read "Next Action" at the bottom of this file.
 ```
 
+> ⚠️ **`mcp` must stay pinned at `1.12.4`.** Upgrading it pulls `starlette>=1.0`, which
+> breaks `fastapi==0.115.6` at import and takes the entire suite down at collection.
+> See *Stage 6 decisions* §6.B.
+
 > If the venv is missing, recreate it per the Stage 4 instructions below — note that
-> `requirements.txt` now also installs `anthropic` and `openai` (small pure-Python
+> `requirements.txt` now also installs `anthropic`, `openai` and `mcp` (small pure-Python
 > packages; the large artefact is still PyTorch).
 
 ### Stage 5 is split into two approval checkpoints
@@ -117,11 +135,20 @@ git status                    # expect clean
 
 | | |
 |---|---|
+| **Stage number** | 6 |
+| **Stage name** | MCP Tools |
+| **Status** | 🚧 **IN PROGRESS — uncommitted. Not yet approved.** |
+| **Last completed step** | See *Stage 6 progress* below — updated continuously through the stage |
+| **Next step** | Finish the stage, show the STAGE COMPLETE report, then STOP for approval |
+
+### Previous stage
+
+| | |
+|---|---|
 | **Stage number** | 5 |
 | **Stage name** | Knowledge Agent + concrete LLM adapters |
-| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — both checkpoints committed and pushed** |
+| **Status** | ✅ **COMPLETE AND APPROVED — both checkpoints committed and pushed** |
 | **Last completed step** | Checkpoint B approved 2026-09-10; committed `6ebe947` and pushed to `origin/main`, push verified |
-| **Next step** | **Stage 6 — MCP Tools** (`prompt.md` §14). Not started; wait for the user to start it |
 
 > ⛔ Each Stage 5 checkpoint must STOP after implementation and testing, and wait for
 > explicit approval before any commit or push. Checkpoint B must not begin until
@@ -168,9 +195,210 @@ Stage 14. Full record with rejected alternatives goes in
 
 ---
 
+## Stage 6 decisions — recorded BEFORE implementation began
+
+**Decided by the user, 2026-09-11**, in the kickoff instruction and one clarifying
+question. Written here before any Stage 6 code existed, per `prompt.md` §2: *"If a
+decision is made mid-stage, before implementation begins, update HANDOVER.md
+immediately."*
+
+### 6.A — MCP depth: build BOTH layers
+
+The kickoff said *"Introduce MCP"*, which admits two materially different builds. The
+question was put to the user explicitly and answered.
+
+| | |
+|---|---|
+| **In-process tool layer** | ✅ Built. `app/mcp/registry.py` — the thing `KnowledgeAgent` talks to directly. Fast, offline, deterministic |
+| **Real MCP protocol server** | ✅ Built. `app/mcp/server.py` — the official `mcp` SDK over stdio, exposing the **same six tools through the same registry** |
+| **Which is the source of truth** | The registry. The server is a thin protocol wrapper, not a second implementation of the tools |
+| **Which the test suite targets** | The registry — the full suite, same standard as Stages 3–5. The server gets a small number of protocol-level smoke tests only |
+| **Rejected** | A mock-only / MCP-shaped-but-not-MCP layer. It would have been cheaper and entirely defensible in the code, but "we implemented an interface that looks like MCP" is a materially weaker claim than "we ran the protocol" — and the protocol is the part with the surprises in it |
+
+### 6.B — Dependency resolution: `mcp` had to be pinned DOWN, not up
+
+Found while installing, before any tool code was written. Recorded because it is a real
+constraint on this repository, not an anecdote.
+
+- `uv pip install mcp` resolves to **`mcp==2.2.0`**, which requires `starlette>=1.0`.
+- That upgrade **breaks `fastapi==0.115.6`**: `TypeError: Router.__init__() got an
+  unexpected keyword argument 'on_startup'` — raised at *import* of `app.main`, so the
+  entire 601-test suite fails to collect, not merely the health tests.
+- Resolving `mcp` **against the existing pins** instead yields **`mcp==1.12.4`**, which is
+  compatible with `starlette==0.41.3` and `pydantic==2.10.4`. Suite re-verified with it
+  installed: 601 passed, unchanged.
+- **Decision: pin `mcp==1.12.4`.** Upgrading FastAPI to chase the newest MCP SDK was
+  rejected — that is a Stage 1 infrastructure change smuggled into Stage 6, and Stage 6
+  has no requirement the newer SDK satisfies.
+- The failed `mcp==2.2.0` attempt also left six orphan packages in `.venv`
+  (`mcp-types`, `cryptography`, `pyjwt`, `opentelemetry-api`, `pycparser`,
+  `typing-inspection`); they were uninstalled so the venv matches `requirements.txt`.
+
+### 6.C — The shared tool contract, written by the main session before any sub-agent ran
+
+This is the one piece of shared state in Stage 6, so it was written **once, first, by the
+main session**, and every sub-agent was handed it as a fixed input rather than asked to
+agree on one.
+
+| Contract point | Decision | Why |
+|---|---|---|
+| **Tool seam** | A `Tool` **protocol** (`app/mcp/base.py`), not an ABC | Same choice as `LLMProvider`, `Embedder` and `VectorStore`. A tool qualifies structurally; a test double needs no inheritance |
+| **Error taxonomy** | `ToolError` base carrying `retryable`, plus `ToolNotFoundError`, `ToolInputError`, `ToolExecutionError`, `ToolUnavailableError` | Mirrors Stage 4's LLM taxonomy deliberately, including the "no silent fallback" rule |
+| **"Not found" is data; "malformed" is an error** | An unknown transaction id / error code / component returns `ToolResult(ok=False, error_code=…)`. A missing or malformed *argument* raises `ToolInputError` | A question about a transaction that does not exist is a legitimate question with a legitimate answer. A caller that omits a required argument has a bug. Collapsing the two would either hide the bug or turn an ordinary answer into an exception |
+| **Arguments are `Mapping[str, str]`** | Every tool argument is a string | Every argument this domain has is an identifier, a code or a config key. Stage 7 will have an LLM emitting these, and an LLM emits strings; a richer type would only move the parsing somewhere less testable |
+| **Deterministic synthetic clock** | `SYNTHETIC_OBSERVED_AT`, one fixed instant, stamped on every result | The data is synthetic; a real `datetime.now()` would make every assertion non-deterministic for no benefit. Honest and testable beats realistic and flaky |
+| **Each tool owns its own synthetic dataset** | No shared fixture module | This is precisely what made the six tools independent and therefore parallelisable. The cost is duplicated component names across modules — accepted knowingly, and it is the friction discussed in 6.E |
+
+### 6.D — Tool results are untrusted input, and reuse Stage 4's defence
+
+Carried forward from Stage 4 and required by the kickoff. **No second defence scheme was
+invented.** `app/llm/prompts.py` already fences, escapes and declares retrieved passages
+untrusted; Stage 6 extends that same machinery to tool results:
+
+- a second fence, `<tool_results>` … `</tool_results>`, rendered beside the existing
+  `<retrieved_documentation>` block;
+- the **same** `_fence_safe` escaping, extended to cover the new delimiters, so a tool
+  result containing a literal closing tag cannot break out of its fence;
+- the system prompt gains a rule naming the tool fence as untrusted data, and a rule
+  distinguishing **documentation** (how the platform is designed) from **live tool
+  results** (what it is reportedly doing now).
+- `SYSTEM_PROMPT_VERSION` therefore bumps **`1.0.0` → `1.1.0`**.
+
+### 6.E — Build methodology: six parallel sub-agents, one per tool
+
+Chosen deliberately by the user as an exercise in agentic engineering, and recorded here
+as an architectural decision because it shaped the module layout.
+
+| | |
+|---|---|
+| **What the main session did first** | Wrote the entire shared contract (6.C): `models.py`, `base.py`, `registry.py`. Nothing was delegated until the interface was frozen |
+| **What each sub-agent received** | A self-contained brief: the frozen contract verbatim, the synthetic-data-only rule, the corpus facts its tool had to stay consistent with, its own single file to write, and an explicit instruction to touch no other file |
+| **How many ran in parallel** | Six, one per tool, dispatched in a single batch |
+| **What the main session did afterwards** | Integration: registration, cross-tool consistency, the agent/prompt/policy wiring, and every test that spans more than one tool |
+| **Why this stage suited it** | Six genuinely independent tools, no shared state until registration, and a contract that could be frozen up front. That combination is rarer than it sounds |
+| **Why the agent's own decision logic was NOT delegated** | It is shared state throughout — `policy.py`, `models.py`, `agent.py` and `prompts.py` all had to change together and agree. Parallel sub-agents there would have produced four reasonable, mutually incompatible designs |
+| **Rejected** | One sub-agent for all six tools (no parallelism, and no test of whether the contract was clear enough to hand over); and delegating the contract itself (it is the shared state — the one thing that must have a single author) |
+
+Integration friction actually encountered is recorded in *Stage 6 — integration notes*
+below, and explained at length for future reference in
+`docs/architecture-guide.html` §21.
+
+### 6.F — `DecisionReason` is extended, not replaced
+
+Stage 5 left `DecisionReason` with two values and a docstring saying Stage 6 would extend
+it. It is extended rather than joined by a parallel tool-decision type, on the user's
+explicit instruction and for the reason Stage 5 gave: one question produces **one**
+routing decision, and two decision objects would be two things that must agree about the
+same question.
+
+---
+
 ## Current Work
 
-### Implemented in Stage 5 — Checkpoint B (this session)
+### Implemented in Stage 6 (this session, uncommitted)
+
+**The shared contract — written by the main session before any sub-agent ran**
+
+- **`app/mcp/models.py`** — `ToolName` (a closed literal of all six, fixed *before* the
+  tools were written so six independent modules could not disagree about their own
+  names), `ToolSpec` (+ `input_schema()` emitting real JSON Schema for the protocol
+  layer), `ToolParameter`, `ToolResult`, `ToolInvocation`, `SYNTHETIC_OBSERVED_AT` (one
+  fixed clock), and `TOOL_FAILURE_CODES` (added at integration — see below).
+- **`app/mcp/base.py`** — the `Tool` **protocol** (structural, like `LLMProvider`), the
+  `ToolError` taxonomy with `retryable`, and the shared `require_argument` /
+  `reject_unknown_arguments` helpers that keep six independently-written tools failing
+  identically.
+- **`app/mcp/registry.py`** — `ToolRegistry`: `register` / `specs` / `get` / `call` /
+  `invoke` / `invoke_all`. Explicit registration, never discovery. Wraps an untyped tool
+  exception in `ToolExecutionError`. Logs tool and argument **names**, never values.
+
+**The six tools — six sub-agents, one file each, in parallel**
+
+Every tool owns its own synthetic dataset and imports nothing from its siblings. All six
+are pure: no clock, no I/O, no randomness.
+
+| Tool | Notable |
+|---|---|
+| `get_system_configuration` | Effective value + precedence level + documented default, so a *disagreement* with the docs is visible. Refuses credential-shaped keys **before** validating the component, so the refusal is not a component-existence oracle |
+| `check_transaction_status` | Eight real lifecycle stages, eight synthetic transactions covering a clean completion, three rejection classes, a jam, an **unacknowledged** reversal, a `PAY-8003` wrapper decline carrying its real cause, and one in progress |
+| `get_component_status` | All nine components. `TransactionSwitch` is DEGRADED with **6/6 instances healthy** — the health-is-not-status case. One incident id links origin to impacted |
+| `look_up_error_code` | All 40 documented codes. `PAY-8003` and `SWX-7001` flagged as wrappers; `SWX-7004` recorded as *being* a reversal rather than triggering one. A known prefix with an unknown number says so specifically |
+| `retrieve_system_version` | Optional argument: fleet view or one component. Models real drift — CSM on `4.1.9`, LIM on `4.2.2`, platform build `4.2.3` |
+| `check_service_health` | Optional argument. Liveness + dependency checks only. `CoreBankingAdapter`'s failing pool check is the documented cause of the switch's `SWX-7001`s |
+
+**The protocol layer**
+
+- **`app/mcp/server.py`** — a genuine MCP server on the official SDK, stdio JSON-RPC,
+  exposing the same registry. No tool logic, no data (asserted by a test). A `ok=False`
+  result crosses the wire as a **result**; a malformed call crosses as an **error**.
+- **`app/mcp/factory.py`** — `build_tool_registry()` / `get_tool_registry()`. No
+  settings: there is nothing to configure that would not be inventing a knob for a
+  system that does not exist yet.
+- **`app/mcp/__main__.py`** — `list | call | demo | serve`. Free and offline; the tool
+  layer has no LLM in it, so it needs none of the paid-provider guards.
+
+**Integration — the main session's own work**
+
+- **`app/llm/prompts.py`** — the injection defence extended (§6.D): `<tool_results>`
+  fence, four new delimiters in the **same** `_DELIMITERS` tuple, the **same**
+  `_fence_safe`, `render_tool_results()`, `[T1]` citations, two new system-prompt rules,
+  `SYSTEM_PROMPT_VERSION` → `1.1.0`.
+- **`app/llm/service.py`** — `answer()` takes `tool_results`. The refusal guard now asks
+  "is there evidence of *either* kind?"; its shape is otherwise unchanged, and it still
+  makes zero provider calls when the answer is no.
+- **`app/llm/models.py`** — `GroundedAnswer.tools_used`, counted **separately** from
+  `chunks_used` rather than summed.
+- **`app/agent/models.py`** — `DecisionReason` extended with
+  `knowledge_and_live_status_required`; `RetrievalDecision` renamed `AgentDecision` with
+  the old name kept as an alias; new `ToolCallSummary`; `AgentAnswer` gains `tools`,
+  `tool_results` and `used_live_information`.
+- **`app/agent/tool_policy.py`** (new) — `select_tools()`: route on identifiers, not
+  topics. Selection and argument extraction are one step.
+- **`app/agent/policy.py`** — `decide()` (with `decide_retrieval` kept as an alias).
+- **`app/agent/agent.py`** — `_run_tools()`; tools injected, `None` by default so the
+  Stage 5 composition is unchanged; a tool failure propagates rather than silently
+  dropping the live half of an answer.
+- **`app/agent/factory.py`** — two lines: the agent gains a third collaborator.
+- **`app/agent/__main__.py`** — five tool questions added to `demo`, and tool activity
+  rendered as `[T1]`, `[T2]` beside the document citations.
+
+### Stage 6 — integration notes (what the parallel build actually cost)
+
+Recorded because §6.E promised it, and because this is the reusable part.
+
+| # | Friction | Resolution |
+|---|---|---|
+| 1 | **A real contradiction.** `check_service_health` reported the platform line `4.2` as every service's running version; `retrieve_system_version`, built in parallel from the same corpus, knew two components had not reached the current build. Two tools answering the same question differently | Health now carries a per-service `reported_version` matching the version tool, and a cross-tool test asserts agreement. **The first fix was incomplete** — it updated the payload and not the summary prose beside it, so the test was tightened to cover both |
+| 2 | **Divergent failure vocabulary.** The brief said "a stable UPPER_SNAKE code, e.g. `NOT_FOUND`". Four tools used exactly that; two invented richer sets | Resolved **upward**, not flattened: the specific codes are better answers. The real defect was that the set was unbounded, so `TOOL_FAILURE_CODES` now closes it and a test asserts every not-found path uses a member |
+| 3 | **A house convention no brief mentioned.** Four tools used em dashes in runtime strings; two deliberately kept them ASCII for a Windows console. Neither could know the project already reconfigures stdout to UTF-8 in every `__main__.py` | Nothing to fix — the new CLI follows the existing convention. The lesson is that the brief should have named it |
+| 4 | **Cosmetic inconsistency.** Three spellings of the same constant (`ERROR_NOT_FOUND: Final`, `_ERROR_NOT_FOUND`, none at all); disagreement on whether to accept three-letter component codes | Left alone deliberately. Harmless, and normalising it means editing six files to satisfy symmetry |
+| 5 | **Over-delivery.** Several tools returned more payload fields than asked for (`role` on incidents, `reversal_role`, `drift`, `warrants_incident`) | Kept. All of it was good — the upside of briefs that state intent rather than dictate a schema |
+| 6 | **A leak the main session wrote, caught by its own test.** `ToolCallSummary` — the object whose stated purpose is being safe to log — carried the policy's `reason` string, which names the very identifier the argument list omits | `reason` removed from the summary; it lives on `AgentDecision.tools`, which is returned and displayed but never logged |
+
+**Dependency resolution** (§6.B) also happened before any tool code: `mcp` had to be
+pinned **down** to `1.12.4`, because 2.x forces a Starlette that breaks the pinned
+FastAPI at import and takes the whole suite with it.
+
+### Currently being worked on
+
+**Nothing.** Stage 6 is implemented and tested, and is waiting for approval. Nothing is
+committed.
+
+### What remains deliberately unfinished in Stage 6
+
+1. **LLM-driven tool selection.** Routing is deterministic and identifier-based. Weighing
+   a model-driven selector against it is Stage 7's explicit subject; building it here
+   would spend that decision early and make the tool layer untestable without a provider.
+2. **No tool reaches a real system.** Every tool reads a dictionary in its own module.
+   `ToolUnavailableError` and `SYNTHETIC_OBSERVED_AT` exist as the two named seams for
+   the day one does.
+3. **The MCP server is stdio only.** `build_server()` is transport-agnostic; `serve()` is
+   the handful of lines that choose stdio. HTTP/SSE is a Stage 14 question.
+4. **Tool results are not yet on an HTTP surface.** The agent is still CLI-only. Stage 9.
+5. **Answer quality with tool context is still unmeasured** — as in Stage 5, because no
+   live model call has been made. Stage 11.
+
+### Implemented in Stage 5 — Checkpoint B (approved, committed `6ebe947`, pushed)
 
 - **`AnthropicProvider`** — `app/llm/anthropic_provider.py`. Official `anthropic` SDK.
   Translates request, response and the whole exception hierarchy. Reads text from the
@@ -315,12 +543,7 @@ never have found this, because a mock raises whatever a test tells it to.
   **§20 Decision records** section carrying the full reasoning for every Stage 3 choice
   (what was chosen, why, what was rejected and why). `README.md` updated.
 
-### Currently being worked on
-
-**Nothing.** Stage 5 is complete, approved, committed (`1478631`, `6ebe947`) and pushed.
-Stage 6 has not been started.
-
-### What remains unfinished in Checkpoint B
+### What remained unfinished in Stage 5 Checkpoint B (still true)
 
 Nothing the instruction requires. Deliberately absent, recorded as deferred rather than
 missed:
@@ -340,7 +563,7 @@ missed:
 
 ### Not yet implemented (later stages)
 
-MCP tools (6) · Tool selection (7) · Conversation context (8) · Web interface (9) ·
+Tool selection (7) · Conversation context (8) · Web interface (9) ·
 Request observability (10) · Evaluation framework (11) · Docker (12) ·
 Security review (13) · Production architecture (14) · Final review (15)
 
@@ -385,33 +608,77 @@ RetrievalResult(chunks, sources, candidates_considered, min_score, top_score)
    │
    └──▶ logs/app.log  "rag.retrieved"
 
-AGENT (Stage 5 — the seam; the first component that owns a whole request)
+MCP TOOLS (Stage 6 — live information, kept separate from documentation)
+
+Question
+   │
+   ▼  select_tools            tool_policy.py — identifiers, not topics
+   │                          PREFIX-NNNN · TXN-YYYYMMDD-NNNNNN ·
+   │                          dotted.config.key · a component name
+   │                          max 4 calls, deterministic order
+   │
+   ├── no identifier ──▶ no tool call (the common case, not a failure)
+   └── identifier    ──▶ ToolRegistry.invoke_all()
+                              │
+        ┌─────────────────────┼─────────────────────┬───────────────┐
+        ▼                     ▼                     ▼               ▼
+  get_system_          check_transaction_    get_component_    look_up_
+  configuration        status                status            error_code
+        ▼                     ▼                     ▼               ▼
+  retrieve_system_     check_service_        (each tool owns its own synthetic
+  version              health                 dataset; pure — no clock, no I/O)
+        │
+        ▼
+  ToolResult × n    tool · ok · summary · data · observed_at · source
+        │
+        ├──▶ logs/app.log  "mcp.tool_called"   tool + argument NAMES only —
+        │                                       never argument values or payloads
+        ▼
+  (into the GENERATION block below, in its OWN fence)
+
+  ok=False is a FINDING, not an error: "no transaction has that reference" is
+  a true answer. A malformed call raises instead. A DOWN service is ok=True.
+
+MCP PROTOCOL SERVER (the same tools, over the wire)
+
+  any MCP client ──stdio JSON-RPC──▶ app/mcp/server.py ──▶ the SAME ToolRegistry
+                                     (no tool logic, no data of its own)
+  python -m app.mcp serve
+
+AGENT (Stage 5, extended in Stage 6 — the seam across rag/, mcp/ and llm/)
 
 Question
    │
    ▼  KnowledgeAgent.ask        blank ──▶ ValueError, nothing is called
-   ▼  decide_retrieval          RetrievalDecision(retrieve, reason, explanation)
+   ▼  decide                    AgentDecision(retrieve, tools, reason, explanation)
    │
    ├── retrieve=False ──▶ empty RetrievalResult      no embedding, no search
    │   "no_searchable_content"                       e.g. "!!! ???"
-   └── retrieve=True  ──▶ Retriever.retrieve()       the RETRIEVAL block above
+   ├── retrieve=True  ──▶ Retriever.retrieve()       DOCUMENTATION
+   └── tools=(...)    ──▶ ToolRegistry.invoke_all()  LIVE READINGS
    │
-   ▼  LLMService.answer()       the GENERATION block below, UNCHANGED
+   ▼  LLMService.answer(question, retrieval, tool_results)
    ▼
-AgentAnswer   text · sources · decision · RetrievalSummary · GroundedAnswer
+AgentAnswer   text · sources · decision · RetrievalSummary
+              · ToolCallSummary × n (safe to log — argument NAMES only)
+              · ToolResult × n      (full, for display — never logged)
+              · used_live_information
    │
-   └──▶ logs/app.log  "agent.answered"   route, counts, top score, document ids —
-                                         never the question, passages or answer
+   └──▶ logs/app.log  "agent.answered"   route, counts, top score, document ids,
+                                         tool names — never the question,
+                                         passages, tool payloads or answer text
 
-GENERATION (Stage 4 — per question, no vendor involved)
+GENERATION (Stage 4, extended in Stage 6 — TWO fences, one escaping function)
 
-RetrievalResult
+RetrievalResult + ToolResult × n
    │
    ▼  select_context      max 5 passages / 12,000 chars; dropped WHOLE, never cut
-   │                      EMPTY ──▶ refuse with the fixed sentence, NO provider call
-   ▼  build_request       frozen system prompt v1.0.0
+   │                      NEITHER kind of evidence ──▶ refuse, NO provider call
+   ▼  build_request       frozen system prompt v1.1.0
    │                      + <retrieved_documentation> fenced, numbered, escaped
-   │                      + the question, last and outside the fence
+   │                      + <tool_results>            fenced, numbered, escaped
+   │                        ^^ the SAME _fence_safe; one _DELIMITERS tuple
+   │                      + the question, last and outside both fences
 CompletionRequest         system · messages · max_tokens      (no sampling params)
    │
    ▼  LLMProvider.complete()          ← the seam; no vendor above this line
@@ -419,10 +686,14 @@ CompletionRequest         system · messages · max_tokens      (no sampling par
 LLMResponse               text · stop_reason · usage · provider/model id
    │
    ▼  validate            refusal / max_tokens / empty  ──▶ RAISE, never shown
-GroundedAnswer            text + sources + chunks_used + llm_called + prompt_version
-   │
+GroundedAnswer            text + sources + chunks_used + tools_used
+   │                      + llm_called + prompt_version
    └──▶ logs/app.log  "llm.answered"   shape and cost only — never the prompt or
-                                       the answer, both of which embed document text
+                                       the answer, both of which embed content
+
+  Documentation cites as [1][2]; tool readings cite as [T1][T2]. They are kept
+  apart because they can DISAGREE — a documented default of 500.00 against an
+  effective 250.00 — and that disagreement is usually the answer.
 
 HTTP (unchanged from Stage 1 — the agent is reachable from the CLI only; wiring it
 to an endpoint is Stage 9)
@@ -455,9 +726,17 @@ GET /health → FastAPI router → HealthResponse
 | `app/llm/service.py` | `LLMService.answer` — inject, generate, validate, attribute |
 | `app/llm/factory.py` | `get_provider`, `get_llm_service` — configuration → provider |
 | `app/llm/__main__.py` | CLI: prompt / ask / demo |
-| `app/agent/models.py` | `RetrievalDecision`, `RetrievalSummary`, `AgentAnswer` |
-| `app/agent/policy.py` | `decide_retrieval` — is a knowledge search required? |
-| `app/agent/agent.py` | `KnowledgeAgent.ask` / `ask_many` — decide, retrieve, generate |
+| `app/mcp/models.py` | `ToolSpec`, `ToolResult`, `ToolInvocation`, the closed `ToolName` |
+| `app/mcp/base.py` | `Tool` protocol + `ToolError` taxonomy + argument helpers |
+| `app/mcp/registry.py` | `ToolRegistry` — register / specs / call / invoke_all |
+| `app/mcp/factory.py` | `get_tool_registry` — explicit registration of all six |
+| `app/mcp/server.py` | The real MCP server over stdio; a wrapper on the registry |
+| `app/mcp/__main__.py` | CLI: list / call / demo / serve |
+| `app/mcp/tools/*.py` | Six tools, one per module, each owning its synthetic data |
+| `app/agent/tool_policy.py` | `select_tools` — which tools, with which arguments |
+| `app/agent/models.py` | `AgentDecision`, `RetrievalSummary`, `ToolCallSummary`, `AgentAnswer` |
+| `app/agent/policy.py` | `decide` — search? tools? neither? |
+| `app/agent/agent.py` | `KnowledgeAgent.ask` — decide, retrieve, call tools, generate |
 | `app/agent/factory.py` | `get_agent` — composition from configuration |
 | `app/agent/__main__.py` | CLI: ask / demo |
 | `app/llm/anthropic_provider.py` | Anthropic adapter — **paid**; one of two vendor modules |
@@ -530,7 +809,67 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 5 Checkpoint B (3 files, uncommitted)
+### Added in Stage 6 (20 files, UNCOMMITTED)
+
+| File | Purpose | Written by |
+|---|---|---|
+| `app/mcp/__init__.py` | Package exports and the layer overview docstring | main session |
+| `app/mcp/models.py` | `ToolSpec`, `ToolResult`, `ToolInvocation`, `ToolName`, `TOOL_FAILURE_CODES` | main session |
+| `app/mcp/base.py` | `Tool` protocol, `ToolError` taxonomy, argument helpers | main session |
+| `app/mcp/registry.py` | `ToolRegistry` — the MCP layer the agent talks to | main session |
+| `app/mcp/factory.py` | `build_tool_registry` / `get_tool_registry` | main session |
+| `app/mcp/server.py` | The real MCP server over stdio, on the official SDK | main session |
+| `app/mcp/__main__.py` | CLI: list / call / demo / serve | main session |
+| `app/mcp/tools/__init__.py` | Tool exports + why there is no shared fixture module | main session |
+| `app/mcp/tools/system_configuration.py` | `get_system_configuration` | **sub-agent 1** |
+| `app/mcp/tools/transaction_status.py` | `check_transaction_status` | **sub-agent 2** |
+| `app/mcp/tools/component_status.py` | `get_component_status` | **sub-agent 3** |
+| `app/mcp/tools/error_code.py` | `look_up_error_code` | **sub-agent 4** |
+| `app/mcp/tools/system_version.py` | `retrieve_system_version` | **sub-agent 5** |
+| `app/mcp/tools/service_health.py` | `check_service_health` | **sub-agent 6** |
+| `app/agent/tool_policy.py` | `select_tools` — route on identifiers, not topics | main session |
+| `tests/test_mcp_registry.py` (44) | Tool contract, registry, error taxonomy, closed failure vocabulary | main session |
+| `tests/test_mcp_tools.py` (43) | The six tools + the cross-tool consistency guards | main session |
+| `tests/test_mcp_injection.py` (23) | Hostile tool results cannot break either fence | main session |
+| `tests/test_mcp_agent.py` (51) | Routing, wiring, documentation-vs-live, the execution record | main session |
+| `tests/test_mcp_server.py` (12) | The real MCP protocol, over an in-memory client session | main session |
+
+> **Exactly one sub-agent file was edited afterwards by the main session**, at
+> integration: `service_health.py`, to carry a per-service `reported_version` instead of
+> the platform line — in the payload, and then in the summary prose, which the first
+> attempt at the fix missed. The other five ship exactly as delivered.
+
+### Modified in Stage 6 (14 files, UNCOMMITTED)
+
+| File | Change |
+|---|---|
+| `app/llm/prompts.py` | `<tool_results>` fence; four delimiters added to the **same** `_DELIMITERS`; `render_tool_results`; `[T1]` citations; two new system-prompt rules; version `1.0.0` → `1.1.0` |
+| `app/llm/service.py` | `answer()` takes `tool_results`; the refusal guard now asks for evidence of *either* kind |
+| `app/llm/models.py` | `GroundedAnswer.tools_used`, counted separately from `chunks_used` |
+| `app/agent/models.py` | `DecisionReason` extended; `AgentDecision` (alias `RetrievalDecision`); `ToolCallSummary`; `AgentAnswer.tools` / `.tool_results` / `.used_live_information` |
+| `app/agent/policy.py` | `decide()` (alias `decide_retrieval`); the tool branch |
+| `app/agent/agent.py` | `tools` injected (default `None`); `_run_tools()`; tool record on the answer; tool names in the log line |
+| `app/agent/factory.py` | Two lines: `tools=get_tool_registry()` |
+| `app/agent/__main__.py` | Five tool questions in `demo`; `[T1]` tool activity rendered |
+| `tests/conftest.py` | New `tool_registry` and `tool_agent` fixtures |
+| `tests/test_agent.py` | Two Stage 5 boundary guards moved forward one stage (they fired as designed), plus a new guard that there is still no tool-only branch |
+| `requirements.txt` | `mcp==1.12.4`, pinned **down**, with the reason |
+| `README.md` · `docs/architecture-guide.html` · `docs/HANDOVER.md` | See below |
+
+> `app/core/config.py` and `.env.example` are **unchanged**. Stage 6 adds no
+> configuration surface at all: there is no `BKA_MCP_*` variable, because every tool is
+> synthetic and in-process and a knob for choosing between them would be inventing
+> configuration for a system that does not exist yet.
+
+### Documentation changed in Stage 6
+
+| File | Change |
+|---|---|
+| `docs/architecture-guide.html` | §8 **MCP flow** rewritten as BUILT (two layers, the six tools, the documentation-vs-live separation, the error contract, the injection defence, the commands); new **§21 — how the parallel sub-agent build actually worked**, written as personal reference; §20.10–§20.16 (seven decision records); plus §1 stage table, §2 structure, §4 components, §5 data flow, §14 testing, §16 security, §18 extension points, header and footer |
+| `README.md` | Status, stack (`mcp` and why it is pinned down), layout, test count, and a new **MCP tools** section — including one factual line recording that parallel sub-agent development was used |
+| `docs/HANDOVER.md` | This file, updated continuously: §6.A–§6.F were written **before** any code |
+
+### Added in Stage 5 Checkpoint B (3 files, committed in `6ebe947`)
 
 | File | Purpose |
 |---|---|
@@ -538,7 +877,7 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 | `app/llm/openai_provider.py` | OpenAI adapter — the same seam, a different vendor |
 | `tests/test_llm_adapters.py` | 99 tests — both adapters, offline against a fake client |
 
-### Modified in Stage 5 Checkpoint B (8 files, uncommitted)
+### Modified in Stage 5 Checkpoint B (8 files, committed in `6ebe947`)
 
 | File | Change |
 |---|---|
@@ -656,6 +995,110 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 ---
 
 ## Testing
+
+### Result (Stage 6)
+
+**775 passed, 0 failed** (601 from Stages 1–5, **174 new**: 173 across five new files
+plus one new Stage 5 boundary guard). Runtime ~53 s.
+`ruff check .` → *All checks passed!*
+`mypy` (strict) → *Success: no issues found in 52 source files*
+
+> ⚠️ Measured inside the Claude Code session, which is **elevated** (Problems §15).
+> Please confirm 775 in your own shell before approving.
+
+| Stage 6 test file | Tests | Covers |
+|---|---|---|
+| `tests/test_mcp_registry.py` | 44 | **The contract and the registry.** A tool qualifying structurally with no inheritance; the error taxonomy and its `retryable` flags; the shared argument helpers failing identically for every tool; a duplicate registration refused; an unknown tool naming what *does* exist; an untyped tool exception wrapped with its cause preserved; explicit registration proven by importing a tool module and asserting nothing self-registered. Every spec's JSON Schema typed `string` with `additionalProperties: false`. Ends with the **closed failure vocabulary** — nine miss-paths across all six tools, every code a member of `TOOL_FAILURE_CODES`, at least four distinct |
+| `tests/test_mcp_tools.py` | 43 | **The six tools, and the consistency between them.** *Per tool:* purity (same arguments, same result), undeclared arguments rejected, blank required arguments rejected, optional arguments genuinely optional, no credential-shaped field in any payload, and **every documented `example` in every spec actually resolving** — Stage 7 shows those examples to a model as the format to imitate. *Cross-tool:* the three component tools accepting the same nine components and echoing the same canonical spelling; every error code a transaction reports being explainable by the lookup tool; a component's recent codes carrying that component's own prefix; and **the version agreement that encodes the contradiction two sub-agents actually shipped** — asserted on the payload *and* the summary prose, because the first fix updated only the payload. Plus the domain facts each tool exists to get right: the `LIM-4001` → config-key mapping, `PAY-8003` flagged as a wrapper, `SWX-7004` recorded as *being* a reversal rather than triggering one, the effective limit differing from the documented default, the secret refusal not being a component oracle, and health-is-not-status asserted in both directions |
+| `tests/test_mcp_injection.py` | 23 | **Stage 4's defence, re-aimed at tool results.** A hostile summary, payload value, payload **key** and error message each failing to close the fence; a tool result failing to forge a *documentation* fence or a passage; every delimiter parametrised; the escape asserted to be **visible** rather than silent; the system prompt asserted to name the tool fence, declare it untrusted and separate designed-behaviour from reported-behaviour; the prompt version asserted to have been bumped; the question asserted to stay outside every fence even under attack. One **structural** test walks the AST of `prompts.py` and requires exactly one escaping function to exist — because two that agree today are two that can drift |
+| `tests/test_mcp_agent.py` | 51 | **Routing, wiring and the separation.** An identifier selects the tool that can act on it; plain prose selects none; ordinary text is not mistaken for an error code; a config key with no component is left to documentation; duplicates collapsed; the call count capped; selection deterministic. Then the flow end to end, and §14's requirement asserted **on the real prompt**: documentation and tool results in different fences, documentation first. Then the execution record — including the test that caught a genuine leak, that the loggable summary carries argument *names* and not values. Ends with evidence handling (a successful tool call alone prevents a refusal; nothing at all still refuses with Stage 4's exact sentence) and failures propagating rather than silently dropping the live half of an answer |
+| `tests/test_mcp_server.py` | 12 | **The real protocol, not the handler functions.** A genuine client session over the SDK's in-memory transport — real `initialize`, `tools/list`, `tools/call`, real JSON-RPC framing. Every listed tool carries a usable schema; a not-found crosses the wire as a **result** while a malformed call crosses as an **error**; and the point of the whole wrapper: six calls returning payloads *identical* to the in-process registry's. Ends by proving delegation — give the server a one-tool registry and it exposes one tool, and the module is asserted to contain no domain data and to import no tool module |
+
+### Commands used (Stage 6)
+
+```bash
+./.venv/Scripts/python.exe -m pytest                          # 775 passed, ~53 s
+./.venv/Scripts/python.exe -m pytest tests/test_mcp_*.py      # 173 passed, ~5 s
+./.venv/Scripts/python.exe -m ruff check .                    # All checks passed!
+./.venv/Scripts/python.exe -m mypy                            # 52 source files
+
+./.venv/Scripts/python.exe -m app.mcp list
+./.venv/Scripts/python.exe -m app.mcp demo
+./.venv/Scripts/python.exe -m app.agent demo
+```
+
+### Verified by hand (2026-09-11)
+
+**The MCP server really is an MCP server.** Driven as a *subprocess* over stdio by a real
+`mcp` client — not the in-memory transport the tests use:
+
+```
+connected to: banking-knowledge-agent 1.12.4
+tools/list -> 6 tools
+   - get_system_configuration · check_transaction_status · get_component_status
+   - look_up_error_code · retrieve_system_version · check_service_health
+tools/call look_up_error_code {"error_code": "SWX-7006"}
+   isError = False
+   {"data": {"component": "TransactionSwitch", "error_class": "Fault", ...}}
+```
+
+**The two tools that once contradicted each other now agree**, all nine components:
+
+```
+AuthorizationService  4.2.3 = 4.2.3     DeviceManager       4.2.3 = 4.2.3
+CardSecurityModule    4.1.9 = 4.1.9     DigitalGateway      4.2.3 = 4.2.3
+ConfigurationStore    4.2.3 = 4.2.3     LimitService        4.2.2 = 4.2.2
+CoreBankingAdapter    4.2.3 = 4.2.3     PaymentEngine       4.2.3 = 4.2.3
+                                        TransactionSwitch   4.2.3 = 4.2.3
+        retrieve_system_version  =  check_service_health
+```
+
+**The agent reaches the tools, and keeps the two evidence kinds apart:**
+
+```
+python -m app.agent demo   (real corpus, real embedding model, mock provider)
+
+  "What does error code LIM-4001 mean?"
+     decision  knowledge_and_live_status_required
+     retrieval 5 of 115 passages · top 0.669
+     tool      look_up_error_code -> ok
+     [1]..[5]  documentation   [T1] live reading
+
+  "Is CoreBankingAdapter healthy?"
+     tool      check_service_health -> ok      (probe + dependency checks)
+     tool      get_component_status -> ok      (instances, error rate, incident)
+     [T1] DEGRADED: /core/v1/health answered in 312.5 ms, failing:
+          core_banking_connection_pool
+     [T2] DEGRADED: 3/6 instances, 7.40% errors, queue 1874, INC-4417 origin
+
+  "What component handles card authentication?"
+     decision  knowledge_required        tools: none — no identifier to act on
+
+  "!!! ???"
+     decision  no_searchable_content     REFUSED, zero retriever and provider calls
+```
+
+**No live API call was made at any point, and no code path in `app/mcp/` can make one.**
+
+### Stage 6 required coverage (`prompt.md` §14)
+
+| Requirement | Status |
+|---|---|
+| Introduce MCP | ✅ Both layers: an in-process registry **and** a real `mcp`-SDK server over stdio, verified against a real client |
+| Get system configuration | ✅ `get_system_configuration` |
+| Check transaction status | ✅ `check_transaction_status` |
+| Get component status | ✅ `get_component_status` |
+| Look up error code | ✅ `look_up_error_code` |
+| Retrieve system version | ✅ `retrieve_system_version` |
+| Check service health | ✅ `check_service_health` |
+| Synthetic data only | ✅ Each tool reads a dictionary in its own module. No socket, clock or filesystem anywhere in `app/mcp/tools/` — asserted by an AST test |
+| Demonstrate Agent → MCP → Tool → Result | ✅ `python -m app.agent demo` and `python -m app.mcp demo`; guide §8.1; asserted in `test_mcp_agent.py` |
+| Clearly separate knowledge retrieval from live/tool information | ✅ Separate collection, separate prompt fences, separate citation forms (`[1]` vs `[T1]`), separate answer fields, and `AgentAnswer.used_live_information` |
+| Add MCP tests | ✅ 173 new tests across five files, all offline and deterministic |
+| Tool results treated as untrusted (carried from Stage 4) | ✅ The **same** fencing and escaping, extended — not a second scheme. 23 dedicated tests |
+| Sub-agent build method documented | ✅ `HANDOVER.md` §6.E + integration notes; guide **§21**; one line in `README.md` |
+| Handover updated continuously | ✅ §6.A–§6.F written **before** implementation began |
+| STAGE COMPLETE report, then STOP | ✅ Below |
 
 ### Result (Stage 5 — Checkpoint B)
 
@@ -1217,8 +1660,10 @@ source for reassessment in Stage 13.
 | **Stage 4 docs commit** | `9a0b462` — `docs(stage-4): record commit hash and push result in handover` |
 | **Stage 5 Checkpoint A commit** | `1478631` — `feat(stage-5a): knowledge agent - decide, retrieve, ground, answer` |
 | **Stage 5 Checkpoint B commit** | `6ebe947` — `feat(stage-5b): two concrete LLM adapters - Anthropic and OpenAI` |
-| **Push status** | ✅ Pushed to `origin/main` (`1478631..6ebe947`); verified `origin/main == local HEAD == 6ebe947` |
-| **Working tree** | Clean, apart from git-ignored local files |
+| **Stage 5 docs commits** | `26fa239`, then `96204f1` — both pushed |
+| **Stage 6 commit** | ⛔ **NONE. Stage 6 is implemented, tested and UNCOMMITTED, awaiting approval.** |
+| **Push status** | Stage 5 pushed and verified (`origin/main == 96204f1`). Nothing from Stage 6 has been committed or pushed |
+| **Working tree** | **Dirty** — Stage 6's 20 new and 14 modified files (34 total), plus git-ignored local files |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
 | **Committed in Checkpoint B** | 15 files: 3 added, 12 modified — 2,533 insertions, 245 deletions |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
@@ -1323,29 +1768,57 @@ edit.
 
 ## Next Action
 
-**Stage 5 is complete and approved. Both checkpoints are committed and pushed.**
-`origin/main == HEAD == 6ebe947`, working tree clean, 601 tests passing.
+**Stage 6 is implemented and tested, and is WAITING FOR APPROVAL. Nothing is committed.**
+775 tests pass, ruff is clean, mypy strict is clean over 52 source files.
+`HEAD == origin/main == 96204f1` (Stage 5's last docs commit); Stage 6 is uncommitted
+work on top of it.
 
-**The next action is to begin Stage 6 — MCP Tools — when the user asks for it.**
-Do not start it unprompted. Stage 5's approval does not carry over.
+### The exact next action
 
-### Stage 6 scope, for when it is started (`prompt.md` §14)
+**Wait for the user to reply `APPROVED`.** Per `prompt.md` §3 and the Core Rule, do not
+commit, do not push, and do not begin Stage 7.
 
-MCP tools: synthetic banking support tools (system configuration, transaction status,
-component status, error-code lookup, system version, service health), synthetic data
-only, with knowledge retrieval kept clearly separate from live/tool information. Two
-things Stage 5 leaves ready for it:
+When approval arrives, and only then:
 
-- `DecisionReason` in `app/agent/models.py` is the literal Stage 6 extends when the agent
-  gains a second real branch. Guide §20.5.1 records why it has only two values today.
-- Tool results are untrusted input in exactly the way retrieved documents are. The
-  fencing and escaping in `app/llm/prompts.py` were built for documents; Stage 6 should
-  extend the same treatment rather than inventing a second scheme.
+```bash
+# 1. Re-verify before committing anything
+./.venv/Scripts/python.exe -m pytest         # expect 775 passed
+./.venv/Scripts/python.exe -m ruff check .   # expect All checks passed!
+./.venv/Scripts/python.exe -m mypy           # expect 52 source files
+git status                                   # review every file in the diff
 
-> ⚠️ **The two adapters still do not authorise a live call.** A real LLM call is a paid
-> call and needs the user's explicit confirmation, given separately at the time. The
-> repository is in a state where cloning it and running the suite costs nothing, and that
-> property should be preserved.
+# 2. Check for secrets and for an accidental nested project directory
+git add -An                                  # confirm the file set, then commit
+```
+
+Suggested commit message:
+
+```
+feat(stage-6): MCP tools - six synthetic support tools, registry and server
+```
+
+Then push, verify the push, and record the commit hash and push result **in this file**
+before Stage 7 begins.
+
+### Stage 7 scope, for when it is started (`prompt.md` §15)
+
+Agent decision and tool selection: choosing between answering from knowledge, retrieving
+more, calling a tool, using both, or refusing. Three things Stage 6 leaves ready:
+
+- **`DecisionReason`** now has three values and is still the literal to extend. Stage 6
+  deliberately added **no tool-only branch** — see §6.F and guide §20.15 — and Stage 7 is
+  where that becomes a real choice rather than a worse version of the existing one.
+- **`app/agent/tool_policy.py`** is the module a model-driven selector replaces. It is
+  isolated from `policy.py` for exactly this reason, and guide §20.14 records why the
+  deterministic identifier-based rule was right for Stage 6 and what it cannot do.
+- **The execution record already exists.** `AgentAnswer` carries `decision`, `retrieval`,
+  `tools`, `tool_results` and `used_live_information`, which is the *"expose useful
+  execution information"* list from §15 — so Stage 7 adds decisions, not plumbing.
+
+> ⚠️ **A live LLM call is still a paid call** and still needs the user's explicit
+> confirmation, given separately at the time. Stage 6 changed nothing here: the provider
+> default is still `mock`, `app/mcp/` contains no code path that can reach a network, and
+> cloning this repository and running its suite still costs nothing.
 
 ### Decision taken before Stage 4 implementation begins — LLM provider
 
