@@ -7,19 +7,20 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-11** · **Stage 6 — MCP Tools — IN PROGRESS.** Stage 5 remains
-complete and approved (Checkpoint A `1478631`, Checkpoint B `6ebe947`, both pushed; two
-later docs-only commits `26fa239` and `96204f1` sit on top). Stage 6 scope and build
-methodology were decided and written here **before any code was written** — see
-*Stage 6 decisions*.
+Last updated: **2026-09-11** · **Stage 6 — MCP Tools — COMPLETE AND APPROVED.**
+Committed `93eeb22` and pushed to `origin/main`, push verified. Stage 6 scope and build
+methodology were decided and written into this file **before any code was written** —
+see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
+
+**Next stage: Stage 7 — Agent decision and tool selection. Not started.**
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 6 (MCP Tools) is IN PROGRESS.** Stage 5 is complete, approved,
-committed and pushed. Stage 6 is uncommitted work in the tree (20 new files, 14
-modified), awaiting the user's approval. No blockers.
+**Session state:** **Stage 6 is complete and approved.** Approved 2026-09-11, committed
+`93eeb22`, pushed to `origin/main`, push verified. **Nothing is in progress.** No
+half-finished work, no blockers, no open questions.
 
 > Stage 6 decisions were written into this file **before** implementation began, per §2.
 > If this session is lost mid-stage, read *Stage 6 decisions* first: it records the scope,
@@ -30,12 +31,11 @@ modified), awaiting the user's approval. No blockers.
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 5 — Knowledge Agent + LLM adapters** (approved 2026-09-10) |
-| Stage **awaiting approval** | **Stage 6 — MCP Tools.** Implemented and tested, **not committed** |
-| `HEAD` | `96204f1` = `origin/main` — the last Stage 5 docs commit. Stage 6 is uncommitted work on top |
-| Working tree | **Dirty** — 20 new files, 14 modified (34 total, verified with `git add -An`). Nothing staged, nothing committed |
+| Last **approved** stage | **Stage 6 — MCP Tools** (approved 2026-09-11) |
+| `HEAD` | `93eeb22` = `origin/main` — verified |
+| Working tree | Clean, apart from git-ignored local files |
 | Tests | **775 passed** · ruff clean · mypy strict clean (52 source files) |
-| Next stage | **Stage 7 — Agent decision and tool selection** (not started; do not begin until Stage 6 is approved) |
+| Next stage | **Stage 7 — Agent decision and tool selection** (not started) |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -48,8 +48,8 @@ modified), awaiting the user's approval. No blockers.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -3        # expect 96204f1 docs(stage-5) on top
-git status                  # expect Stage 6's files as UNTRACKED and MODIFIED
+git log --oneline -3        # expect 93eeb22 feat(stage-6) on top
+git status                  # expect clean
 
 # 2. Install the Stage 6 dependency if the venv predates it
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
@@ -137,9 +137,9 @@ git status                    # expect clean
 |---|---|
 | **Stage number** | 6 |
 | **Stage name** | MCP Tools |
-| **Status** | 🚧 **IN PROGRESS — uncommitted. Not yet approved.** |
-| **Last completed step** | See *Stage 6 progress* below — updated continuously through the stage |
-| **Next step** | Finish the stage, show the STAGE COMPLETE report, then STOP for approval |
+| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
+| **Last completed step** | Approved 2026-09-11; committed `93eeb22` and pushed to `origin/main`, push verified |
+| **Next step** | **Stage 7 — Agent decision and tool selection** (`prompt.md` §15). Not started; wait for the user to start it |
 
 ### Previous stage
 
@@ -295,7 +295,7 @@ same question.
 
 ## Current Work
 
-### Implemented in Stage 6 (this session, uncommitted)
+### Implemented in Stage 6 (approved, committed `93eeb22`, pushed)
 
 **The shared contract — written by the main session before any sub-agent ran**
 
@@ -381,8 +381,8 @@ FastAPI at import and takes the whole suite with it.
 
 ### Currently being worked on
 
-**Nothing.** Stage 6 is implemented and tested, and is waiting for approval. Nothing is
-committed.
+**Nothing.** Stage 6 is complete, approved, committed (`93eeb22`) and pushed. Stage 7 has
+not been started.
 
 ### What remains deliberately unfinished in Stage 6
 
@@ -809,7 +809,7 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 6 (20 files, UNCOMMITTED)
+### Added in Stage 6 (20 files, committed in `93eeb22`)
 
 | File | Purpose | Written by |
 |---|---|---|
@@ -839,7 +839,7 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 > the platform line — in the payload, and then in the summary prose, which the first
 > attempt at the fix missed. The other five ship exactly as delivered.
 
-### Modified in Stage 6 (14 files, UNCOMMITTED)
+### Modified in Stage 6 (14 files, committed in `93eeb22`)
 
 | File | Change |
 |---|---|
@@ -1661,9 +1661,10 @@ source for reassessment in Stage 13.
 | **Stage 5 Checkpoint A commit** | `1478631` — `feat(stage-5a): knowledge agent - decide, retrieve, ground, answer` |
 | **Stage 5 Checkpoint B commit** | `6ebe947` — `feat(stage-5b): two concrete LLM adapters - Anthropic and OpenAI` |
 | **Stage 5 docs commits** | `26fa239`, then `96204f1` — both pushed |
-| **Stage 6 commit** | ⛔ **NONE. Stage 6 is implemented, tested and UNCOMMITTED, awaiting approval.** |
-| **Push status** | Stage 5 pushed and verified (`origin/main == 96204f1`). Nothing from Stage 6 has been committed or pushed |
-| **Working tree** | **Dirty** — Stage 6's 20 new and 14 modified files (34 total), plus git-ignored local files |
+| **Stage 6 commit** | `93eeb22` — `feat(stage-6): MCP tools - six synthetic support tools, registry and server` |
+| **Push status** | ✅ Pushed to `origin/main` (`96204f1..93eeb22`); verified `origin/main == local HEAD == 93eeb22` |
+| **Working tree** | Clean, apart from git-ignored local files |
+| **Committed in Stage 6** | 34 files: 20 added, 14 modified — 9,132 insertions, 215 deletions |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
 | **Committed in Checkpoint B** | 15 files: 3 added, 12 modified — 2,533 insertions, 245 deletions |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
@@ -1768,37 +1769,12 @@ edit.
 
 ## Next Action
 
-**Stage 6 is implemented and tested, and is WAITING FOR APPROVAL. Nothing is committed.**
-775 tests pass, ruff is clean, mypy strict is clean over 52 source files.
-`HEAD == origin/main == 96204f1` (Stage 5's last docs commit); Stage 6 is uncommitted
-work on top of it.
+**Stage 6 is complete and approved. It is committed and pushed.**
+`origin/main == HEAD == 93eeb22`, working tree clean, 775 tests passing, ruff clean,
+mypy strict clean over 52 source files.
 
-### The exact next action
-
-**Wait for the user to reply `APPROVED`.** Per `prompt.md` §3 and the Core Rule, do not
-commit, do not push, and do not begin Stage 7.
-
-When approval arrives, and only then:
-
-```bash
-# 1. Re-verify before committing anything
-./.venv/Scripts/python.exe -m pytest         # expect 775 passed
-./.venv/Scripts/python.exe -m ruff check .   # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy           # expect 52 source files
-git status                                   # review every file in the diff
-
-# 2. Check for secrets and for an accidental nested project directory
-git add -An                                  # confirm the file set, then commit
-```
-
-Suggested commit message:
-
-```
-feat(stage-6): MCP tools - six synthetic support tools, registry and server
-```
-
-Then push, verify the push, and record the commit hash and push result **in this file**
-before Stage 7 begins.
+**The next action is to begin Stage 7 — Agent decision and tool selection — when the
+user asks for it.** Do not start it unprompted. Stage 6's approval does not carry over.
 
 ### Stage 7 scope, for when it is started (`prompt.md` §15)
 
