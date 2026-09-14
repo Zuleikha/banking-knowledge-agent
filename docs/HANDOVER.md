@@ -7,48 +7,78 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-14** · **Stage 7 — APPROVED 2026-09-14.** Guide committed whole with Stage 7, including the improve.md readability edits (user's choice); `docs/improve.md` itself not committed.
-Stage 6 — MCP Tools — complete and approved:
-Committed `93eeb22` and pushed to `origin/main`, push verified. Stage 6 scope and build
-methodology were decided and written into this file **before any code was written** —
-see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
+Last updated: **2026-09-14, end of session** · **Stages 1–8 approved, committed and pushed.
+Stage 9 — Web interface — NOT started.** Working tree clean.
 
-**Stage 7 — Agent decision and tool selection — approved 2026-09-14, committed `a3728d9`,
-pushed and verified.** **Stage 8 — Conversation context — APPROVED 2026-09-14, committed `2abbb39`, pushed and
-verified.** Decisions in *Stage 8 decisions* §8.A–§8.C. Committed separately before it:
-instruction-file restructuring `d47f522` and the guide readability pass `249f04e`.
-**Next stage: Stage 9 — Web interface. Not started.** Decisions are recorded in *Stage 7
-decisions* below, written before any code. Guide sections written after the concurrent
-readability session paused — see Problems §19 (resolved).
+**Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
+`docs/PROJECT_PLAN.md` — read only the Stage 9 section. This file is state and decisions.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 7 is complete and approved** (2026-09-14), committed `a3728d9`,
-pushed to `origin/main`, push verified. **Stage 8 is approved** (2026-09-14), committed
-`2abbb39`, pushed, verified `origin/main == HEAD`: decisions §8.A–§8.C, guide records
-§20.23–§20.27, 971 tests passing. Nothing is in progress; Stage 9 not started. Instruction files were restructured mid-stage: `CLAUDE.md` is
-now the sole authority, stage detail is in `docs/PROJECT_PLAN.md`, and `prompt.md` /
-`ccp.txt` are archived in `docs/legacy/`.
-The Stage 7 sections of `docs/architecture-guide.html` are written too (§20.17–§20.22),
-after the separate "Improve.md" session paused its edits (Problems §19).
-
-> Stage 7 decisions were written into this file **before** implementation began, per §2.
-> If this session is lost, read *Stage 7 decisions* (§7.A–§7.D) first: scope, the
-> user's rules-only selector choice, the measured design, and the one contract change.
+**Session state:** **Stage 8 — Conversation context — approved 2026-09-14**, committed
+`2abbb39`, pushed, verified. Nothing is in progress. **Stage 9 has not been started** and
+starts only when the user asks, in a new session.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 7 — Agent decision and tool selection** (approved 2026-09-14) |
-| Last approved stage (update) | **Stage 8 — Conversation context** (approved 2026-09-14, `2abbb39`) |
-| Current stage | **None in progress** — Stage 9 not started |
-| `HEAD` | `2abbb39` = `origin/main` — verified (plus this file's own docs commit) |
-| Working tree | Stage 7: 12 modified + 1 new file. **Not Stage 7's:** `docs/improve.md` (new) and the readability edits in `docs/architecture-guide.html`, both from the "Improve.md" session |
-| Tests | **971 passed** (891 → 971) · ruff clean · mypy strict clean (58 source files) |
-| Next | Stage 9 — Web interface — when the user asks for it |
+| Last **approved** stage | **Stage 8 — Conversation context** (approved 2026-09-14, `2abbb39`) |
+| Current stage | **None in progress** — Stage 9 (Web interface) not started |
+| `HEAD` | this file's end-of-session docs commit, on top of `0e04b77` = `origin/main` |
+| Working tree | **Clean.** `docs/legacy/` (archived `prompt.md`, `improve.md`) is git-ignored |
+| Tests | **971 passed** · ruff clean · mypy strict clean (58 source files) |
+| Next | Stage 9 — see *Stage 9 — starting notes* directly below |
+
+### Commits made in the last session (2026-09-14), oldest first
+
+| Commit | What |
+|---|---|
+| `d47f522` | Instruction files restructured: `CLAUDE.md` (sole authority), `docs/PROJECT_PLAN.md` |
+| `249f04e` | Guide readability pass §1–§5 (the separate improve.md session's edits) |
+| `2abbb39` | **Stage 8** — conversation context |
+| `9cd43c1` | Handover: Stage 8 hashes |
+| `3fe5ea4` | `CLAUDE.md`: readability rule absorbed, `/usage` habit, archived path fixed |
+| `0e04b77` | `.gitignore`: `docs/legacy/` |
+
+### Stage 9 — starting notes (read before planning Stage 9)
+
+**What Stages 5–8 already expose for the UI** — render these, do not re-derive them:
+
+| UI requirement (`PROJECT_PLAN.md` Stage 9) | Already on the returned objects |
+|---|---|
+| Answer · sources | `AgentAnswer.text`, `.sources` (document citations), `.tool_results` (`[T1]`…) |
+| RAG was used | `AgentAnswer.retrieval.performed`, `.passes`, `.documents`, `.top_score` |
+| MCP was used | `AgentAnswer.used_live_information`, `.tools` (safe summaries), `.tool_results` |
+| Information insufficient | `AgentAnswer.refused` (fixed `INSUFFICIENT_EVIDENCE` sentence, no model call) |
+| Tool activity / route | `AgentAnswer.decision`, `.decisions` (fixed-sentence `DecisionStep`s) |
+| Conversation display | `ConversationService.turns(session_id)`; `ConversationAnswer.context` (resolution, carried, history sent) |
+
+**Entry points:** `app.conversation.factory.get_conversation_service()` (wraps
+`app.agent.factory.get_agent()`). Today the API has only `GET /health`
+(`app/api/`, `app/main.py`).
+
+**Decisions Stage 9 must make (ask the user; record here and in guide §20 when made):**
+1. **Session-store lifetime** — `get_conversation_service()` builds a new in-memory store
+   per call. The API needs one shared store for the app's life (e.g. on `app.state`).
+2. **Concurrent requests on one session** can read the same earlier turns and record a
+   duplicate turn number (Stage 8 unfinished #3) — serialise per session, or accept.
+3. **Session id transport** — request body vs header vs cookie; an unknown or expired id
+   raises `SessionNotFoundError` and should map to a clear HTTP error, never a new session.
+4. **UI technology** — `prompt.md` says keep it simple; `.gitignore` already reserves
+   `node_modules/`, but a no-build page served by FastAPI may be enough.
+
+**Constraints to carry in:**
+- `@traced` must **not** decorate FastAPI route handlers (Problems §2) — it breaks
+  dependency resolution. Request tracing is Stage 10.
+- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (Stage 6 §6.B).
+- The agent is synchronous and the embedding model loads lazily — the first request is slow.
+- A paid provider is still opt-in (`BKA_LLM_PROVIDER` + `BKA_LLM_API_KEY`); tests and
+  demos stay on `mock`. No live call without the user's explicit confirmation.
+- Guide sections follow `CLAUDE.md` §4 (plain English, `.note`, decisions recorded
+  when made).
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -61,25 +91,24 @@ after the separate "Improve.md" session paused its edits (Problems §19).
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -3        # expect 93eeb22 feat(stage-6) on top
+git log --oneline -3        # expect docs(handover) end-of-session commit on top of 0e04b77
 git status                  # expect clean
 
-# 2. Install the Stage 6 dependency if the venv predates it
+# 2. If the venv is missing or stale (see "If the venv is missing" below)
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
-./.venv/Scripts/python.exe -c "import mcp; print('mcp ok')"
 
 # 3. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 775 passed
+./.venv/Scripts/python.exe -m pytest        # expect 971 passed (~60-95 s)
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect 52 source files
+./.venv/Scripts/python.exe -m mypy          # expect no issues in 58 source files
 
 # 4. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
 ./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
 
-# 5. See Stage 6 working, entirely FREE
-./.venv/Scripts/python.exe -m app.mcp list      # the six tool specs
-./.venv/Scripts/python.exe -m app.mcp demo      # 7 tool calls, incl. a deliberate miss
-./.venv/Scripts/python.exe -m app.agent demo    # RAG + MCP together, [1] vs [T1]
+# 5. See Stages 6-8 working, entirely FREE (mock LLM, local embeddings)
+./.venv/Scripts/python.exe -m app.agent demo               # routes, RAG + MCP
+./.venv/Scripts/python.exe -m app.agent conversation-demo  # 7 turns, all follow-up rules
+./.venv/Scripts/python.exe -m app.agent chat               # interactive; blank line ends
 
 # 6. Then read "Next Action" at the bottom of this file.
 ```
@@ -2265,17 +2294,17 @@ hashes in *Git*). **The next action is Stage 9 — Web interface — when the us
 it.** Read only its section of `docs/PROJECT_PLAN.md`. Still uncommitted and not Stage 8's:
 the user's `/usage` rule in `CLAUDE.md`.
 
-> ⚠️ **Found after the Stage 8 commit, not done by this session (awaiting the user):**
-> `docs/improve.md` was moved to `docs/legacy/improve.md` (untracked, not git-ignored), so
-> `CLAUDE.md` §4's pointer to `docs/improve.md` is stale; and `docs/legacy/ccp.txt` no
-> longer exists anywhere in the repository. It was git-ignored and never committed, so
-> git cannot restore it; its content is not needed — `CLAUDE.md` is the sole authority.
+> ✅ **Resolved with the user, same session:** `docs/improve.md` now lives at
+> `docs/legacy/improve.md`; `CLAUDE.md` §4 absorbed its readability rule and points to the
+> new path (`3fe5ea4`); `docs/legacy/` is git-ignored (`0e04b77`). `ccp.txt` no longer
+> exists and is not needed — `CLAUDE.md` is the sole authority. Working tree clean.
 
 *Superseded:* **The next action is to begin Stage 8 — Conversation context — when the user asks for
 it.** Do not start it unprompted. Stage 7's approval does not carry over.
 
 > The "Improve.md" session may resume its readability pass over the guide; its further
-> edits belong in their own commit. `docs/improve.md` remains untracked.
+> edits belong in their own commit. *(Superseded: its §1–§5 edits were committed as
+> `249f04e`; the brief is archived at `docs/legacy/improve.md`.)*
 
 > ⚠️ A live LLM call is still a paid call and still needs explicit confirmation at the
 > time. Stage 7 added none: every decision is a deterministic rule.
