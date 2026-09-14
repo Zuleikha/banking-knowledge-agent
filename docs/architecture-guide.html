@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 7 - Agent Decision &amp; Tool Selection &nbsp;·&nbsp; Last updated 2026-09-14</div>
+    <div class="pill">Stage 9 - Web Interface &nbsp;·&nbsp; Last updated 2026-09-14</div>
   </div>
 </header>
 
@@ -130,7 +130,7 @@ defined interface, so one piece can be changed or tested without touching the re
             │
             ▼
    ┌──────────────────┐
-   │  Web Interface   │   Stage 9
+   │  Web Interface   │   Stage 9  ✅
    └────────┬─────────┘
             ▼
    ┌──────────────────┐
@@ -138,12 +138,12 @@ defined interface, so one piece can be changed or tested without touching the re
    └────────┬─────────┘
             ▼
    ┌──────────────────┐
-   │   Agent / LLM    │   Stages 4 ✅, 5 ✅, 7
+   │   Agent / LLM    │   Stages 4 ✅, 5 ✅, 7 ✅
    └────────┬─────────┘
             │
             ├──▶ RAG Knowledge Retrieval    Stages 2, 3  ✅
             ├──▶ MCP Tools                  Stage 6  ✅
-            ├──▶ Conversation Context       Stage 8
+            ├──▶ Conversation Context       Stage 8  ✅
             └──▶ Guardrails                 Stage 13
             │
             ▼
@@ -181,7 +181,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>6</td><td>MCP tools - six synthetic support tools, registry + real MCP server</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>7</td><td>Agent decision &amp; tool selection - five decision paths, rule-based tool selector</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>8</td><td>Conversation context</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>9</td><td>Web interface</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>9</td><td>Web interface</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>10</td><td>Observability</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>11</td><td>Testing &amp; evaluation framework</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>12</td><td>Containerisation</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -692,7 +692,8 @@ defined interface, so one piece can be changed or tested without touching the re
 <p>Two independent paths. The agent joins <em>three</em> collaborators - retrieval,
 tools and generation - and since Stage 7 it <em>chooses</em> which of them a question
 needs (§7), so not every question passes through every box below. The whole chain is
-still only reachable from the CLI: the API does not call it until Stage 9.</p>
+reachable from the CLI and, since Stage 9, over HTTP through the conversation API and web
+page (§11).</p>
 
 <pre class="plain">HTTP GET /health                     python -m app.agent ask "..."
    │                                    │
@@ -1043,8 +1044,9 @@ middle of it - described next.</p>
   <strong>How it connects.</strong> It sits between the pieces built before it - Stage 5's
   agent, Stage 3's search and Stage 6's tools - and decides which of them each question
   uses. What comes next builds on its record: Stage 8 adds conversation context, so a
-  follow-up question can reuse earlier evidence, and Stage 9's web page will show the
-  recorded choices beside each answer.
+  follow-up question is understood using the earlier questions (earlier answers are never
+  reused as evidence, §20.23), and Stage 9's web page shows the route taken beside each
+  answer.
 </div>
 
 <p>Every choice is a <strong>deterministic rule</strong> - the same question always takes
@@ -1165,10 +1167,12 @@ route to an invented answer:</p>
 <div class="warn">
   <strong>One definition of "insufficient".</strong> Every refusal uses the same fixed
   sentence, from Stage 4's guard. Even a question the agent decides not to search (such as
-  "!!! ???") goes through that guard, rather than getting its own wording. This matters
-  because later parts will detect a refusal by matching that exact sentence: the chat API
-  and web interface (Stage 9) and the evaluation harness - the automated test bench that
-  scores answers (Stage 11). A second refusal sentence would be one they could miss.
+  "!!! ???") goes through that guard, rather than getting its own wording - so a refusal
+  always reads the same, and it is decided in one place. The chat API and web page (Stage 9)
+  do not match the wording: they read the answer's <code>refused</code> flag, returned to the
+  page as <code>insufficient</code>. The planned evaluation harness - the automated test bench
+  that scores answers (Stage 11) - is expected to check the exact sentence, so a second
+  refusal wording would be one it could miss.
 </div>
 
 <h3>What is exposed</h3>
@@ -1181,7 +1185,8 @@ log file. <code>AgentAnswer</code> carries:</p>
       the top score, and which documents they came from</li>
   <li><code>tools</code> - which tools were called and whether each found anything</li>
 </ul>
-<p>So Stage 9's web page can show this directly, instead of digging it out of log files.
+<p>So Stage 9's web page shows the route and the search record directly, instead of digging
+them out of log files.
 Hidden chain-of-thought - a model's private step-by-step reasoning - is
 <strong>not</strong> exposed (see <em>Decisions, not reasoning</em> above).</p>
 <p>The retrieval <em>summary</em> is deliberately separate from the passages themselves. The
@@ -1259,7 +1264,7 @@ was no component name to try a refined search with.</p>
   <br><br>
   <strong>How it connects.</strong> It wraps Stage 7's agent from the outside
   (<code>app/conversation/</code>) and adds one optional input to it, <code>history</code>. Next,
-  Stage 9's web page will hold a session id and show each turn.
+  Stage 9's web page (now built) holds a session id and shows each turn.
 </div>
 
 <pre class="plain">session id + question
@@ -1299,12 +1304,14 @@ history can never be the reason an answer is given (§20.25).</p>
 questions and <code>BKA_CONVERSATION_MAX_HISTORY_CHARS</code> (1000) characters are sent; the oldest
 are dropped whole. The store keeps at most 50 turns per session and 1000 sessions, and an idle
 session expires after 30 minutes. The <code>conversation.turn</code> log line records the rule used
-and counts only, plus a one-way fingerprint of the session id - never the question.</p>
+and counts only, plus a one-way fingerprint of the session id - never the question. (A one-way
+fingerprint is a short hash: log lines from the same conversation share it, so they can be grouped,
+but it cannot be turned back into the id - so the log never holds the key to a conversation.)</p>
 
 <pre class="plain">python -m app.agent chat                # ask, then ask a follow-up; blank line ends it
 python -m app.agent conversation-demo   # seven turns exercising every rule</pre>
 
-<h3>What Stage 5 deliberately does not do</h3>
+<h3>What Stage 5 deliberately left out, and where each piece went</h3>
 <table>
   <tr><th style="width:210px">Not here</th><th>Where it belongs, and why not now</th></tr>
   <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduced MCP; Stage 7 introduced choosing between knowledge and tools - now built, see <em>Stage 7 - choosing a path</em> above.</td></tr>
@@ -3526,7 +3533,8 @@ Stage 4's promise intact - an answer is never built from conversation alone.</p>
 <h3>20.26 Stage 8.4 - Sessions live in a bounded in-memory store; an unknown session is an error</h3>
 <div class="card">
 <p><strong>What.</strong> A <code>SessionStore</code> protocol with one implementation,
-<code>InMemorySessionStore</code>. Session ids are random (<code>secrets</code>). Sessions expire after
+<code>InMemorySessionStore</code>. Session ids are random, made with Python's <code>secrets</code> module (built for
+unguessable values such as tokens), so one user cannot guess their way into another's session. Sessions expire after
 <code>BKA_CONVERSATION_TTL_SECONDS</code> idle; at most <code>BKA_CONVERSATION_MAX_SESSIONS</code> are
 kept (the least recently used is dropped); each keeps at most
 <code>BKA_CONVERSATION_MAX_TURNS</code> turns. An unknown or expired id raises
@@ -3556,7 +3564,9 @@ service. The agent never imports the conversation package.</p>
 <p><strong>Why.</strong> Every Stage 5-7 test asks the agent one question and checks one route.
 Putting sessions inside the agent would give every one of those tests state to set up and reset.
 Kept outside, a conversation is just "resolve the question, ask the agent, remember the turn", and
-each half is tested on its own - the same seam-not-layer rule as §20.5.5.</p>
+each half is tested on its own. It is the same rule as §20.5.5: a component that joins two parts
+should be a thin <em>seam</em> that only connects them, not a <em>layer</em> that gathers extra logic
+and state of its own.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
@@ -3592,7 +3602,8 @@ Different sessions do not wait for each other.</p>
 
 <p><strong>Why.</strong> The web server answers requests on several threads. Without the lock, two
 questions sent on one session at the same moment (a double-click, a retry) could both read "2 turns so
-far" and both store turn 3. This was Stage 8's known gap. Locks are kept in a weak dictionary, so a
+far" and both store turn 3. This was Stage 8's known gap. Locks are kept in a weak dictionary (Python's <code>WeakValueDictionary</code> - an entry
+removes itself once nothing is using that lock any more), so a
 session that expires does not leave its lock behind in memory.</p>
 
 <table>
@@ -3852,7 +3863,7 @@ work out, do it yourself.</p>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 7 (Agent Decision &amp; Tool Selection) · Last updated 2026-09-14<br>
+  Stage 9 (Web Interface) · Last updated 2026-09-14<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

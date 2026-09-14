@@ -169,8 +169,18 @@ A personal technical reference for understanding and remembering the system. It 
   before adding a section: could someone who understands software engineering but
   not this specific technology read it and understand what's happening and why? If
   not, improve it before adding it. Reuse the existing `.note` style; no new CSS or
-  classes. (This absorbs `docs/legacy/improve.md`'s "FUTURE CHANGES" rule, now archived —
-  its one-time rewrite task is already committed with Stage 7.)
+  classes. (This absorbs `docs/legacy/improve.md`'s "FUTURE CHANGES" rule, now archived.
+  Its one-time plain-English rewrite of the older text is done for §1–§7 and continues
+  from §8.)
+- **Accuracy.** Check every claim against the code before writing it — names, counts,
+  defaults, versions, the order of steps. Re-run free, offline demos instead of copying old
+  output. Diagrams may be changed when they no longer match the architecture; confirm the
+  real order in the code first.
+- **Status markers.** When a stage is committed, update the header pill, the footer, the
+  §1 stage table and the §1 diagram ticks in the same change.
+- **One editor at a time.** Before editing the guide, run `git status`. If another stage's
+  work is uncommitted, do not edit the guide: the edits would clash or be swept into that
+  stage's commit. Readability-only edits go in their own `docs(guide)` commit.
 
 ---
 
