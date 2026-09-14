@@ -2259,10 +2259,15 @@ be touched.</p>
 <section id="decisions">
 <h2>19. Design decisions</h2>
 
+<p>A one-line summary of each important design decision, with its reasoning. Read this table to
+get the shape of <em>why</em> the system is built the way it is; follow the § link on a row for
+the full record in §20 - what was chosen, why, and what was rejected. Some rows record a decision
+as it was made at the time; where a later stage changed it, the row says so.</p>
+
 <table>
   <tr><th style="width:250px">Decision</th><th>Reasoning</th></tr>
   <tr><td><strong>App factory</strong> (<code>create_app()</code>) rather than only a module-level app</td>
-      <td>Tests can build an application with overridden settings. A bare singleton would force tests to mutate global state.</td></tr>
+      <td>Tests can build an application with overridden settings. A single app created at import time (a module-level singleton) would force tests to change shared global state.</td></tr>
   <tr><td><strong>Settings from <code>app.state</code></strong>, not the cached global</td>
       <td>The factory stays the single source of truth. The first version used <code>Depends(get_settings)</code> and the health test caught it immediately - the endpoint reported <code>local</code> while the app was configured as <code>test</code>.</td></tr>
   <tr><td><strong>structlog from Stage 1</strong>, not Stage 10</td>
@@ -2274,15 +2279,15 @@ be touched.</p>
   <tr><td><strong><code>@traced</code> is not applied to route handlers</strong></td>
       <td>It breaks FastAPI's annotation resolution (see §13). Request tracing belongs in middleware, which is the correct layer regardless.</td></tr>
   <tr><td><strong>Frozen settings</strong></td>
-      <td>Configuration that mutates at runtime is a debugging trap.</td></tr>
+      <td>Configuration that can change while the app runs is a debugging trap: the value read at startup may not be the value in use when something goes wrong.</td></tr>
   <tr><td><strong>Pinned dependencies</strong></td>
       <td>Local, CI and Docker builds resolve to identical versions.</td></tr>
   <tr><td><strong>mypy strict</strong></td>
-      <td>With many interfaces (LLM, vector store, tools), static checking catches contract drift between layers before runtime does.</td></tr>
+      <td>With many interfaces (LLM, vector store, tools), static checking catches one layer changing what it accepts or returns while another layer still uses the old shape - before the code runs.</td></tr>
   <tr><td><strong><code>uv</code> for the virtual environment</strong></td>
       <td>Practical, not architectural: the stdlib <code>venv</code> module is missing from the system Python on this machine, and a <code>virtualenv</code>-created environment segfaulted on importing <code>structlog</code> and <code>httpx</code>. A <code>uv</code>-created environment works.</td></tr>
   <tr><td><strong>No concrete LLM provider in Stage 4</strong></td>
-      <td>An abstraction is proved by what it is independent of, and everything the stage must demonstrate is exercisable without a vendor. It also makes the safety property structural: the suite cannot make a paid call because no code path makes any call. See §20.4.1.</td></tr>
+      <td>An abstraction is proved by what it is independent of, and everything the stage must demonstrate is exercisable without a vendor. It also makes the safety property structural: the suite cannot make a paid call because no code path makes any call. See §20.4.1. (Stage 5 later added two paid adapters, so that safety is now kept by four separate guards instead - §16.)</td></tr>
   <tr><td><strong>An unavailable provider raises; it never falls back to the mock</strong></td>
       <td>The alternative failure - an application that starts, answers, and looks healthy while running a stub - is one nobody notices. See §20.4.2.</td></tr>
   <tr><td><strong>No evidence means no model call</strong></td>
@@ -2290,21 +2295,21 @@ be touched.</p>
   <tr><td><strong>Truncated and refused generations raise</strong></td>
       <td>A cut-off answer about a transaction limit reads as complete. An error is loud and recoverable; a plausible half-sentence is neither. See §20.4.5.</td></tr>
   <tr><td><strong>Retrieved passages are fenced, escaped and declared untrusted</strong></td>
-      <td>Without the escaping step the fence is theatre - a document containing the closing tag would break out of it. Written now, while the corpus is synthetic and the risk is nil. See §20.4.3.</td></tr>
+      <td>Without the escaping step the fence is only for show - a document containing the closing tag would break out of it. Written now, while the corpus is synthetic and the risk is nil. See §20.4.3.</td></tr>
   <tr><td><strong>The API key is a <code>SecretStr</code></strong></td>
       <td>"Never log secrets" enforced by the type rather than by remembering, and asserted in the suite. See §20.4.8.</td></tr>
   <tr><td><strong>The retrieval decision has one substantive branch, and says so</strong></td>
-      <td>Retrieval is the agent's only evidence until Stage 6, so "always yes" is the honest answer. A keyword classifier would be a guess about the corpus wearing the costume of a decision. See §20.5.1.</td></tr>
+      <td>In Stage 5, retrieval was the agent's only evidence, so "always search" was the honest answer. A keyword classifier would have been a guess about the corpus dressed up as a decision. See §20.5.1. (Stage 7 replaced this with five rule-based paths - §20.17-§20.21.)</td></tr>
   <tr><td><strong>One refusal path, and it is Stage 4's</strong></td>
-      <td>The insufficient-evidence sentence is load-bearing - the API, the UI and the evaluation harness all match it exactly. Two definitions is one too many. See §20.5.2.</td></tr>
+      <td>A refusal is decided in one place, so it always reads the same. The API and web page read the answer's <code>refused</code> flag; the planned evaluation harness is expected to match the exact sentence, so a second wording is one it could miss. See §20.5.2.</td></tr>
   <tr><td><strong>A provider failure raises; it never becomes a refusal</strong></td>
       <td>An agent that never fails sounds good and is a defect. "Undocumented" means write the document; "timeout" means fix the provider. See §20.5.4.</td></tr>
   <tr><td><strong>Two vendor adapters, not one - and no vendor is chosen</strong></td>
-      <td>One adapter proves an adapter can be written; two prove the abstraction. It also closes the vendor question permanently instead of leaving it to be re-litigated at Stage 9 and Stage 14. See §20.5.6.</td></tr>
+      <td>One adapter proves an adapter can be written; two prove the abstraction. It also settles the vendor question for good, instead of leaving it to be argued again at Stage 9 and Stage 14. See §20.5.6.</td></tr>
   <tr><td><strong>The default provider stays <code>mock</code></strong></td>
       <td>Spending needs two deliberate acts - switch the provider <em>and</em> supply a key - so <code>git clone &amp;&amp; pytest</code> still costs nothing. See §20.5.7.</td></tr>
   <tr><td><strong>The no-vendor test was narrowed, not deleted</strong></td>
-      <td>Adding adapters is exactly when that guard starts earning its keep. Two named modules are exempt; everything else is default-denied. See §20.5.8.</td></tr>
+      <td>Adding adapters is exactly when that guard starts earning its keep. Two named modules are exempt; everything else is blocked by default, including modules that do not exist yet. See §20.5.8.</td></tr>
   <tr><td><strong>Tools are chosen by rules built from the tools' own specs, not by a model</strong></td>
       <td>Free, repeatable and testable; a model selector would add a paid call to every question and could only be proven against the mock. The user chose this explicitly. See §20.17.</td></tr>
   <tr><td><strong>A real tool-only path, guarded</strong></td>
@@ -2313,9 +2318,27 @@ be touched.</p>
       <td>A weak search is repeated once with a documented component name added. The score floor is never lowered, so an off-topic question still gets refused. Threshold measured at 0.50. See §20.20.</td></tr>
   <tr><td><strong>Decisions are recorded; reasoning is not</strong></td>
       <td>Each choice point is a rule outcome with a fixed sentence, so the same route always reads the same way. See §20.21.</td></tr>
+  <tr><td><strong>The model sees earlier questions, never earlier answers</strong></td>
+      <td>An earlier answer looks like evidence but was written by the model, and its <code>[1]</code> citations point at passages no longer in the prompt. Earlier questions are exactly what is needed to understand "it" or "that". See §20.23.</td></tr>
+  <tr><td><strong>Follow-ups are resolved by rules, not a model</strong></td>
+      <td>A model rewrite would be a paid, variable call before every follow-up. The rules reuse Stage 7's identifier extractors and read only earlier questions, so no model-written or tool text can reach a search. See §20.24.</td></tr>
+  <tr><td><strong>History only when needed, and within a limit</strong></td>
+      <td>A standalone question gets none; a follow-up gets at most 3 earlier questions / 1,000 characters, oldest dropped whole. History is never evidence, so it can never be the reason an answer is given. See §20.25.</td></tr>
+  <tr><td><strong>A bounded in-memory session store; an unknown session is an error</strong></td>
+      <td>A database would be infrastructure with no requirement behind it, and every limit stops memory growing without end. Silently starting a new session would make a follow-up quietly lose its context. See §20.26.</td></tr>
+  <tr><td><strong>Conversation wraps the agent</strong></td>
+      <td>The agent stays single-question and stateless, so every Stage 5-7 test still asks one question and checks one route. See §20.27.</td></tr>
+  <tr><td><strong>One conversation service per application</strong></td>
+      <td>Built per request, every follow-up would hit an empty session store and fail with 404. It is built on first use, so the health check never loads the model. See §20.28.</td></tr>
+  <tr><td><strong>One question at a time per session</strong></td>
+      <td>The server answers on several threads; without a per-session lock a double-click or retry could record two turns with the same number. See §20.29.</td></tr>
+  <tr><td><strong>The session id travels in the JSON body, never the URL</strong></td>
+      <td>A session id is the key to a conversation, and URLs end up in browser history and server access logs. See §20.30.</td></tr>
+  <tr><td><strong>A no-build static page</strong></td>
+      <td>One HTML, one JavaScript and one CSS file served by FastAPI - no Node.js, no build step - because Stage 9 exists to show the backend, not a front end. All text is inserted as text, never as HTML, because answer and tool text is untrusted. See §20.31.</td></tr>
 </table>
 
-<p class="muted">The full reasoning behind each Stage 3 to 7 decision - including
+<p class="muted">The full reasoning behind each Stage 3 to 9 decision - including
 the alternatives that were rejected and why - is in §20.</p>
 </section>
 
