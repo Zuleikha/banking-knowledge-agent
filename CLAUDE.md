@@ -79,6 +79,33 @@ Always run checks through the project venv — never bare `python` or `pip`:
 ./.venv/Scripts/python.exe -m mypy
 ```
 
+### Parallel sub-agents
+
+Default for every stage: **single cohesive build, no sub-agents.**
+
+Only use parallel sub-agents for a stage below, only when the user explicitly asks
+for it at that stage's kickoff, and only after the shared contract (data models,
+protocol/interface, naming) is written and frozen by the main session first — then
+one sub-agent per independent unit, dispatched in a single batch, with the main
+session integrating afterward. This is the method Stage 6 used; see
+`docs/HANDOVER.md` §6.E for the worked example and the integration cost it
+recorded.
+
+| Stage | Good fit? | Why |
+|---|---|---|
+| 6 — MCP Tools | ✅ Yes (used) | Six independent tools, no shared state until registration |
+| 7 — Agent Decision and Tool Selection | ❌ No | Decision logic is shared state across `policy.py`, `models.py`, `agent.py`, `prompts.py` |
+| 8 — Conversation Context | ❌ No | Single cohesive concern |
+| 9 — Web Interface | ❌ No | Single cohesive concern |
+| 10 — Observability | ✅ Yes | Independent instrumentation points across modules |
+| 11 — Testing and Evaluation | ✅ Yes | Independent test/evaluation areas |
+| 12 — Containerisation | ❌ No | Single cohesive concern, mostly configuration |
+| 13 — Security and Production Readiness | ✅ Yes | Independent audit areas (auth, secrets, input validation, prompt injection, MCP security, data privacy, rate limiting, LLM/tool failure handling, logging, dependency security) |
+| 14 — Production Architecture | ✅ Yes | Independent documentation domains (scaling, vector DB, LLM provider abstraction, MCP architecture, service boundaries, deployment, failure modes, HA) |
+| 15 — Final Engineering Review | ❌ No | One reviewer must see the whole system to judge consistency |
+
+Never default into sub-agents without being asked, even for a stage marked ✅.
+
 ---
 
 ## 3. Handover file — `docs/HANDOVER.md`
