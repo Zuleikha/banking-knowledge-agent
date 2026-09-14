@@ -1724,14 +1724,17 @@ underneath changed: the page shows the execution record the agent already return
   <tr><th style="width:200px">Error</th><th>HTTP status and why</th></tr>
   <tr><td>Blank question, missing or extra field</td><td><strong>422</strong> - rejected before the agent runs</td></tr>
   <tr><td>Unknown, expired or ended session</td><td><strong>404</strong> with a fixed message that never repeats the id; never a silent new session (§20.26)</td></tr>
-  <tr><td>A tool or the language model failed</td><td><strong>502</strong> with a fixed sentence. The exception's own text can hold hostnames or provider detail, so it is logged by type only and never sent to the browser. The turn is not recorded</td></tr>
+  <tr><td>A tool or the language model failed</td><td><strong>502</strong> ("bad gateway": this server is working, but something it depends on failed) with a fixed sentence. The exception's own text can hold hostnames or provider detail, so it is logged by error type only and never sent to the browser. The turn is not recorded, so a retry starts clean</td></tr>
 </table>
 
 <div class="note">Without the per-application service (§20.28), every request would get an empty
 session store and every follow-up would fail with 404. Without the per-session lock (§20.29), a
 double-click could record two turns with the same number. How it connects: Stage 8 built the
-conversation service this layer calls; Stage 10 adds request-level tracing as middleware, which
-is why the route handlers here are not <code>@traced</code>.</div>
+conversation service this layer calls; Stage 10 adds request-level tracing as <em>middleware</em> -
+code that runs around every request, before and after its route handler, so one place can time and
+label all requests. That is why the route handlers here are not <code>@traced</code>: the decorator
+must not be applied to FastAPI route handlers (see <em>Known constraint: tracing and FastAPI</em>,
+§13), so request tracing belongs in middleware instead.</div>
 </section>
 
 <!-- ================================================================== -->

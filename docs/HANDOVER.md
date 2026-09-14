@@ -49,8 +49,13 @@ built from the registry's own specs, so the agent cannot request an unregistered
 now catches a caller bug or an MCP client naming a tool that does not exist (guide §8.4 already
 says this). Fix the docstring in the next stage that touches `app/mcp/`. Behaviour is unaffected.
 
-**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§10 done. Continues at §11, then
-§12, §13, §15–§18 and the §20 Stage 1–6 records.
+**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§11 done. Continues at §12, then
+§13, §15–§18 and the §20 Stage 1–6 records.
+
+**Open question (not a wording fix — needs a decision):** guide §11 lists `GET /ready`
+(readiness: vector store and LLM reachable) as planned for **Stage 12**, but neither
+`docs/PROJECT_PLAN.md` nor this file records that decision; the nearest plan item is Stage 13,
+"Security and production readiness". Confirm the stage (or drop the row) when planning Stage 12/13.
 
 ### Commits made in the last session (2026-09-14, Stage 9 session), oldest first
 
