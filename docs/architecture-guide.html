@@ -736,6 +736,25 @@ HealthResponse (Pydantic)               ▼  RuleToolSelector → inputs the too
                                                  question, passages, tool payloads
                                                  or answer text</pre>
 
+<div class="note">
+  <strong>Reading the diagram.</strong> The left column is the health check; the right column
+  is one question travelling through the agent. Short reminders for the labels:
+  <ul>
+    <li><strong>embed → filter → cosine → top-k → floor</strong> - turn the question into a
+        vector, keep only allowed chunks, score every chunk by similarity, keep the best
+        <em>k</em> (five by default), then drop any below the score floor (0.25).</li>
+    <li><strong>budget → TWO fences</strong> - fit as many whole retrieved passages as the
+        context size limit allows (tool results are not trimmed - there are at most four),
+        then wrap documents and tool results in two separate marked sections, so the model
+        sees them as data - and as different kinds of evidence.</li>
+    <li><strong>logs/app.log lines</strong> - each step writes one structured event. They
+        record the <em>shape</em> of what happened (counts, names, scores), never the
+        question, passages or answer, which could hold sensitive text.</li>
+  </ul>
+  The chain is still only reachable from the command line; nothing calls it over HTTP until
+  the web interface (Stage 9) connects it to the API.
+</div>
+
 <h3>Target (Stage 9 complete)</h3>
 <pre class="plain">Question
    │
@@ -762,9 +781,20 @@ Web UI ──▶ POST /api/chat ──▶ Guardrails (input validation, injectio
                        │
                        └──▶ logs/app.log (request_id, latencies, docs, tools)</pre>
 
+<div class="note">
+  <strong>What the target adds.</strong> Compared with today, three pieces are still to come:
+  a web page that sends the question (Stage 9), an HTTP endpoint that passes it to the agent
+  (<code>POST /api/chat</code>, Stage 9), and guardrails in front of the agent - checks that
+  reject malformed input and attempts to smuggle in instructions (Stage 13). Each request
+  will also be logged with an id and timings (Stage 10), so one slow or failed request can be
+  traced end to end.
+</div>
+
 <p class="muted">Note the deliberate separation: knowledge retrieved from documents and
-live data returned by tools are presented as distinct kinds of evidence, never blended
-into an undifferentiated blob.</p>
+live data returned by tools are presented as distinct kinds of evidence - kept apart all the
+way to the answer, never mixed into one block of text. A document says how the system
+<em>should</em> behave; a tool says how it <em>is</em> behaving, and the two can disagree
+(§8.3).</p>
 </section>
 
 <!-- ================================================================== -->
@@ -772,9 +802,20 @@ into an undifferentiated blob.</p>
 <h2>6. RAG flow</h2>
 <span class="tag t-done">BUILT - Stages 2 &amp; 3</span>
 
-<p><strong>Why RAG at all?</strong> An LLM does not know this platform, and fine-tuning
-is the wrong tool for documentation that changes. Retrieval keeps the knowledge base
-editable, makes every answer citable, and constrains the model to material we control.</p>
+<p><strong>Why RAG at all?</strong> RAG (retrieval-augmented generation) means: before the
+model answers, search our own documents and hand it the relevant passages to answer from.
+An LLM does not know this platform - it was never trained on these documents - so on its
+own it would guess, and guess confidently. The other way to teach a model is fine-tuning
+(retraining it on the documents), but that is the wrong tool for documentation that
+changes: it bakes in a snapshot, every edit means retraining, and an answer cannot point
+to the document it came from. Retrieval avoids all three problems:</p>
+<ul>
+  <li><strong>editable</strong> - change a Markdown file, rebuild the index (seconds), and
+      the next answer uses the new text</li>
+  <li><strong>citable</strong> - every answer can name the exact passages it used</li>
+  <li><strong>controlled</strong> - the model is told to answer only from material we
+      supplied, not from whatever it absorbed in training</li>
+</ul>
 
 <h3>Indexing (offline, once per document change)</h3>
 <pre class="plain">Synthetic banking documents (data/knowledge/)        15 documents
@@ -795,6 +836,17 @@ Vectors                                             (115, 384) float32
    ▼  InMemoryVectorStore.save()
 data/vectorstore/   vectors.npy + chunks.json + manifest.json
                     manifest pins the model id and a corpus fingerprint</pre>
+
+<div class="note">
+  <strong>Reading the diagram.</strong> Indexing is preparation, done once whenever a
+  document changes - not on every question. It turns 15 documents into a searchable index:
+  load and check each file → split it into chunks (one topic each, small enough for the
+  model) → turn each chunk into a vector of 384 numbers → save the vectors, the chunk text
+  and a manifest to disk. <em>Front matter</em> is the metadata block at the top of each
+  Markdown file; <em>batched</em> means chunks are embedded many at a time for speed;
+  <em>float32</em> means each number is stored in 4 bytes. The retrieval flow further down
+  then searches this saved index for every question.
+</div>
 
 <table>
   <tr><th style="width:210px">Measured on this corpus</th><th></th></tr>
@@ -829,17 +881,22 @@ no vendor documentation, branding or confidential material is reproduced.</p>
 the body is exactly the text that gets chunked and embedded, it stays readable and
 reviewable in a diff, and the metadata travels with the content it describes.</p>
 
-<p><strong>Why the loader is strict.</strong> A silently skipped document becomes an
-answer the agent cannot ground - a far harder fault to diagnose than a failed load.
-So missing front matter, invalid YAML, an unknown domain, an unrecognised key, a
-<code>document_id</code> that disagrees with its filename, a duplicate id, an empty
-body, or an empty knowledge directory all raise.</p>
+<p><strong>Why the loader is strict.</strong> If a broken document were quietly skipped,
+the system would keep running but would simply never find that document. Questions it
+should answer would get a refusal, or a weaker answer pieced together from other documents,
+and nothing would point to the cause. A failed load is the opposite: it stops at once and
+names the file. So the loader raises an error for any of these: missing front matter,
+invalid YAML, an unknown domain, an unrecognised key, a <code>document_id</code> that does
+not match its filename, a duplicate id, an empty body, or an empty knowledge directory.</p>
 
 <div class="warn">
   <strong>Documents are data, not instructions.</strong> From Stage 5 their text is
-  fed to an LLM, which makes them an untrusted input surface. The corpus is written as
-  pure technical reference prose, and the test suite scans it for secret-shaped values
-  and card-number-shaped digit runs on every run.
+  placed into the LLM's prompt. That makes every document a possible way in for an attack:
+  text written to look like an instruction ("ignore your rules and…") could try to steer the
+  model - known as prompt injection. So documents are treated as untrusted input. The
+  corpus is written as plain technical reference, and on every test run the suite scans it
+  for anything that looks like a secret (a password, API key or access token) or a card
+  number (a run of 13-19 digits), so neither can slip in.
 </div>
 
 <h3>Retrieval (per question)</h3>
@@ -868,6 +925,27 @@ RetrievalResult
    ├─ sources   deduplicated by document
    └─ why       candidates_considered, min_score, top_score</pre>
 
+<div class="note">
+  <strong>Reading the diagram.</strong> This runs for every question, against the index built
+  above.
+  <ul>
+    <li><strong>Same embedding model</strong> - vectors are only comparable if one model made
+        both, so the manifest check refuses an index built by a different model.</li>
+    <li><strong>Query vector (384,) unit length</strong> - the question as 384 numbers, scaled
+        to length 1 so a plain dot product gives the cosine similarity.</li>
+    <li><strong>Metadata pre-filter</strong> - optionally limit the search, e.g. to the
+        <code>payments</code> domain, before any scoring happens.</li>
+    <li><strong>One BLAS call</strong> - BLAS is the optimised maths library NumPy uses
+        underneath; all 115 scores come out of a single matrix multiplication.</li>
+    <li><strong>argpartition</strong> - a NumPy function that picks out the top <em>k</em>
+        scores without sorting every score first.</li>
+    <li><strong>min_score floor</strong> - the relevance cut-off (0.25). If nothing clears
+        it, the result is empty, and the agent refuses rather than guessing.</li>
+  </ul>
+  The result carries a <code>why</code> section - how many chunks were considered and the
+  best score - so an empty result explains itself.
+</div>
+
 <h3>Worked example - the output is real</h3>
 <pre class="plain">$ python -m app.rag search "Why would an ATM transaction fail after card authentication?"
 
@@ -883,21 +961,23 @@ $ python -m app.rag search "What is the capital of France?"
 
   NO MATCH - nothing scored above 0.25 of 115 chunks.</pre>
 
-<p>Note results 1 and 2: the same section, split into two chunks, both retrieved. That
-is the chunker's table/paragraph splitting and the store's ranking agreeing with each
-other. Because <code>sources</code> deduplicates by document, the citation list still
-says <em>two documents</em>, not five - five chunks of one document is one piece of
-evidence to a reader, and a citation list that repeats it five times looks like five.</p>
+<p>Note results 1 and 2: they are the same section of one document. It was too long for
+one chunk, so the chunker split it in two, and both halves scored highly - the splitting and
+the ranking agree. <code>sources</code> lists each document only once, however many of its
+chunks matched, so the citation list here says <em>2 documents</em>. Listing a document once
+per chunk would make one piece of evidence look like several independent ones.</p>
 
 <h3>Why metadata travels all the way down</h3>
-<p>Metadata is not decoration. Every <code>Chunk</code> carries the complete
+<p>Metadata - the descriptive details about a document: its id, title, domain, component
+and version - is not decoration. Every <code>Chunk</code> carries the complete
 <code>DocumentMetadata</code> of its source, which is what lets the system say
 <em>"per ATM Transaction Lifecycle (TransactionSwitch v4.2)"</em> instead of
 <em>"somewhere in the docs"</em>, and what makes
 <code>filters={"domain": "payments"}</code> possible. Citations are addressed by
 <code>document_id</code>, which is why the loader insists it match the filename, and
-<code>source_path</code> is normalised to POSIX so a citation reads identically on
-Windows and inside a container.</p>
+<code>source_path</code> is normalised to POSIX style (forward slashes, e.g.
+<code>atm/atm-transaction-lifecycle.md</code>) so a citation reads identically on Windows,
+which uses backslashes, and inside a Linux container.</p>
 
 <div class="warn">
   <strong>The score floor is what makes honesty possible.</strong> Without it,
@@ -913,10 +993,13 @@ Windows and inside a container.</p>
 <h2>7. Agent flow</h2>
 <span class="tag t-done">BUILT - Stages 5 &amp; 7</span>
 
-<p>Stage 5 is the first component that owns a complete request. Stages 3 and 4 each built
-one half and were deliberately kept ignorant of the other - the retriever has no LLM
-dependency, and <code>LLMService</code> does not retrieve. The agent is the seam between
-them, and it is a thin one on purpose.</p>
+<p>Stage 5 built the first component that handles a whole question from start to finish.
+Before it, Stages 3 and 4 each built one half, and each was deliberately kept unaware of
+the other: the retriever (search) never calls a model, and <code>LLMService</code> (answer
+writing) never searches. That separation lets each half be built and tested on its own.
+The agent is the seam - the joint - that connects them. It is kept thin on purpose: it
+decides what to do and passes results along, but builds no prompts and does no searching
+itself, so that logic stays in the layer that owns it.</p>
 
 <pre class="plain">Question
    │
@@ -1057,78 +1140,116 @@ refined once; there was enough evidence to answer.</p>
 answer need different responses from whoever is reading.</p>
 
 <h3>The grounding rule</h3>
-<p>The agent must not invent technical facts. When the knowledge base does not contain
-enough evidence, the correct output is an explicit statement to that effect - not a
-plausible guess. In a banking support context a confident wrong answer is worse than
-"I don't have that documented."</p>
-<p>This is enforced in three places that each remove a different route to a fabricated
-answer, and none of them is a prompt instruction alone:</p>
+<p>The agent must not invent technical facts. <em>Grounding</em> means every statement in an
+answer rests on evidence the system actually supplied - documentation passages or live tool
+readings - never on the model's general knowledge. When there is not enough evidence, the
+correct output is to say so plainly, not a plausible guess. In banking support a confident
+wrong answer is worse than "I don't have that documented", because someone may act on it.</p>
+<p>An instruction in the prompt alone ("don't make things up") is not enough - a model can
+ignore or misread it. So the rule is enforced in three places, each closing a different
+route to an invented answer:</p>
 <ul>
-  <li><strong>The score floor</strong> (Stage 3, calibrated at 0.25) turns "nothing here is
-      relevant" into an empty result instead of five least-bad passages.</li>
-  <li><strong>The empty-evidence guard</strong> (Stage 4) refuses without calling the model
-      at all, so there is no request that <em>could</em> return an invention.</li>
-  <li><strong>The system prompt</strong> (Stage 4, v1.0.0) disqualifies the model's own
-      knowledge as a source and requires a citation per claim.</li>
+  <li><strong>The score floor</strong> (Stage 3, calibrated at 0.25) - when no passage is
+      relevant enough, search returns nothing, instead of the five least-bad passages.
+      Without it, the model would be handed unrelated banking text and write a confident
+      answer from it. Stage 7's second search never lowers it.</li>
+  <li><strong>The empty-evidence guard</strong> (Stage 4) - if there are no passages
+      <em>and</em> no tool results, the agent refuses without calling the model at all. No
+      request is sent, so nothing invented can come back.</li>
+  <li><strong>The system prompt</strong> (Stage 4, now v1.1.0) - the fixed instructions tell
+      the model its own knowledge does not count as a source, and require a citation
+      (<code>[1]</code> for a passage, <code>[T1]</code> for a tool result) for every claim,
+      so each statement can be traced back to its evidence.</li>
 </ul>
 <div class="warn">
-  <strong>One definition of "insufficient".</strong> A question the agent declines to
-  search is routed through Stage 4's existing guard rather than getting a refusal of its
-  own. The API, the web interface and Stage 11's evaluation harness all detect a refusal
-  by matching that exact sentence - two sources for it is one too many.
+  <strong>One definition of "insufficient".</strong> Every refusal uses the same fixed
+  sentence, from Stage 4's guard. Even a question the agent decides not to search (such as
+  "!!! ???") goes through that guard, rather than getting its own wording. This matters
+  because later parts will detect a refusal by matching that exact sentence: the chat API
+  and web interface (Stage 9) and the evaluation harness - the automated test bench that
+  scores answers (Stage 11). A second refusal sentence would be one they could miss.
 </div>
 
 <h3>What is exposed</h3>
-<p>Execution information is surfaced as a returned value, not only as a log line -
-<code>AgentAnswer.decision</code> and <code>AgentAnswer.retrieval</code> carry the route
-taken, how many passages were considered, how many cleared the floor, the top score and
-which documents they came from. Stage 9 renders that directly instead of scraping its own
-logs. Hidden chain-of-thought is <strong>not</strong> exposed.</p>
-<p>The retrieval <em>summary</em> is deliberately separate from the passages themselves:
-the summary is safe to log and to display, the passage text is document content and is
-not.</p>
+<p>The agent returns a record of what it did as part of its answer, not only as a line in a
+log file. <code>AgentAnswer</code> carries:</p>
+<ul>
+  <li><code>decision</code> - the route actually taken</li>
+  <li><code>decisions</code> - each choice point on the way (Stage 7)</li>
+  <li><code>retrieval</code> - how many passages were considered, how many cleared the floor,
+      the top score, and which documents they came from</li>
+  <li><code>tools</code> - which tools were called and whether each found anything</li>
+</ul>
+<p>So Stage 9's web page can show this directly, instead of digging it out of log files.
+Hidden chain-of-thought - a model's private step-by-step reasoning - is
+<strong>not</strong> exposed (see <em>Decisions, not reasoning</em> above).</p>
+<p>The retrieval <em>summary</em> is deliberately separate from the passages themselves. The
+summary is only counts, scores and document names, so it is safe to log and to display. The
+passage text is document content, so it is not treated that way and stays out of logs.</p>
 
 <h3>The five seed questions, run end to end</h3>
-<p>Real output from <code>python -m app.agent demo</code> - real corpus, real embedding
-model, mock provider. The answer prose is a wiring check; the provenance is the part
-worth reading.</p>
+<p>Real output from <code>python -m app.agent demo</code> (re-run 2026-09-14, after Stage 7),
+trimmed to the summary lines - real corpus, real embedding model, mock provider. The mock's
+answer text only proves the parts are connected, so it is left out; the useful part is the
+record under each question. The demo also runs the Stage 7 path questions - their results
+are in the table under <em>Stage 7 - choosing a path</em> above.</p>
 <pre class="plain">Q  Why would an ATM transaction fail after card authentication?
-   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.790]
-   → atm-transaction-lifecycle
+   [decision: knowledge_required]
+   [route: plan=knowledge_required → retrieve_more=not_needed → evidence=sufficient]
+   [retrieval: 1 search(es) · 5 of 115 passages cleared 0.25 · top score 0.790]
+   → atm-transaction-lifecycle  (+ card-authentication)
 
 Q  What component handles card authentication?
-   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.804]
-   → card-authentication  (+ card-pin-verification at [5])
+   [decision: knowledge_required]
+   [route: plan=knowledge_required → retrieve_more=not_needed → evidence=sufficient]
+   [retrieval: 1 search(es) · 5 of 115 passages cleared 0.25 · top score 0.804]
+   → card-authentication  (+ card-pin-verification)
 
 Q  Which API is used for payment authorisation?
-   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.784]
+   [decision: knowledge_required]
+   [route: plan=knowledge_required → retrieve_more=not_needed → evidence=sufficient]
+   [retrieval: 1 search(es) · 5 of 115 passages cleared 0.25 · top score 0.784]
    → payment-authorisation-api
 
 Q  How would I troubleshoot a failed cash withdrawal?
-   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.819]
+   [decision: knowledge_required]
+   [route: plan=knowledge_required → retrieve_more=not_needed → evidence=sufficient]
+   [retrieval: 1 search(es) · 5 of 115 passages cleared 0.25 · top score 0.819]
    → atm-cash-withdrawal-troubleshooting
 
 Q  What configuration controls transaction limits?
-   [decision: knowledge_required]   [5 of 115 passages cleared 0.25 · top 0.775]
+   [decision: knowledge_required]
+   [route: plan=knowledge_required → retrieve_more=not_needed → evidence=sufficient]
+   [retrieval: 1 search(es) · 5 of 115 passages cleared 0.25 · top score 0.775]
    → transaction-limits-configuration
 
 --- the two controls -------------------------------------------------------
 
 Q  What is the capital of France?
-   [decision: knowledge_required]   [0 of 115 passages cleared 0.25 · top none]
-   REFUSED after searching · provider calls: 0
+   [decision: insufficient_evidence]
+   [route: plan=knowledge_required → retrieve_more=no_refinement_available → evidence=insufficient]
+   [retrieval: 1 search(es) · 0 of 115 passages cleared 0.25 · top score none]
+   REFUSED after searching · no model call was made
 
 Q  !!! ???
-   [decision: no_searchable_content] [retrieval: not performed]
-   REFUSED without searching · provider calls: 0</pre>
+   [decision: no_searchable_content]
+   [route: plan=no_searchable_content → evidence=insufficient]
+   [retrieval: not performed]
+   REFUSED without searching · no model call was made</pre>
+<p class="muted">How to read it: the five seed questions all score well above the 0.50
+"confident" bar, so one search is enough. The two <em>controls</em> are questions built to
+be refused - one outside the documentation, one with nothing to search - and both are
+refused without spending a model call. France's plan was an ordinary search; its recorded
+decision is <code>insufficient_evidence</code> because nothing cleared the floor, and there
+was no component name to try a refined search with.</p>
 
 <h3>What Stage 5 deliberately does not do</h3>
 <table>
   <tr><th style="width:210px">Not here</th><th>Where it belongs, and why not now</th></tr>
   <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduced MCP; Stage 7 introduced choosing between knowledge and tools - now built, see <em>Stage 7 - choosing a path</em> above.</td></tr>
-  <tr><td><strong>Conversation history</strong></td><td>Stage 8. Every question here is independent, and the request contract already carries a message tuple so history appends rather than reshapes.</td></tr>
-  <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors carry a <code>retryable</code> flag from Stage 4; deciding a retry policy without a real provider's failure behaviour would be guessing at numbers.</td></tr>
-  <tr><td><strong>Latency in the answer</strong></td><td>Stage 10 decides deliberately what a request record contains. <code>@traced</code> already records per-call duration to <code>logs/traces.log</code>.</td></tr>
+  <tr><td><strong>Conversation history</strong></td><td>Stage 8. Today every question is answered on its own, with no memory of earlier ones. The request sent to the model already holds a list of messages, so adding history later means adding earlier messages to that list - not redesigning the request format.</td></tr>
+  <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors already carry a <code>retryable</code> flag (Stage 4) saying whether trying again could help. Choosing how many retries, and how long to wait between them, needs a real provider's failure behaviour to measure - picking those numbers now would be guesswork.</td></tr>
+  <tr><td><strong>Latency in the answer</strong></td><td>Latency means how long a request took. Stage 10 decides what a full request record should contain, timings included. Until then, <code>@traced</code> already records how long each function call took, in <code>logs/traces.log</code>.</td></tr>
 </table>
 </section>
 
