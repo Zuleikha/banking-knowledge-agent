@@ -32,6 +32,16 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 | Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) |
 | Next | Stage 10 — see *Stage 10 — starting notes* directly below |
 
+### Documentation-only changes after Stage 9 (2026-09-14, docs session) — no application code
+
+| Commit | What |
+|---|---|
+| `85c849c` | Guide: Stage 8/9 status markers (header, footer, §1 ticks and table), stale claims corrected against the code, four terms explained. `CLAUDE.md` §4 gains three guide rules: accuracy against the code, status markers on stage commit, one editor at a time |
+| *(this commit)* | **`README.md` restructured** to a fixed, concise shape (Status · Architecture · Stack · Requirements · Setup · Run · Test · one short section per subsystem · Configuration · Structure · Engineering Focus · Licence); stale content dropped (old stage diagram, "mock is the only constructible value", prompt v1.0.0, "six typed errors"). **New `CLAUDE.md` §4a README rule:** keep that structure; at the end of each stage update only the changed sections (Status, the relevant subsystem, Configuration, Repository Structure, test count); never grow it into a changelog |
+
+**For Stage 10 onward:** at stage end, update `README.md` per `CLAUDE.md` §4a — Status, a short
+*Observability* subsystem section, any new `BKA_*` variables under Configuration, and the test count.
+
 ### Commits made in the last session (2026-09-14, Stage 9 session), oldest first
 
 | Commit | What |

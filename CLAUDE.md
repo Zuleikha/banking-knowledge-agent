@@ -184,6 +184,22 @@ A personal technical reference for understanding and remembering the system. It 
 
 ---
 
+## 4a. README — `README.md`
+
+- **Structure is fixed.** `README.md` follows the structure defined in `README.md` itself as
+  of Stage 9 — concise, table/diagram-driven, no stage narrative: title and description,
+  synthetic-data callout, Status, Architecture, Technology Stack, Requirements, Setup, Run,
+  Test, one short section per major subsystem (mini diagram + tight bullets, not a
+  walkthrough), Configuration, Repository Structure, Engineering Focus, Licence.
+- **End of every stage:** update only the sections that changed — Status, the relevant
+  subsystem section, Configuration, Repository Structure (and the test count under Test).
+  A new major subsystem gets one new short section in the same style.
+- **Not a changelog.** Do not let `README.md` grow with stage history or detailed reasoning —
+  that stays in `docs/HANDOVER.md` and `docs/architecture-guide.html`.
+- Check every number and claim against the code before writing it, as for the guide (§4).
+
+---
+
 ## 5. Git rules
 
 Never commit:
