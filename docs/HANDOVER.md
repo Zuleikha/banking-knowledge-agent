@@ -27,7 +27,7 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 |---|---|
 | Last **approved** stage | **Stage 9 — Web interface** (approved 2026-09-14) |
 | Current stage | **None in progress** — Stage 10 not started |
-| `HEAD` | this file's end-of-session docs commit, on top of `4c2bc97` = `origin/main` |
+| `HEAD` | docs-only commits on top of `4c2bc97` (handover checkpoint `7d640ac`, `CLAUDE.md` sub-agents `f544100`, resume-check fix) = `origin/main` |
 | Working tree | **Clean**, apart from git-ignored local files |
 | Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) |
 | Next | Stage 10 — see *Stage 10 — starting notes* directly below |
@@ -121,8 +121,8 @@ contract (request-id context, event names, latency field names, any metrics inte
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -3        # expect docs(handover) end-of-session commit on top of 4c2bc97
-git status                  # expect clean
+git log --oneline -5        # expect only docs(...) commits above 4c2bc97 (Stage 9 docs)
+git status                  # expect clean; `git status -sb` shows main...origin/main in sync
 
 # 2. If the venv is missing or stale (see "If the venv is missing" below)
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
