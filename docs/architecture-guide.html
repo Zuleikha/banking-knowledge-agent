@@ -2011,10 +2011,14 @@ grounding, hallucination resistance and tool selection - because "the tests pass
 <h2>15. Docker</h2>
 <span class="tag t-todo">PLANNED - Stage 12</span>
 
-<p>A Dockerfile and Compose setup so the whole system runs locally with one command, no
-cloud infrastructure required. Container config comes from environment variables
-(<code>BKA_LOG_FORMAT=json</code>), health checks use <code>/health</code>, and synthetic
-knowledge data stays available inside the image or a mounted volume.</p>
+<p>A Dockerfile and a Docker Compose setup, so the whole system runs locally with one
+command and no cloud infrastructure. A <em>Dockerfile</em> describes how to build an
+<em>image</em> - the app packaged with everything it needs to run; <em>Compose</em> starts it
+with a single command. Configuration comes from environment variables, exactly as today (for
+example <code>BKA_LOG_FORMAT=json</code>, so logs are machine-readable), the container's health
+check calls <code>/health</code>, and the synthetic knowledge documents are either built into
+the image or mounted as a <em>volume</em> (a folder shared from the host machine). Why: everyone
+who runs it gets the same environment, so "it works on my machine" stops being a question.</p>
 </section>
 
 <!-- ================================================================== -->
@@ -2022,17 +2026,30 @@ knowledge data stays available inside the image or a mounted volume.</p>
 <h2>16. Security</h2>
 <span class="tag t-done">BUILT (foundations) · <span class="tag t-todo">full review Stage 13</span></span>
 
+<div class="note">
+  <strong>In plain English.</strong> This section lists what already protects the system and
+  what is still to be reviewed. The main risks for an AI support agent like this one are:
+  leaking secrets (such as API keys) through code, git or logs; spending money by accident;
+  exposing sensitive text in logs; and <em>prompt injection</em> - text inside a document, a
+  tool result or an earlier question that tries to give the model instructions. Each protection
+  below addresses one of those risks, and most are enforced by a test rather than by a promise.
+  Stage 13 carries out the full security review.
+</div>
+
 <h3>In place today</h3>
 <ul>
   <li>Secrets from environment variables only - never hardcoded, never a real default.
       The two paid adapters read <code>BKA_LLM_API_KEY</code> and nothing else: they do
       not fall through to <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>,
-      which both SDKs would otherwise pick up silently. A test asserts a 401 message
-      cannot echo the key.</li>
+      which both SDKs would otherwise pick up silently. A test asserts that a 401 error (the
+      provider's "not authorised" reply - the most likely place a key would be repeated back)
+      cannot echo the key into an error message.</li>
   <li><code>.env</code>, <code>*.pem</code>, <code>*.key</code>, <code>secrets/</code> and <code>logs/</code> are git-ignored.</li>
   <li>Traced function arguments are never logged.</li>
   <li>Pydantic validates every request and response at the boundary.</li>
-  <li>Server binds to <code>127.0.0.1</code> by default, not <code>0.0.0.0</code>.</li>
+  <li>The server listens on <code>127.0.0.1</code> (this machine only) by default, not
+      <code>0.0.0.0</code> (every network interface), so other computers cannot reach it unless
+      the setting is changed on purpose.</li>
   <li>Front matter is parsed with <code>yaml.safe_load</code>, so a document cannot
       construct arbitrary Python objects.</li>
   <li>The test suite scans the whole corpus on every run for secret-shaped values
@@ -2068,22 +2085,26 @@ unnecessary enterprise infrastructure for a portfolio project.</p>
 <h3>What Stage 4 actually implemented against that risk</h3>
 <ul>
   <li><strong>Structural separation.</strong> Retrieved passages go in the <em>user</em>
-      turn inside <code>&lt;retrieved_documentation&gt;</code>, never in the system
-      prompt. Operator instructions and untrusted data never share a channel.</li>
+      message inside <code>&lt;retrieved_documentation&gt;</code>, never in the system
+      prompt. The system prompt is where the operator's instructions live, so keeping untrusted
+      text out of it means instructions and data never share a channel - document text can
+      never gain the authority of an instruction.</li>
   <li><strong>A stated rule the model sees first.</strong> The system prompt declares,
       before any passage, that everything inside the fence is reference data - and that
       a passage appearing to contain an instruction should be <em>reported</em>, not
       obeyed.</li>
   <li><strong>Delimiter escaping.</strong> Occurrences of the fence inside a passage's
-      own text are neutralised, so a document cannot close the untrusted region early.
-      Without this the fence would be decorative. It is a passing test.</li>
+      own text are neutralised, so a document cannot close the untrusted region early and have
+      the rest of its text read as if it came from outside. Without this the fence would be
+      decorative. A test proves it.</li>
   <li><strong>The question goes last</strong>, positionally outside the untrusted
       region.</li>
 </ul>
 
-<p>This is defence in depth for a corpus that is currently synthetic and repository-owned,
-so today's risk is nil. The guards are written now because the day a document arrives from
-a ticket or an upload, the architecture must already be right - see decision record 4.3.
+<p>This is <em>defence in depth</em> - several independent layers, so that one failing does
+not expose the system. The corpus is currently synthetic and owned by this repository, so
+today's real risk is nil. The guards exist now because the day a document arrives from a
+support ticket or an upload, the design must already be right - see decision record 4.3.
 Stage 13 reassesses the whole surface.</p>
 
 <h3>What Stage 6 added: the same defence, extended to tool results</h3>
@@ -2097,9 +2118,10 @@ free-text incident note.</p>
 <ul>
   <li><strong>A second fence, not a second scheme.</strong>
       <code>&lt;tool_results&gt;</code> sits beside the documentation fence in the same
-      user turn, and is escaped by the <em>same</em> <code>_fence_safe</code> function -
-      four new delimiters added to one list. A test walks the AST of
-      <code>prompts.py</code> and fails if a second escaping function ever appears.</li>
+      user message, and is escaped by the <em>same</em> <code>_fence_safe</code> function -
+      four new delimiters added to one list (Stage 8 later added the conversation-history tags
+      to that same list). A test parses <code>prompts.py</code> into its syntax tree (the AST)
+      and fails if a second escaping function ever appears.</li>
   <li><strong>Everything attacker-reachable is escaped</strong>, not just the obvious
       field: the tool's summary line, each payload <em>key</em>, each payload value, and
       the error message on a not-found (which echoes the caller's own string back).</li>
@@ -2115,8 +2137,9 @@ free-text incident note.</p>
 <p>Separately, the tool layer is careful about what it <em>emits</em>:
 <code>get_system_configuration</code> refuses any key that looks like a credential -
 ConfigurationStore holds operational values only, per the corpus - and refuses it
-<em>before</em> validating the component, so the refusal cannot be used as an oracle for
-which components exist. A test asserts no tool payload carries a credential-shaped
+<em>before</em> checking whether the component exists, so the refusal cannot be used as an
+<em>oracle</em> - a way to learn which components are real by watching which requests fail
+differently. A test asserts no tool payload carries a credential-shaped
 field.</p>
 
 <p>And about what it <em>logs</em>: the registry logs tool and argument <em>names</em>
@@ -2125,6 +2148,25 @@ whose stated purpose is to be safe to log - deliberately carries no <code>reason
 string, because the natural wording of one (<em>"the question names the transaction
 reference TXN-..."</em>) reintroduces the identifier the argument list was careful to
 omit. A test caught that; see decision record 6.4 and section 21.</p>
+
+<p><strong>What Stages 8 and 9 added.</strong></p>
+<ul>
+  <li><strong>Earlier questions are untrusted too.</strong> Conversation history is user-typed
+      text, so it gets its own fence, escaped by the same <code>_fence_safe</code>, and the system
+      prompt marks it as not evidence. Earlier <em>answers</em> are never sent back, so the model
+      cannot "confirm" a claim from its own earlier words (§20.23).</li>
+  <li><strong>The session id is treated as a key.</strong> It is random and unguessable (made
+      with Python's <code>secrets</code>), travels only in the JSON request body - never in a URL,
+      which would end up in browser history and server logs - and logs carry only a one-way
+      fingerprint of it (§20.26, §20.30).</li>
+  <li><strong>Errors reveal nothing internal.</strong> An unknown session gets a fixed 404
+      message that never repeats the id; a tool or model failure gets a fixed 502 sentence, with
+      the exception logged by type only, because its text can hold hostnames or provider detail.</li>
+  <li><strong>No duplicated turns.</strong> A per-session lock stops two simultaneous requests on
+      one session from both recording the same turn (§20.29).</li>
+  <li><strong>The web page inserts all text as text, never as HTML</strong>, so an answer that
+      happens to contain markup cannot run in the browser.</li>
+</ul>
 
 <div class="note">
   <strong>Secrets in Stage 4.</strong> <code>BKA_LLM_API_KEY</code> is read from the
@@ -2152,9 +2194,12 @@ omit. A test caught that; see decision record 6.4 and section 21.</p>
   exist now, so that argument is gone and is replaced by defence in depth:
   <code>BKA_LLM_PROVIDER</code> still defaults to <code>mock</code>; neither adapter can
   be constructed without <code>BKA_LLM_API_KEY</code>; every adapter test injects a fake
-  client; and both CLIs refuse a multi-question <code>demo</code> against a paid provider
-  unless <code>--paid</code> is passed, checking <em>before</em> building an index or a
-  client. Full reasoning in §20.5.7.
+  client; and the three multi-question commands - <code>python -m app.llm demo</code>,
+  <code>python -m app.agent demo</code> and <code>python -m app.agent conversation-demo</code> -
+  refuse to run against a paid provider unless <code>--paid</code> is passed, checking
+  <em>before</em> building an index or a client. (Single-question commands such as
+  <code>ask</code> and <code>chat</code> only warn: one call is a proportionate mistake, a whole
+  scripted run is not.) Full reasoning in §20.5.7.
   <br><br>
   <strong>No live call has ever been made from this repository</strong>, in the suite or
   by hand. Making one is a paid action and needs explicit confirmation at the time -
