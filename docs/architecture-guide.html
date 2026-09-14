@@ -1613,10 +1613,13 @@ fake model can never pass itself off as a real one - see decision record 4.2.</p
 <h2>10. Vector database</h2>
 <span class="tag t-done">BUILT</span>
 
-<p>Accessed through a <code>VectorStore</code> protocol -
-<code>add()</code>, <code>search()</code>, <code>count()</code>, <code>clear()</code> -
-so the implementation is replaceable. The shipped implementation,
-<code>InMemoryVectorStore</code>, is one NumPy matrix.</p>
+<p>A vector database stores embeddings - each chunk's meaning as a list of numbers - and
+finds the ones closest to a question's embedding. It is what retrieval (§6) searches. Here it
+is accessed only through a <code>VectorStore</code> protocol with four methods -
+<code>add()</code>, <code>search()</code>, <code>count()</code>, <code>clear()</code> - so the
+implementation behind it can be replaced without touching the retriever. The shipped
+implementation, <code>InMemoryVectorStore</code>, is a single NumPy matrix held in memory and
+saved to disk.</p>
 
 <pre class="plain">InMemoryVectorStore
   _matrix   ndarray (115, 384) float32, contiguous, all rows unit length
@@ -1628,21 +1631,37 @@ so the implementation is replaceable. The shipped implementation,
      top     = argpartition(-scores, k)[:k]       ← O(n), no full sort
      return sorted top as ScoredChunk</pre>
 
-<h3>Why brute force, and when that stops being true</h3>
-<p>115 vectors × 384 dimensions is ~176 KB. Scoring all of them is a single matrix-vector
-product - tens of microseconds, orders of magnitude below the cost of embedding the
-query, never mind an LLM call. An approximate index (HNSW, IVF) buys sub-linear scaling
-by <em>spending recall</em>, and there is no scaling problem here to spend recall on.</p>
+<div class="note">
+  <strong>Reading the diagram.</strong> Row <em>i</em> of the matrix is the vector for chunk
+  <em>i</em>, so a score's position tells you which chunk it belongs to.
+  <em>Contiguous</em> means the numbers sit in one unbroken block of memory, which is what lets
+  the maths run fast. Search then: keeps only the rows the filters allow (before scoring, so
+  excluded chunks cannot take result slots); scores them all in one matrix-vector multiplication
+  (<em>matvec</em>, done by BLAS, NumPy's optimised maths library); and picks the best
+  <em>k</em> with <code>argpartition</code>, which is <em>O(n)</em> - its work grows in step with
+  the number of rows, without the extra cost of sorting every score.
+</div>
 
-<p>The honest crossover is somewhere around 10<sup>5</sup>–10<sup>6</sup> vectors, or
-when the index no longer fits comfortably in one process's memory, or when several
-replicas need to share writes. At that point the <code>VectorStore</code> protocol is
-the thing that makes it a one-class change rather than a rewrite.</p>
+<h3>Why brute force, and when that stops being true</h3>
+<p><em>Brute force</em> here means scoring the question against <em>every</em> stored vector,
+instead of using a shortcut index. 115 vectors × 384 numbers each is about 176 KB. Scoring all
+of them is a single matrix-vector multiplication - tens of microseconds, far less than the time
+it takes to embed the question, let alone an LLM call. An <em>approximate</em> nearest-neighbour
+index (such as HNSW or IVF) scales better as data grows by checking only <em>part</em> of it,
+but the price is <em>recall</em>: it can occasionally miss the true best match. With no scaling
+problem here, paying that price would buy nothing.</p>
+
+<p>The honest crossover - the point where an approximate index starts to pay off - is
+somewhere around 10<sup>5</sup>–10<sup>6</sup> vectors (100,000 to 1,000,000), or when the
+index no longer fits comfortably in one process's memory, or when several copies of the
+service (replicas) all need to write to one shared index. At that point the
+<code>VectorStore</code> protocol is what makes it a one-class change rather than a rewrite: a
+new class with the same methods, and nothing above it changes.</p>
 
 <h3>The on-disk format, and the two guards on it</h3>
 <table>
   <tr><th style="width:170px">File</th><th>Contents</th><th>Why this format</th></tr>
-  <tr><td><code>vectors.npy</code></td><td>The <code>(n, 384)</code> float32 matrix</td><td>Compact, exact, and loads without parsing.</td></tr>
+  <tr><td><code>vectors.npy</code></td><td>The <code>(n, 384)</code> float32 matrix</td><td>Compact, exact (no rounding), and loads straight into memory with no text to parse.</td></tr>
   <tr><td><code>chunks.json</code></td><td>Chunk text + full metadata</td><td>Human-readable. When retrieval misbehaves the first question is "what is actually <em>in</em> the index?", and that should be answerable with a text editor.</td></tr>
   <tr><td><code>manifest.json</code></td><td>format version, model id, dimension, chunk count, corpus fingerprint, build time</td><td>The guard rail - see below.</td></tr>
 </table>
@@ -1651,8 +1670,9 @@ the thing that makes it a one-class change rather than a rewrite.</p>
   <strong>Both guards exist because their failure mode is silent.</strong>
   <ul>
     <li><strong>Wrong model.</strong> Searching an index built by model A with a query
-        embedded by model B does not raise - the vectors just live in unrelated spaces,
-        and you get confident, plausible-looking nonsense. So the manifest pins the
+        embedded by model B does not raise - the vectors just live in unrelated spaces
+        (each model places meanings at different positions, so their numbers cannot be
+        compared), and you get confident, plausible-looking nonsense. So the manifest pins the
         model id and dimension, and <code>load()</code> refuses a mismatch.</li>
     <li><strong>Stale index.</strong> If a document changed after indexing, answers stay
         fluent and citations still resolve - nobody notices the agent quoting a
