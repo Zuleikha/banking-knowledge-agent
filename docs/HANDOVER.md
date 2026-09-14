@@ -27,7 +27,7 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 |---|---|
 | Last **approved** stage | **Stage 9 — Web interface** (approved 2026-09-14) |
 | Current stage | **None in progress** — Stage 10 not started |
-| `HEAD` | Stage 9 commit + its docs commit, = `origin/main` |
+| `HEAD` | Stage 9 docs commit on top of `2484b73` (Stage 9), = `origin/main` |
 | Working tree | Clean, apart from git-ignored local files |
 | Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) — re-run after approval |
 | Next | Stage 10 — when the user asks. Read only its section of `docs/PROJECT_PLAN.md` |
@@ -2289,7 +2289,8 @@ source for reassessment in Stage 13.
 | **Stage 8 commit** | `2abbb39` — `feat(stage-8): conversation context - sessions and rule-based follow-ups` — 18 files, 2,418 insertions, 34 deletions |
 | **Stage 8 push** | ✅ `d47f522..2abbb39` pushed; verified `origin/main == local HEAD == 2abbb39` |
 | **Handover fix** | `ca5449c` — `docs(handover): correct stale Stage 8 status fields` — pushed |
-| **Stage 9** | Approved 2026-09-14 — `feat(stage-9): web interface - conversation API and no-build page` — 12 files (6 added, 6 modified). Hash and push result recorded in the follow-up docs commit |
+| **Stage 9 commit** | `2484b73` — `feat(stage-9): web interface - conversation API and no-build page` — 12 files (6 added, 6 modified), 1,409 insertions, 43 deletions |
+| **Stage 9 push** | ✅ `ca5449c..2484b73` pushed; verified `origin/main == local HEAD == 2484b73` |
 | **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Working tree** | Clean, apart from git-ignored local files |
