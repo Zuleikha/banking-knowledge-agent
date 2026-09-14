@@ -7,8 +7,8 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-14, end of session** · **Stages 1–8 approved, committed and pushed.
-Stage 9 — Web interface — NOT started.** Working tree clean.
+Last updated: **2026-09-14** · **Stages 1–9 approved.** Stage 9 — Web interface —
+approved 2026-09-14; commit hash and push result in *Git*. **Stage 10 NOT started.**
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
 `docs/PROJECT_PLAN.md` — read only the Stage 9 section. This file is state and decisions.
@@ -17,20 +17,20 @@ Stage 9 — Web interface — NOT started.** Working tree clean.
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 8 — Conversation context — approved 2026-09-14**, committed
-`2abbb39`, pushed, verified. Nothing is in progress. **Stage 9 has not been started** and
-starts only when the user asks, in a new session.
+**Session state:** **Stage 9 — Web interface — approved by the user 2026-09-14** (after
+checking the page in a real browser). Committed and pushed; hash in *Git*. Nothing in
+progress. **Stage 10 has not been started** and starts only when the user asks.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 8 — Conversation context** (approved 2026-09-14, `2abbb39`) |
-| Current stage | **None in progress** — Stage 9 (Web interface) not started |
-| `HEAD` | this file's end-of-session docs commit, on top of `0e04b77` = `origin/main` |
-| Working tree | **Clean.** `docs/legacy/` (archived `prompt.md`, `improve.md`) is git-ignored |
-| Tests | **971 passed** · ruff clean · mypy strict clean (58 source files) |
-| Next | Stage 9 — see *Stage 9 — starting notes* directly below |
+| Last **approved** stage | **Stage 9 — Web interface** (approved 2026-09-14) |
+| Current stage | **None in progress** — Stage 10 not started |
+| `HEAD` | Stage 9 commit + its docs commit, = `origin/main` |
+| Working tree | Clean, apart from git-ignored local files |
+| Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) — re-run after approval |
+| Next | Stage 10 — when the user asks. Read only its section of `docs/PROJECT_PLAN.md` |
 
 ### Commits made in the last session (2026-09-14), oldest first
 
@@ -178,14 +178,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 8 |
-| **Stage name** | Conversation Context |
-| **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash recorded in *Git*, in the follow-up docs commit) |
-| **Last completed step** | 971 tests passing, ruff and mypy clean, `conversation-demo` verified with the real embedding model (all four resolution rules), guide + README + handover updated |
-| **Next step** | Stage 9 — not started; begins when the user asks. See *Next Action* |
+| **Stage number** | 9 |
+| **Stage name** | Web Interface |
+| **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash in *Git*) |
+| **Last completed step** | Re-verified after approval: 1005 passed, ruff and mypy clean, `git add -An` = 12 files, no secrets, no nested directory. User checked the page in a real browser |
+| **Next step** | Stage 10 — not started; begins when the user asks. See *Next Action* |
 
 | Stage | Name | Status |
 |---|---|---|
+| 8 | Conversation Context | ✅ Approved 2026-09-14, committed `2abbb39`, pushed |
 | 7 | Agent Decision and Tool Selection | ✅ Approved 2026-09-14, committed `a3728d9`, pushed |
 
 | Stage | Name | Status |
@@ -558,7 +559,83 @@ The question was put to the user with three options and answered.
 
 ---
 
+## Stage 9 decisions — recorded BEFORE implementation began
+
+**Decided by the user, 2026-09-14**, answering the four questions listed in *Stage 9 —
+starting notes*. Each was put with options and a recommendation; all four recommendations
+were chosen. Written here before any Stage 9 code existed.
+
+### 9.A — Session-store lifetime: ONE service per application
+
+| | |
+|---|---|
+| **Chosen** | One `ConversationService` per app, kept on `app.state.conversation`. `create_app()` accepts an injected service (tests use a mock-provider agent); otherwise the dependency builds it **once, on first use**, under a lock, and every later request reuses it. Built lazily so `GET /health`, `import app.main` and the existing test app never load the embedding model or index. Sessions are lost on restart (acceptable: local, short-lived state, §20.26) |
+| **Rejected — module-level cached singleton** | Tests could not build an app with overridden settings or a stub service without patching a global |
+
+### 9.B — Concurrent requests on one session: PER-SESSION LOCK
+
+| | |
+|---|---|
+| **Chosen** | `ConversationService.ask` holds a lock per session id around *read turns → agent → append*, so two requests on one session run one after the other and cannot record a duplicate turn number. Different sessions still run in parallel. Locks are held in a `weakref.WeakValueDictionary`, so an expired session's lock does not leak. Closes Stage 8 unfinished #3 |
+| **Rejected — accept and document** | Leaves a known data defect in place; a double-click or a retry would reproduce it |
+
+### 9.C — Session id transport: JSON REQUEST BODY
+
+| | |
+|---|---|
+| **Chosen** | `POST /api/sessions` returns `{session_id}`. Every other call carries the id **in the JSON body**, never in the URL: `POST /api/sessions/ask {session_id, question}`, `POST /api/sessions/turns {session_id}`, `POST /api/sessions/end {session_id}`. Keeping it out of the path keeps it out of URLs and access logs — the same stance as `SessionNotFoundError` never repeating the id. Unknown/expired id → **404** with the fixed message, never a new session |
+| **Clarified** | The option text offered `/api/sessions/{id}/questions`; the label chosen was *JSON request body*. Implemented as body-only for the reason above — flagged to the user in the Stage 9 report |
+| **Rejected — HTTP-only cookie** | Hides the id from page JS but adds cookie and CSRF handling to a local demo |
+| **Rejected — custom header** | Works, but less visible in tests and docs than a body field |
+
+### 9.D — UI technology: NO-BUILD STATIC PAGE
+
+| | |
+|---|---|
+| **Chosen** | One `index.html` + vanilla `app.js` + `styles.css` under `app/web/static/`, served by FastAPI `StaticFiles` at `/`. No Node, no build step. The page renders only what the API returns (§ starting notes table): answer, sources, tool activity, RAG/MCP/insufficient badges, conversation turns, error states. All text inserted with `textContent`, never `innerHTML` (model and tool text is untrusted) |
+| **Rejected — Jinja2 templates** | Full-page reloads or extra JS for a chat flow; a second rendering path to test |
+| **Rejected — React/Vite** | Node toolchain, build step and a second test stack for a page whose purpose is to show the backend |
+
+### 9.E — Design consequences (decided with the above)
+
+- **Route handlers are plain `def`** — the agent is synchronous; FastAPI runs `def`
+  handlers in its threadpool, so one slow answer does not block the event loop. Handlers
+  are **not** `@traced` (Problems §2); request tracing is Stage 10.
+- **Error mapping** — blank question → 422 (request validation); `SessionNotFoundError` →
+  404; `ToolError` / `LLMError` → 502 with a fixed message. Exception text from tools or
+  providers is never returned to the browser.
+- **Response model** — an API view built from `ConversationAnswer`, exposing flags the UI
+  needs directly (`rag_used`, `mcp_used`, `sources_consulted`, `insufficient`) so the page
+  does not re-derive them.
+
+---
+
 ## Current Work
+
+### Implemented in Stage 9 (approved, committed, pushed — hash in *Git*)
+
+Single build by the main session. Decisions 9.A–9.E asked and recorded before code. Tests
+written first and run red (every API test errored on `create_app()` lacking
+`conversation_service`; the concurrency test recorded a duplicate turn number).
+
+| File | What changed |
+|---|---|
+| `app/api/routes/conversation.py` — **new** | `POST /api/sessions` (201), `/ask`, `/turns`, `/end` (204). Session id in the JSON body only. `extra="forbid"` bodies; blank question → 422. `AnswerResponse` flattens `ConversationAnswer` with `rag_used`, `mcp_used`, `sources_consulted`, `insufficient`, route, steps, retrieval summary, full tool results. `SessionNotFoundError` → 404 (fixed message); `ToolError`/`LLMError` → 502 fixed sentence, logged by type only. Plain `def` handlers, not `@traced` |
+| `app/api/dependencies.py` | `get_conversation` / `ConversationDep`: one service per app on `app.state.conversation`, built once on first use under `app.state.conversation_lock` |
+| `app/main.py` | `create_app(settings, conversation_service=None)`; state + lock; conversation router; `StaticFiles` mounted at `/` **last** so API and docs routes win |
+| `app/conversation/service.py` | Per-session lock around read turns → agent → append, held in a `WeakValueDictionary`. Blank-question check stays before the lock |
+| `app/web/static/index.html` · `app.js` · `styles.css` — **new** | No-build page: question input, conversation, badges (RAG / MCP / sources / insufficient / follow-up), sources, tool activity, "how this answer was produced", error box. `textContent` only; no network assets. On 404 it tells the user the conversation ended and starts fresh on the next question |
+
+### Stage 9 — what remains deliberately unfinished
+
+1. **No authentication or rate limiting** — local demo. Stage 12 (guardrails) / Stage 14.
+2. **No streaming** — the page waits for the full answer; the first question is slow while
+   the embedding model loads.
+3. **Sessions are still process-local** (one worker). Stage 14 documents a shared store.
+4. **No browser-automation test** of the page — the page is checked statically (required
+   markers, no HTML sinks, no network assets) and the API end to end; JS behaviour was not
+   exercised in a real browser this session.
+5. **No request tracing** on routes — Stage 10 middleware.
 
 ### Implemented in Stage 8 (approved, committed `2abbb39`, pushed)
 
@@ -591,8 +668,10 @@ search top score 0.762 (confident, one pass).
    it fail?" after a transaction lookup does not carry the error code the tool reported.
 3. **Two concurrent asks on one session** can both read the same earlier turns and record
    the same turn number. Harmless for the CLI; Stage 9 decides request serialisation.
+   *(Stage 9: closed by a per-session lock, §9.B.)*
 4. **The store is process-local**: sessions vanish on restart and are not shared between
    workers. Stage 9 decides its lifetime; Stage 14 documents a shared store.
+   *(Stage 9: one service per app, §9.A; shared store still Stage 14.)*
 5. **No live LLM call** — whether a real model uses the history fence well is unmeasured.
 
 ### Implemented in Stage 7 (approved, committed `a3728d9`, pushed)
@@ -710,8 +789,8 @@ FastAPI at import and takes the whole suite with it.
 
 ### Currently being worked on
 
-**Nothing in progress.** Stages 7 and 8 are approved, committed and pushed. Stage 9 has
-not started.
+**Nothing in progress.** Stage 9 is approved, committed and pushed. Stage 10 has not
+started.
 
 ### What remains deliberately unfinished in Stage 6
 
@@ -1138,7 +1217,19 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 8 (9 files, NOT committed)
+### Added in Stage 9 (6 files, committed)
+
+`app/api/routes/conversation.py` · `app/web/static/index.html` · `app/web/static/app.js` ·
+`app/web/static/styles.css` · `tests/test_api_conversation.py` (31) ·
+`tests/test_conversation_concurrency.py` (3).
+
+### Modified in Stage 9 (committed)
+
+`app/main.py` · `app/api/dependencies.py` · `app/conversation/service.py` · `README.md` ·
+`docs/architecture-guide.html` (§11 API layer rewritten, §20.28–§20.31, stale Stage 9
+mentions) · `docs/HANDOVER.md`.
+
+### Added in Stage 8 (9 files, committed in `2abbb39`)
 
 `app/conversation/__init__.py` · `models.py` · `context.py` · `store.py` · `service.py` ·
 `factory.py` · `tests/test_conversation_context.py` (24) · `tests/test_conversation_store.py`
@@ -1371,6 +1462,26 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 ---
 
 ## Testing
+
+### Result (Stage 9)
+
+**1005 passed** (971 → 1005, +34) in ~63 s · `ruff check .` clean · `mypy` strict clean, 61
+source files. Commands: `./.venv/Scripts/python.exe -m pytest` / `-m ruff check .` / `-m mypy`.
+
+| Required (`PROJECT_PLAN.md` Stage 9) | Evidence |
+|---|---|
+| Question input · conversation display | `TestWebPage` markers; `TestSessions` turns endpoint |
+| Answer · sources · tool activity | `TestAsk` — text, sources, full tool results, route + steps |
+| Basic error states | 404 unknown/ended session (id never echoed) · 422 blank/missing/extra · 502 tool/LLM with no leaked detail · failed turn not recorded |
+| RAG / MCP / sources / insufficient obvious | `rag_used`, `mcp_used`, `sources_consulted`, `insufficient` asserted; page renders each as a badge |
+| One service per app (§9.A) | built once and shared; not built by `create_app()` alone |
+| Per-session lock (§9.B) | 3 concurrent asks → turns 1,2,3; other sessions not blocked; lock released after failure |
+
+**Live smoke test (FREE — mock provider, real embedding model), 2026-09-14:**
+`uvicorn app.main:app` on 127.0.0.1 → health 200 · create 201 (43-char id) · knowledge
+question: RAG, 5 sources · `Status of TXN-19990101-000001?`: RAG + MCP · `what about
+TXN-19990101-000002?`: `substituted_identifier`, turn 3 · "capital of France": insufficient,
+0 sources · turns [1–4] · unknown id 404 · end 204 · `GET /` page 200.
 
 ### Result (Stage 8)
 
@@ -2177,6 +2288,8 @@ source for reassessment in Stage 13.
 | **Guide readability commit** | `249f04e` — `docs(guide): plain-English readability pass over sections 1-5` (+187/−66, the separate improve.md session's edits) — pushed |
 | **Stage 8 commit** | `2abbb39` — `feat(stage-8): conversation context - sessions and rule-based follow-ups` — 18 files, 2,418 insertions, 34 deletions |
 | **Stage 8 push** | ✅ `d47f522..2abbb39` pushed; verified `origin/main == local HEAD == 2abbb39` |
+| **Handover fix** | `ca5449c` — `docs(handover): correct stale Stage 8 status fields` — pushed |
+| **Stage 9** | Approved 2026-09-14 — `feat(stage-9): web interface - conversation API and no-build page` — 12 files (6 added, 6 modified). Hash and push result recorded in the follow-up docs commit |
 | **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Working tree** | Clean, apart from git-ignored local files |
@@ -2284,6 +2397,13 @@ edit.
 ---
 
 ## Next Action
+
+**Stage 9 — Web interface — is approved, committed and pushed** (hash in *Git*). **The
+next action is Stage 10 when the user asks for it.** Read only its section of
+`docs/PROJECT_PLAN.md`. Try the page free:
+`./.venv/Scripts/python.exe -m uvicorn app.main:app` → open `http://127.0.0.1:8000/`.
+
+*Superseded below.*
 
 **Stage 7 is complete and approved. It is committed (`a3728d9`) and pushed**, verified
 `origin/main == HEAD`. 891 tests passing, ruff clean, mypy strict clean over 52 source

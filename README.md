@@ -17,9 +17,9 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 8 — Conversation context *(awaiting approval)* |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), six MCP support tools, an in-process tool registry, a real MCP server over stdio, agent decision paths and a rule-based tool selector, **conversation sessions with rule-based follow-up resolution** |
-| **Not yet implemented** | Web UI, request observability, evaluation, Docker |
+| **Current stage** | Stage 9 — Web interface ✅ approved · Stage 10 next |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), six MCP support tools, an in-process tool registry, a real MCP server over stdio, agent decision paths and a rule-based tool selector, conversation sessions with rule-based follow-up resolution, **a conversation HTTP API and a no-build web page** |
+| **Not yet implemented** | Request observability, evaluation, guardrails, Docker |
 
 > **Cloning this repository and running its tests costs nothing.** `BKA_LLM_PROVIDER`
 > defaults to a deterministic in-process **mock** — no account, no API key, no spend.
@@ -41,7 +41,7 @@ Detailed progress and the exact next action live in
 User
  │
  ▼
-Web Interface            ── Stage 9
+Web Interface            ── Stage 9  ✅
  │
  ▼
 API  (FastAPI)           ── Stage 1  ✅
@@ -128,6 +128,7 @@ cp .env.example .env
 
 | URL | What it is |
 |---|---|
+| <http://127.0.0.1:8000/> | **The web page** — ask questions, see sources and tool activity |
 | <http://127.0.0.1:8000/health> | Liveness check |
 | <http://127.0.0.1:8000/docs> | Interactive API documentation |
 | <http://127.0.0.1:8000/openapi.json> | OpenAPI schema |
@@ -620,6 +621,34 @@ call), then asks the agent the resolved question.
 .venv/Scripts/python.exe -m app.agent chat                # interactive; blank line ends it
 .venv/Scripts/python.exe -m app.agent conversation-demo   # seven turns, every rule
 ```
+
+### Web interface (Stage 9)
+
+Run the server (see [Run](#run)) and open <http://127.0.0.1:8000/>. Free by default — the
+mock provider answers. The first question is slow while the embedding model loads.
+
+| The page shows | From the API field |
+|---|---|
+| **RAG used** badge | `rag_used` — the knowledge base was searched |
+| **MCP tools used** badge + *Tool activity* | `mcp_used`, `tools` |
+| **N source(s) consulted** badge + *Sources* | `sources_consulted`, `sources` |
+| **Information insufficient** badge | `insufficient` — refused for want of evidence |
+| *How this answer was produced* | `decision`, `steps`, `retrieval` |
+
+| Endpoint | Body | Returns |
+|---|---|---|
+| `POST /api/sessions` | — | `{session_id}` (201) |
+| `POST /api/sessions/ask` | `{session_id, question}` | the answer and its execution record |
+| `POST /api/sessions/turns` | `{session_id}` | turns, oldest first |
+| `POST /api/sessions/end` | `{session_id}` | 204 |
+
+- **The session id is only ever in the JSON body**, never a URL, so it stays out of
+  browser history and access logs.
+- **Errors:** unknown or expired session → 404 (never a silent new session) · blank
+  question → 422 · tool or model failure → 502 with a fixed message, no internal detail.
+- **One question at a time per session** — concurrent asks cannot record duplicate turns.
+- No Node, no build step: `app/web/static/` is plain HTML, JS and CSS; all text is inserted
+  as text, never HTML.
 
 ---
 

@@ -4,6 +4,11 @@
 
     turns(session)  →  resolve_follow_up()  →  agent.ask(resolved, history)  →  append
 
+**One question at a time per session** (Stage 9, guide §20.29). The whole path
+runs under a per-session lock, so concurrent requests on one session cannot read
+the same earlier turns and record the same turn number. Sessions never wait for
+each other.
+
 **The turn is stored only after the agent answered.** A provider timeout or a
 broken tool propagates exactly as it does from the agent, and leaves the session
 as it was: a failed question does not become context for the next one.
@@ -17,6 +22,8 @@ the handle to it. Never the question, the carried identifiers or the answer.
 from __future__ import annotations
 
 import hashlib
+import threading
+import weakref
 
 from app.agent.agent import KnowledgeAgent
 from app.conversation.context import resolve_follow_up
@@ -62,6 +69,10 @@ class ConversationService:
             if store is not None
             else InMemorySessionStore.from_settings(self._settings)
         )
+        self._locks: weakref.WeakValueDictionary[str, threading.Lock] = (
+            weakref.WeakValueDictionary()
+        )
+        self._locks_guard = threading.Lock()
 
     @property
     def agent(self) -> KnowledgeAgent:
@@ -100,6 +111,24 @@ class ConversationService:
         if not question.strip():
             raise ValueError("Cannot answer an empty question.")
 
+        with self._session_lock(session_id):
+            return self._ask_locked(session_id, question)
+
+    def _session_lock(self, session_id: str) -> threading.Lock:
+        """The lock serialising one session's questions (guide §20.29).
+
+        Held weakly: once no request holds it, an ended or expired session's
+        lock is freed rather than kept for the life of the process.
+        """
+        with self._locks_guard:
+            lock = self._locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[session_id] = lock
+            return lock
+
+    def _ask_locked(self, session_id: str, question: str) -> ConversationAnswer:
+        """Read turns, ask the agent, record the turn. Caller holds the lock."""
         earlier = self._store.turns(session_id)
         context = resolve_follow_up(question, earlier, self._settings)
         answer = self._agent.ask(context.resolved_question, history=context.history)

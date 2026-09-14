@@ -209,7 +209,8 @@ defined interface, so one piece can be changed or tested without touching the re
 │   ├── api/                      HTTP layer - thin, no business logic
 │   │   ├── dependencies.py       Shared FastAPI dependencies
 │   │   └── routes/
-│   │       └── health.py         GET /health
+│   │       ├── health.py         GET /health
+│   │       └── conversation.py   POST /api/sessions, /ask, /turns, /end (Stage 9)
 │   ├── core/                     Cross-cutting concerns - used by every layer
 │   │   ├── config.py             Typed settings from the environment
 │   │   ├── logging.py            structlog config + on-disk sinks
@@ -751,15 +752,15 @@ HealthResponse (Pydantic)               ▼  RuleToolSelector → inputs the too
         record the <em>shape</em> of what happened (counts, names, scores), never the
         question, passages or answer, which could hold sensitive text.</li>
   </ul>
-  The chain is still only reachable from the command line; nothing calls it over HTTP until
-  the web interface (Stage 9) connects it to the API.
+  From Stage 9 the chain is also reachable over HTTP: the web page calls
+  <code>POST /api/sessions/ask</code>, which calls the conversation service (§11).
 </div>
 
-<h3>Target (Stage 9 complete)</h3>
+<h3>Target (all stages complete)</h3>
 <pre class="plain">Question
    │
    ▼
-Web UI ──▶ POST /api/chat ──▶ Guardrails (input validation, injection checks)
+Web UI ──▶ POST /api/sessions/ask ──▶ Guardrails (input validation, injection checks)
                                    │
                                    ▼
                               Agent decides
@@ -782,10 +783,10 @@ Web UI ──▶ POST /api/chat ──▶ Guardrails (input validation, injectio
                        └──▶ logs/app.log (request_id, latencies, docs, tools)</pre>
 
 <div class="note">
-  <strong>What the target adds.</strong> Compared with today, three pieces are still to come:
-  a web page that sends the question (Stage 9), an HTTP endpoint that passes it to the agent
-  (<code>POST /api/chat</code>, Stage 9), and guardrails in front of the agent - checks that
-  reject malformed input and attempts to smuggle in instructions (Stage 13). Each request
+  <strong>What the target adds.</strong> The web page and the HTTP endpoint that passes the
+  question to the agent now exist (Stage 9, <code>POST /api/sessions/ask</code>). Still to come:
+  guardrails in front of the agent - checks that reject malformed input and attempts to smuggle
+  in instructions (Stage 13). Each request
   will also be logged with an id and timings (Stage 10), so one slow or failed request can be
   traced end to end.
 </div>
@@ -1588,20 +1589,52 @@ the thing that makes it a one-class change rather than a rewrite.</p>
 <!-- ================================================================== -->
 <section id="api">
 <h2>11. API layer</h2>
-<span class="tag t-done">BUILT (health) · <span class="tag t-todo">chat endpoints planned</span></span>
+<span class="tag t-done">BUILT (Stage 9: conversation API + web page)</span>
 
 <table>
   <tr><th style="width:200px">Endpoint</th><th>Purpose</th><th style="width:110px">Status</th></tr>
   <tr><td><code>GET /health</code></td><td>Liveness - process is up and configured</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td><code>GET /docs</code></td><td>Interactive OpenAPI documentation</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td><code>GET /openapi.json</code></td><td>Generated OpenAPI schema</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td><code>POST /api/sessions</code></td><td>Start a conversation; returns <code>{session_id}</code> (201)</td><td><span class="tag t-done">Stage 9</span></td></tr>
+  <tr><td><code>POST /api/sessions/ask</code></td><td>Body <code>{session_id, question}</code>; returns the answer and how it was produced</td><td><span class="tag t-done">Stage 9</span></td></tr>
+  <tr><td><code>POST /api/sessions/turns</code></td><td>Body <code>{session_id}</code>; the session's turns, oldest first</td><td><span class="tag t-done">Stage 9</span></td></tr>
+  <tr><td><code>POST /api/sessions/end</code></td><td>Body <code>{session_id}</code>; the id stops working (204)</td><td><span class="tag t-done">Stage 9</span></td></tr>
+  <tr><td><code>GET /</code></td><td>The web page (<code>app/web/static/</code>)</td><td><span class="tag t-done">Stage 9</span></td></tr>
   <tr><td><code>GET /ready</code></td><td>Readiness - vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
-  <tr><td><code>POST /api/chat</code></td><td>Ask the agent a question</td><td><span class="tag t-todo">Stage 5</span></td></tr>
 </table>
 
-<p>The API layer stays thin: validate, delegate to a service, serialise the result.
-Business logic lives in <code>app/agent/</code> and <code>app/knowledge/</code> so it is
-testable without HTTP.</p>
+<p><strong>What it does.</strong> The API layer (the HTTP entry point) stays thin: it
+checks the request, hands it to <code>ConversationService</code>, and turns the result into
+JSON. Business logic lives in <code>app/agent/</code> and <code>app/conversation/</code>, so it
+is testable without HTTP.</p>
+
+<p><strong>Why it exists.</strong> Stages 5-8 could only be used from the command line.
+Stage 9 puts the same conversation service behind HTTP so a browser page can use it. Nothing
+underneath changed: the page shows the execution record the agent already returns.</p>
+
+<table>
+  <tr><th style="width:200px">Response field</th><th>What the page shows</th></tr>
+  <tr><td><code>rag_used</code></td><td>"RAG used" badge - the knowledge base was searched (<code>retrieval.performed</code>)</td></tr>
+  <tr><td><code>mcp_used</code></td><td>"MCP tools used" badge, and each tool result under <em>Tool activity</em></td></tr>
+  <tr><td><code>sources_consulted</code></td><td>"N source(s) consulted" badge, and the citations under <em>Sources</em></td></tr>
+  <tr><td><code>insufficient</code></td><td>"Information insufficient" badge - the agent refused for want of evidence</td></tr>
+  <tr><td><code>resolution</code>, <code>resolved_question</code></td><td>For a follow-up, which rule resolved it and the question actually answered</td></tr>
+  <tr><td><code>decision</code>, <code>steps</code>, <code>retrieval</code></td><td><em>How this answer was produced</em> - the route and each fixed-sentence decision step</td></tr>
+</table>
+
+<table>
+  <tr><th style="width:200px">Error</th><th>HTTP status and why</th></tr>
+  <tr><td>Blank question, missing or extra field</td><td><strong>422</strong> - rejected before the agent runs</td></tr>
+  <tr><td>Unknown, expired or ended session</td><td><strong>404</strong> with a fixed message that never repeats the id; never a silent new session (§20.26)</td></tr>
+  <tr><td>A tool or the language model failed</td><td><strong>502</strong> with a fixed sentence. The exception's own text can hold hostnames or provider detail, so it is logged by type only and never sent to the browser. The turn is not recorded</td></tr>
+</table>
+
+<div class="note">Without the per-application service (§20.28), every request would get an empty
+session store and every follow-up would fail with 404. Without the per-session lock (§20.29), a
+double-click could record two turns with the same number. How it connects: Stage 8 built the
+conversation service this layer calls; Stage 10 adds request-level tracing as middleware, which
+is why the route handlers here are not <code>@traced</code>.</div>
 </section>
 
 <!-- ================================================================== -->
@@ -1733,6 +1766,8 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/conftest.py</code></td><td>Fixtures: isolated test settings (logs go to <code>tmp_path</code>), app built from those settings, HTTP client, knowledge base root, corpus and retriever, for Stage 4 a mock provider, a wired <code>LLMService</code>, and both a populated and an empty <code>RetrievalResult</code> over the real corpus, for Stage 5 an <code>agent</code> composed from those, and for Stage 6 a fresh <code>tool_registry</code> plus a <code>tool_agent</code> wired to it - all offline, deterministic and free. The Stage 5 <code>agent</code> fixture deliberately keeps <em>no</em> registry, so its tests still assert Stage 5's behaviour rather than quietly acquiring a live dependency.</td></tr>
   <tr><td><code>tests/test_config.py</code></td><td>Defaults, environment overrides, rejection of invalid port and environment, caching, immutability.</td></tr>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
+  <tr><td><code>tests/test_api_conversation.py</code></td><td>Stage 9: the conversation API end to end (sessions, RAG/MCP/insufficient flags, follow-ups, 404/422/502 without leaked detail) and static checks on the web page.</td></tr>
+  <tr><td><code>tests/test_conversation_concurrency.py</code></td><td>Stage 9: the per-session lock - concurrent asks get distinct turns, sessions do not block each other.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
   <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud - missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
   <tr><td><code>tests/test_chunker.py</code></td><td>Heading splitting, H1 dropping, code fences not mistaken for headings, metadata carried onto every chunk, <code>content</code> vs <code>embedding_text</code>, oversized sections split, tables split row-wise with the header repeated and no row lost, and the invariant that <em>no chunk exceeds the budget</em>.</td></tr>
@@ -1754,7 +1789,7 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_mcp_server.py</code><br><span class="muted">async</span></td><td><strong>The real protocol, not the handler functions.</strong> A genuine client session over the SDK's in-memory transport: a real <code>initialize</code>, <code>tools/list</code> and <code>tools/call</code> with real JSON-RPC framing. Asserts every listed tool carries a usable schema, that a not-found crosses the wire as a <em>result</em> while a malformed call crosses as an <em>error</em>, and - the point of the whole wrapper - that six calls return byte-identical payloads over the protocol and in-process. Ends by proving delegation: give the server a one-tool registry and it exposes one tool.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 971 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 1005 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
@@ -3526,6 +3561,81 @@ each half is tested on its own - the same seam-not-layer rule as §20.5.5.</p>
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Sessions inside <code>KnowledgeAgent</code></strong></td><td>Mixes per-conversation state into a component that is stateless and easy to test today.</td></tr>
+</table>
+</div>
+
+<h3>20.28 Stage 9.1 - One conversation service per application</h3>
+<div class="card">
+<p><strong>What.</strong> The app keeps one <code>ConversationService</code> on <code>app.state</code>
+(FastAPI's place for objects that live as long as the running app). It is built the first time a
+conversation route is used, then every request reuses it, so a session started by one request is
+still there for the next. Tests can pass in their own service.</p>
+
+<div class="note">Built on first use, not at startup, so the health check and the test suite's plain
+app never load the embedding model or the search index they do not need.</div>
+
+<p><strong>Why.</strong> Stage 8's factory builds a new, empty session store on every call. Called per
+request, every follow-up would hit an empty store and fail with <code>SessionNotFoundError</code>.
+Sessions are lost when the server restarts, which is acceptable for local, short-lived state (§20.26).</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>A module-level cached singleton</strong></td><td>Tests could not build an app with different settings or a stub service without patching a global.</td></tr>
+</table>
+</div>
+
+<h3>20.29 Stage 9.2 - One question at a time per session</h3>
+<div class="card">
+<p><strong>What.</strong> <code>ConversationService.ask</code> takes a lock (a guard only one thread can
+hold at a time) for the session before reading its turns, and releases it after the new turn is stored.
+Different sessions do not wait for each other.</p>
+
+<p><strong>Why.</strong> The web server answers requests on several threads. Without the lock, two
+questions sent on one session at the same moment (a double-click, a retry) could both read "2 turns so
+far" and both store turn 3. This was Stage 8's known gap. Locks are kept in a weak dictionary, so a
+session that expires does not leave its lock behind in memory.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Accept and document the race</strong></td><td>Leaves a known wrong-data case that ordinary use (a retry) can trigger.</td></tr>
+</table>
+</div>
+
+<h3>20.30 Stage 9.3 - The session id travels in the JSON body, never the URL</h3>
+<div class="card">
+<p><strong>What.</strong> <code>POST /api/sessions</code> starts a session and returns its id. Asking,
+listing turns and ending a session are all <code>POST</code> requests whose JSON body carries the id.
+An unknown or expired id returns HTTP 404 with the fixed message - never a new session.</p>
+
+<p><strong>Why.</strong> A session id is the key to a conversation. URLs end up in browser history and
+server access logs; a request body does not. This is the same rule as
+<code>SessionNotFoundError</code> never repeating the id (§20.26).</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Id in the path (<code>/sessions/{id}/...</code>)</strong></td><td>Puts the key to a conversation into URLs and access logs.</td></tr>
+  <tr><td><strong>HTTP-only cookie</strong></td><td>Hides the id from page scripts, but adds cookie and cross-site request handling to a local demo.</td></tr>
+  <tr><td><strong>Custom header</strong></td><td>Works, but is less visible in tests and API docs than a body field.</td></tr>
+</table>
+</div>
+
+<h3>20.31 Stage 9.4 - A no-build static page</h3>
+<div class="card">
+<p><strong>What.</strong> The interface is one HTML file, one plain JavaScript file and one CSS file,
+served by FastAPI itself. No Node.js, no build step. The page only displays what the API returns;
+the API response already says whether search (RAG) ran, whether tools (MCP) ran, which sources were
+consulted and whether the answer was a refusal. All text goes into the page with
+<code>textContent</code>, which shows text as text and never runs it as HTML.</p>
+
+<p><strong>Why.</strong> Stage 9's purpose is to show the engineering underneath, not the front end.
+Answer and tool text is untrusted, so inserting it as HTML could run injected markup in the browser.
+Route handlers are plain <code>def</code> functions because the agent is synchronous: FastAPI runs them
+on worker threads, so one slow answer does not freeze the server.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Jinja2 server templates</strong></td><td>Full-page reloads, or extra JavaScript anyway for a chat flow.</td></tr>
+  <tr><td><strong>React with a Vite build</strong></td><td>A Node toolchain, a build step and a second test stack for a page meant to show the backend.</td></tr>
 </table>
 </div>
 

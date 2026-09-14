@@ -1,8 +1,8 @@
 """FastAPI application entry point.
 
-Stage 1 wires only the foundation: configuration, structured logging, tracing
-and a health endpoint. The agent, RAG pipeline, LLM abstraction and MCP tools
-are added in later stages behind their own routers and services.
+Stage 1 wired the foundation: configuration, structured logging, tracing and a
+health endpoint. Stage 9 adds the conversation API (``/api/sessions``) and the
+static web page at ``/``.
 
 Run locally with::
 
@@ -11,16 +11,23 @@ Run locally with::
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
+from app.conversation.service import ConversationService
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.tracing import traced
 
 logger = get_logger(__name__)
+
+STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
+"""The no-build web page (guide §20.31), served at ``/``."""
 
 
 @asynccontextmanager
@@ -38,11 +45,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 @traced
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    conversation_service: ConversationService | None = None,
+) -> FastAPI:
     """Build and configure the FastAPI application.
 
     Using a factory (rather than a module-level singleton only) keeps the app
     testable: tests can construct an instance with overridden settings.
+
+    Args:
+        settings: Application settings. Defaults to the cached singleton.
+        conversation_service: The service every conversation request shares.
+            When omitted it is built on first use (guide §20.28), so creating
+            the app never loads the embedding model or the index.
     """
     settings = settings or get_settings()
     configure_logging(settings)
@@ -58,10 +74,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         debug=settings.debug,
     )
     app.state.settings = settings
+    app.state.conversation = conversation_service
+    app.state.conversation_lock = threading.Lock()
 
-    from app.api.routes import health
+    from app.api.routes import conversation, health
 
     app.include_router(health.router)
+    app.include_router(conversation.router)
+    # Mounted last: API routes and /docs always win over a same-named file.
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")
     return app
 
 
