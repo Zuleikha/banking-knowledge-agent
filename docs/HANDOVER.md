@@ -14,7 +14,9 @@ methodology were decided and written into this file **before any code was writte
 see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
 
 **Stage 7 — Agent decision and tool selection — approved 2026-09-14, committed `a3728d9`,
-pushed and verified. Next stage: Stage 8 — Conversation context. Not started.** Decisions are recorded in *Stage 7
+pushed and verified.** **Stage 8 — Conversation context — IMPLEMENTED AND TESTED, awaiting approval.
+NOT committed.** Decisions in *Stage 8 decisions* §8.A–§8.C. Instruction-file
+restructuring committed separately as `d47f522`, pushed. Decisions are recorded in *Stage 7
 decisions* below, written before any code. Guide sections written after the concurrent
 readability session paused — see Problems §19 (resolved).
 
@@ -23,7 +25,11 @@ readability session paused — see Problems §19 (resolved).
 ## ⏱️ SESSION CHECKPOINT — start here
 
 **Session state:** **Stage 7 is complete and approved** (2026-09-14), committed `a3728d9`,
-pushed to `origin/main`, push verified. Nothing is in progress.
+pushed to `origin/main`, push verified. **Stage 8 is implemented and tested, stopped for
+approval, NOT committed**: decisions §8.A–§8.C (including the user's "past questions only"
+choice), guide records §20.23–§20.27, 971 tests passing. Instruction files were restructured mid-stage: `CLAUDE.md` is
+now the sole authority, stage detail is in `docs/PROJECT_PLAN.md`, and `prompt.md` /
+`ccp.txt` are archived in `docs/legacy/`.
 The Stage 7 sections of `docs/architecture-guide.html` are written too (§20.17–§20.22),
 after the separate "Improve.md" session paused its edits (Problems §19).
 
@@ -36,11 +42,11 @@ after the separate "Improve.md" session paused its edits (Problems §19).
 | | |
 |---|---|
 | Last **approved** stage | **Stage 7 — Agent decision and tool selection** (approved 2026-09-14) |
-| Current stage | **None in progress** — Stage 8 not started |
-| `HEAD` | `a3728d9` = `origin/main` — verified (plus this file's own docs commit) |
+| Current stage | **Stage 8 — Conversation context — implemented and tested, awaiting approval** |
+| `HEAD` | `d47f522` (instruction-file restructuring) = `origin/main` — verified |
 | Working tree | Stage 7: 12 modified + 1 new file. **Not Stage 7's:** `docs/improve.md` (new) and the readability edits in `docs/architecture-guide.html`, both from the "Improve.md" session |
-| Tests | **891 passed** (775 → 891) · ruff clean · mypy strict clean (52 source files) |
-| Next | User approval of Stage 7; then the guide's Stage 7 sections once the other session is done |
+| Tests | **971 passed** (891 → 971) · ruff clean · mypy strict clean (58 source files) |
+| Next | User approval of Stage 8, then resolve Problems §20 before committing |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -131,7 +137,8 @@ git status                    # expect clean
 
 ### Local files that are NOT in the remote (deliberately)
 
-`prompt.md` · `ccp.txt` · `docs/decisions/auto-changes.log` · `.venv/` · `logs/` ·
+`docs/legacy/prompt.md` · `docs/legacy/ccp.txt` · `prompt1.md` ·
+`ai-dev-token-efficiency-workflow.md` · `docs/decisions/auto-changes.log` · `.venv/` · `logs/` ·
 `data/vectorstore/` · caches.
 
 ---
@@ -140,11 +147,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 7 |
-| **Stage name** | Agent Decision and Tool Selection |
+| **Stage number** | 8 |
+| **Stage name** | Conversation Context |
 | **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash recorded in *Git*, in the follow-up docs commit) |
-| **Last completed step** | 891 tests passing, ruff and mypy clean, real-model demo verified (all five §15 paths), handover and README updated |
-| **Next step** | STOP. Wait for approval. Guide Stage 7 sections done |
+| **Last completed step** | 971 tests passing, ruff and mypy clean, `conversation-demo` verified with the real embedding model (all four resolution rules), guide + README + handover updated |
+| **Next step** | STOP. Wait for `APPROVED`. See *Next Action* |
+
+| Stage | Name | Status |
+|---|---|---|
+| 7 | Agent Decision and Tool Selection | ✅ Approved 2026-09-14, committed `a3728d9`, pushed |
 
 | Stage | Name | Status |
 |---|---|---|
@@ -440,9 +451,120 @@ not a test edited to pass.
 
 ---
 
+## Stage 8 decisions — recorded BEFORE implementation began
+
+**Decided by the user, 2026-09-14**, in the kickoff instruction and one clarifying
+question. Written here before any Stage 8 code existed, per `prompt.md` §2.
+
+### 8.A — Kickoff constraints
+
+| | |
+|---|---|
+| **Scope** | `prompt.md` Stage 8: session handling, context management, context limits, separation of conversation context from retrieved knowledge, follow-up tests. Avoid sending unnecessary history to the LLM. Guide + handover updated |
+| **Build method** | **Single cohesive build. No parallel sub-agents** (user's instruction) |
+| **Reconciled state** | HEAD `1d7d6c3` (Stage 7 docs commit) = `origin/main`. Stage 7 approved. Working tree carries the separate readability session's uncommitted guide edits (+187/−66) and untracked `docs/improve.md` — **not Stage 8's**; see Problems §20 |
+| **Paid calls** | None. Stage 8 adds no model call: follow-up resolution is rule-based, like Stage 7 |
+| **Stop** | After implementation and tests. No commit or push without explicit approval |
+
+### 8.B — What the LLM sees from earlier turns: PAST QUESTIONS ONLY
+
+The question was put to the user with three options and answered.
+
+| | |
+|---|---|
+| **Chosen** | A follow-up is rewritten by deterministic rules (e.g. carries `LIM-4001` forward) so tools and search work on it. The LLM additionally receives the last few **past questions** in their own fence, `<conversation_history>`, declared **not evidence**. **Past answers are never sent** |
+| **Rejected — past questions + answers as real message turns** | Most natural for a chat model, but a previous answer would read as evidence, and its `[1]` citations point at passages that are no longer in the prompt and clash with the new numbering |
+| **Rejected — rewritten question only, no history** | Smallest prompt, but the model cannot see what "it" referred to except through the rewrite |
+
+### 8.C — Design (decided before implementation)
+
+- **New package `app/conversation/`** — it *wraps* `KnowledgeAgent`; the agent stays a
+  single-question component and does not import the conversation layer. The agent gains
+  one appended parameter, `ask(question, history=())`, which it passes to `LLMService`.
+- **Session store** — `SessionStore` protocol + `InMemorySessionStore`: random
+  `secrets` ids, idle TTL, a cap on sessions (least-recently-used evicted), a cap on stored
+  turns per session (oldest dropped), an injectable clock for tests, a lock for Stage 9's
+  threaded server. An unknown or expired id **raises** `SessionNotFoundError` — never a
+  silent new session.
+- **Follow-up resolution (rules, no model)** — reuses Stage 7's argument extractors
+  (error code, transaction reference, config key, component). Only earlier **questions**
+  are read, never answers or tool payloads, so no generated or untrusted text can be
+  carried into a search query:
+  1. *Standalone* — first turn, or the question names its own identifiers → unchanged.
+  2. *Substitution* — an elliptical "what about / how about / and / same for X?" naming
+     one identifier of the same kind the previous question had → the previous question
+     with that identifier swapped.
+  3. *Carried identifiers* — a reference word (it, that, this, they, …) and no identifier
+     of its own → identifiers from the **previous** question (as resolved) are appended,
+     at most 3.
+  4. *Carried topic* — a reference word, and the previous question has no identifiers →
+     the previous turn's *topic* (its standalone question) is appended. A turn stores its
+     topic, so a chain of topic follow-ups never grows the query.
+
+  > **Refined mid-stage, before code (2026-09-14):** rules 3–4 first said "the most recent
+  > earlier question in the window". Tracing the demo showed "what should I check first on
+  > that?" after a withdrawal question would carry a component from two turns back. "It"
+  > refers to the latest thing, so both rules read the previous turn only; the window
+  > bounds the history *sent*, not what is carried.
+- **Context limits** — `BKA_CONVERSATION_MAX_HISTORY_TURNS` (window, default 3) and
+  `BKA_CONVERSATION_MAX_HISTORY_CHARS` (default 1000; oldest questions dropped **whole**,
+  like passages). Plus store limits `BKA_CONVERSATION_MAX_TURNS`,
+  `BKA_CONVERSATION_MAX_SESSIONS`, `BKA_CONVERSATION_TTL_SECONDS`.
+- **Unnecessary history is not sent** — a *standalone* question gets **no** history
+  block at all. History goes to the LLM only when the question was resolved from it.
+- **Separation from knowledge** — history has its own fence, escaped by the **same**
+  `_fence_safe` and `_DELIMITERS`; a system-prompt rule says it is not evidence and must
+  never be cited. History does **not** count as evidence for Stage 4's refusal guard: a
+  follow-up with no passage and no tool result still refuses with zero model calls.
+  `SYSTEM_PROMPT_VERSION` `1.1.0` → `1.2.0`.
+- **The record** — `ConversationAnswer` = session id, turn number, the unchanged
+  `AgentAnswer`, and a `ContextSummary` (resolution kind, carried identifiers, history
+  questions sent / dropped). Logged: resolution kind and counts only, plus a hashed
+  session fingerprint — never question text or the raw session id.
+- **Atomic turns** — if the agent raises, the turn is not stored.
+- **CLI** — `python -m app.agent chat` (interactive) and `conversation-demo` (scripted
+  follow-ups), reusing the existing paid-provider guard.
+
+---
+
 ## Current Work
 
-### Implemented in Stage 7 (awaiting approval — NOT committed)
+### Implemented in Stage 8 (awaiting approval — NOT committed)
+
+Single cohesive build, no sub-agents (§8.A). Tests written first and run red (collection
+failed on the missing `app.conversation`) before any implementation.
+
+| File | What |
+|---|---|
+| `app/conversation/models.py` — **new** | `ResolutionKind` (4 values), `ConversationTurn` (stores `topic`; `answer_text` display-only), `ConversationContext` (the Stage 8 record), `ConversationAnswer` wrapping the unchanged `AgentAnswer` |
+| `app/conversation/context.py` — **new** | `find_identifiers` (Stage 7's extractors, question order) and `resolve_follow_up`: standalone / substituted / carried identifiers (max 3) / carried topic; history window + char budget, oldest dropped whole; standalone sends none |
+| `app/conversation/store.py` — **new** | `SessionStore` protocol, `InMemorySessionStore` (`secrets` ids, TTL, LRU cap, per-session turn cap via `deque(maxlen)`, lock, injectable clock), `SessionNotFoundError` (id-free message) |
+| `app/conversation/service.py` — **new** | `ConversationService.start/ask/turns/end`; turn stored only after success; `conversation.turn` log = shape + `session_fingerprint` (SHA-256, 12 hex) |
+| `app/conversation/factory.py` · `__init__.py` — **new** | `get_conversation_service()`; exports |
+| `app/llm/prompts.py` | `<conversation_history>` / `<earlier_question>` fences in the shared `_DELIMITERS`; `render_history`; `history` appended to `build_user_turn` / `build_request`; system prompt history rule; `SYSTEM_PROMPT_VERSION` → `1.2.0` |
+| `app/llm/service.py` | `answer(..., history=())`; refusal guard unchanged (history is not evidence); logs `history_questions` |
+| `app/agent/agent.py` | `ask(question, history=())` passed to the service; logs `history_questions`. No routing change |
+| `app/agent/__main__.py` | `chat` and `conversation-demo` (paid guard reused) |
+| `app/core/config.py` · `.env.example` | 5 `BKA_CONVERSATION_*` settings |
+
+**Measured, free (real `all-MiniLM-L6-v2`, mock LLM):** `conversation-demo` — turn 2
+carried `LIM-4001` → `look_up_error_code`; turn 4 substituted → `retrieve_system_version`
+for CardSecurityModule; turn 5 carried CSM → health + status tools; turn 7 carried topic →
+search top score 0.762 (confident, one pass).
+
+### Stage 8 — what remains deliberately unfinished
+
+1. **Rules are English word lists** (reference and ellipsis cues). A follow-up without a
+   cue word ("healthy?") is treated as standalone. Stage 11 measures it.
+2. **Identifiers are never carried from tool results** — by design (untrusted), so "why did
+   it fail?" after a transaction lookup does not carry the error code the tool reported.
+3. **Two concurrent asks on one session** can both read the same earlier turns and record
+   the same turn number. Harmless for the CLI; Stage 9 decides request serialisation.
+4. **The store is process-local**: sessions vanish on restart and are not shared between
+   workers. Stage 9 decides its lifetime; Stage 14 documents a shared store.
+5. **No live LLM call** — whether a real model uses the history fence well is unmeasured.
+
+### Implemented in Stage 7 (approved, committed `a3728d9`, pushed)
 
 Built by the main session alone, **no sub-agents**, per the user's instruction (§7.A).
 Tests were written first and run red (collection failed on the missing
@@ -985,7 +1107,26 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
-### Added in Stage 7 (1 file, NOT committed)
+### Added in Stage 8 (9 files, NOT committed)
+
+`app/conversation/__init__.py` · `models.py` · `context.py` · `store.py` · `service.py` ·
+`factory.py` · `tests/test_conversation_context.py` (24) · `tests/test_conversation_store.py`
+(22) · `tests/test_conversation_service.py` (34).
+
+### Modified in Stage 8 (NOT committed)
+
+`app/llm/prompts.py` · `app/llm/service.py` · `app/agent/agent.py` ·
+`app/agent/__main__.py` · `app/core/config.py` · `.env.example` · `README.md` ·
+`docs/architecture-guide.html` (§1 table, §7 Stage 8 subsection, §7 "not here" row, §12,
+§14 count, §18 row, §20.23–§20.27) · `docs/HANDOVER.md`.
+
+### Committed separately — instruction-file restructuring (`d47f522`, pushed)
+
+`CLAUDE.md` (new, sole authority) · `docs/PROJECT_PLAN.md` (new, verbatim stage detail) ·
+`.gitignore` (+ `ai-dev-token-efficiency-workflow.md`). `prompt.md` and `ccp.txt` moved to
+`docs/legacy/` (git-ignored, not committed).
+
+### Added in Stage 7 (1 file, committed in `a3728d9`)
 
 | File | Purpose |
 |---|---|
@@ -1199,6 +1340,20 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 ---
 
 ## Testing
+
+### Result (Stage 8)
+
+**971 passed** (891 → 971, +80) · `ruff check .` clean · `mypy` strict clean, 58 source
+files. Commands: `./.venv/Scripts/python.exe -m pytest` / `-m ruff check .` / `-m mypy`;
+free manual check `-m app.agent conversation-demo`.
+
+| Required coverage (`PROJECT_PLAN.md` Stage 8) | Evidence |
+|---|---|
+| Session handling | `test_conversation_store.py` — lifecycle, unknown id raises, isolation, concurrency |
+| Context management | `test_conversation_context.py` — all four rules, previous-turn only, answers never read |
+| Context limits | window, char budget (oldest dropped whole), TTL, LRU eviction, turn cap |
+| Separation from retrieved knowledge | own fence; escaped; standalone sends none; earlier answers and tool results never resent; history is not evidence (refusal, 0 model calls) |
+| Follow-up questions | `test_conversation_service.py::TestFollowUps` — pronoun → tool, "is it healthy?", "what about X?", 3-turn chain, topic search |
 
 ### Result (Stage 7)
 
@@ -1650,6 +1805,21 @@ Off-topic      all 5 return NO MATCH
 
 ## Problems and Decisions
 
+### 20. Uncommitted guide edits from the readability session sit under Stage 8 — RESOLVED
+
+**Resolution (user, 2026-09-14): committed separately first**, as `249f04e`
+(`docs(guide): plain-English readability pass over sections 1-5`, +187/−66). The Stage 8
+guide edits were stripped by a script into a readability-only copy (verified: +187/−66 vs
+HEAD, zero Stage 8 markers), committed, then the full guide restored byte-identical, so
+the Stage 8 commit carries only Stage 8's +198/−4.
+
+At Stage 8 kickoff `docs/architecture-guide.html` already carried +187/−66 lines of
+uncommitted edits from the separate "Improve.md" readability session, and
+`docs/improve.md` is untracked. They are **not Stage 8's**. Stage 8 must also edit the
+guide, so before the Stage 8 commit the user decides: commit the readability edits
+separately first (preferred — memory note says they get their own commit), or commit the
+guide whole as in Stage 7.
+
 ### 19. A second Claude Code session was editing the architecture guide — RESOLVED
 
 **What was found (2026-09-14, mid-Stage 7).** `git status` showed
@@ -1850,7 +2020,9 @@ The process lesson recorded then still stands and applied again this stage:
 
 ### Assumptions
 
-- `prompt.md` is authoritative over `ccp.txt` where they differ.
+- `CLAUDE.md` is now the sole authority for rules and workflow. `prompt.md` and
+  `ccp.txt` are archived, unchanged, in `docs/legacy/`; stage detail lives in
+  `docs/PROJECT_PLAN.md`.
 - Global rules require `@traced` on new functions. Applied to public RAG functions, with
   documented exceptions: private helpers on hot paths inside an already-traced call
   (`chunker._split_blocks`, `_pack`, `vectorstore._matching_indices`), Pydantic property
@@ -1970,6 +2142,7 @@ source for reassessment in Stage 13.
 | **Stage 5 docs commits** | `26fa239`, then `96204f1` — both pushed |
 | **Stage 6 commit** | `93eeb22` — `feat(stage-6): MCP tools - six synthetic support tools, registry and server` |
 | **Stage 7 commit** | `a3728d9` — `feat(stage-7): agent decision and tool selection - five paths, rule-based selector` |
+| **Restructuring commit** | `d47f522` — `docs: restructure instruction files for token efficiency` — pushed, verified `origin/main == HEAD`. Stage 8 is **not** committed |
 | **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Working tree** | Clean, apart from git-ignored local files |
@@ -1978,7 +2151,7 @@ source for reassessment in Stage 13.
 | **Committed in Checkpoint B** | 15 files: 3 added, 12 modified — 2,533 insertions, 245 deletions |
 | **Committed in Stage 4** | 18 files: 11 added, 7 modified — 3,574 insertions, 205 deletions |
 | **Committed in Stage 3** | 21 files: 13 added, 8 modified — 4,816 insertions, 302 deletions |
-| **Deliberately not committed** | `prompt.md`, `prompt1.md`, `ccp.txt`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
+| **Deliberately not committed** | `docs/legacy/prompt.md`, `prompt1.md`, `docs/legacy/ccp.txt`, `ai-dev-token-efficiency-workflow.md`, `docs/decisions/auto-changes.log`, `.venv/`, `logs/`, `data/vectorstore/`, `.pytest_tmp/`, caches |
 
 ### The exact Stage 5 Checkpoint B file set — verified with `git add -An`, 2026-09-10
 
@@ -2063,7 +2236,7 @@ edit.
    directories into a single line and will hide what is really being staged
    (Problems §9).
 2. Confirm `data/vectorstore/`, `logs/`, `.venv/`, `.pytest_tmp/`, `prompt.md`,
-   `prompt1.md`, `ccp.txt` are **not** in that list. Grep precisely — a loose
+   `prompt1.md`, `docs/legacy/`, `ai-dev-token-efficiency-workflow.md` are **not** in that list. Grep precisely — a loose
    `vectorstore` pattern matches the legitimate `app/rag/vectorstore.py` source file.
 3. Scan the staged set for secret-shaped assignments, long base64/hex literals and
    card-number-shaped digit runs. *(Stage 4: run over all new files — no matches.)*
@@ -2082,7 +2255,12 @@ edit.
 `origin/main == HEAD`. 891 tests passing, ruff clean, mypy strict clean over 52 source
 files.
 
-**The next action is to begin Stage 8 — Conversation context — when the user asks for
+**Stage 8 is approved and committed** (readability edits first as `249f04e`, then Stage 8;
+hashes in *Git*). **The next action is Stage 9 — Web interface — when the user asks for
+it.** Read only its section of `docs/PROJECT_PLAN.md`. Still uncommitted and not Stage 8's:
+the user's `/usage` rule in `CLAUDE.md`, and untracked `docs/improve.md`.
+
+*Superseded:* **The next action is to begin Stage 8 — Conversation context — when the user asks for
 it.** Do not start it unprompted. Stage 7's approval does not carry over.
 
 > The "Improve.md" session may resume its readability pass over the guide; its further

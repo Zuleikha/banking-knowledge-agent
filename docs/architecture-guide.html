@@ -180,7 +180,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer (find passages, answer only from them, refuse if there are none)</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>6</td><td>MCP tools - six synthetic support tools, registry + real MCP server</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>7</td><td>Agent decision &amp; tool selection - five decision paths, rule-based tool selector</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>8</td><td>Conversation context</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>8</td><td>Conversation context</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>9</td><td>Web interface</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>10</td><td>Observability</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>11</td><td>Testing &amp; evaluation framework</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -1243,11 +1243,71 @@ refused without spending a model call. France's plan was an ordinary search; its
 decision is <code>insufficient_evidence</code> because nothing cleared the floor, and there
 was no component name to try a refined search with.</p>
 
+<h3>Stage 8 - conversation context</h3>
+<span class="tag t-done">BUILT - Stage 8</span>
+
+<div class="note">
+  <strong>In plain English.</strong> Until Stage 8 the agent had no memory: "is it healthy?"
+  meant nothing, because it did not know what "it" was. Now questions can be asked inside a
+  <strong>session</strong> - a short-lived conversation with an id - and a
+  <strong>follow-up</strong> (a question that leans on the previous one) is turned into a
+  question that stands on its own before the agent sees it. The agent itself is unchanged: it
+  still answers one question at a time, so everything built in Stages 5-7 - tool choice, search,
+  refusals - works on follow-ups for free. Without this, every follow-up would be searched for
+  its literal words and answered as if it were a brand-new question.
+  <br><br>
+  <strong>How it connects.</strong> It wraps Stage 7's agent from the outside
+  (<code>app/conversation/</code>) and adds one optional input to it, <code>history</code>. Next,
+  Stage 9's web page will hold a session id and show each turn.
+</div>
+
+<pre class="plain">session id + question
+   │
+   ▼  SessionStore.turns()          earlier turns       unknown / expired id → error
+   ▼  resolve_follow_up()           RULES, no model     context.py
+   │    first question, or names its own identifier ───────▶ standalone (no history sent)
+   │    "what about CardSecurityModule?" ──────────────────▶ swap it into the previous question
+   │    "is it healthy?" and the previous question
+   │        named an identifier ───────────────────────────▶ add that identifier
+   │    "what should I check first on that?" ──────────────▶ add the previous topic
+   │
+   ▼  KnowledgeAgent.ask(resolved question, history = earlier QUESTIONS)   Stage 7, unchanged
+   │        the model sees history in its own fence, marked NOT evidence
+   │        earlier ANSWERS are never sent
+   │
+   ▼  SessionStore.append()         only after a successful answer
+   ▼
+ConversationAnswer    session · turn · context (how it was resolved) · AgentAnswer</pre>
+
+<table>
+  <tr><th style="width:230px">Rule (<code>context.resolution</code>)</th><th>Example, run end to end with the real embedding model</th></tr>
+  <tr><td><code>standalone</code></td><td>"What does error code LIM-4001 mean?" - used as asked, no history sent</td></tr>
+  <tr><td><code>carried_identifiers</code></td><td>"Which component raises it?" → adds LIM-4001, so the error-code tool is called</td></tr>
+  <tr><td><code>substituted_identifier</code></td><td>"What about CardSecurityModule?" after a CoreBankingAdapter version question → the version tool, for CardSecurityModule</td></tr>
+  <tr><td><code>carried_topic</code></td><td>"What should I check first on that?" after a withdrawal question → searched with that topic, top score 0.762</td></tr>
+</table>
+
+<p><strong>Three kinds of context, kept apart.</strong> The prompt can now hold three fenced
+blocks: <code>&lt;conversation_history&gt;</code> (what the user asked before - only for
+understanding the question), <code>&lt;retrieved_documentation&gt;</code> (how the platform is
+designed) and <code>&lt;tool_results&gt;</code> (what it is doing now). Only the last two are
+evidence. A follow-up with no passage and no tool result is still refused with no model call -
+history can never be the reason an answer is given (§20.25).</p>
+
+<p><strong>Limits.</strong> At most <code>BKA_CONVERSATION_MAX_HISTORY_TURNS</code> (3) earlier
+questions and <code>BKA_CONVERSATION_MAX_HISTORY_CHARS</code> (1000) characters are sent; the oldest
+are dropped whole. The store keeps at most 50 turns per session and 1000 sessions, and an idle
+session expires after 30 minutes. The <code>conversation.turn</code> log line records the rule used
+and counts only, plus a one-way fingerprint of the session id - never the question.</p>
+
+<pre class="plain">python -m app.agent chat                # ask, then ask a follow-up; blank line ends it
+python -m app.agent conversation-demo   # seven turns exercising every rule</pre>
+
 <h3>What Stage 5 deliberately does not do</h3>
 <table>
   <tr><th style="width:210px">Not here</th><th>Where it belongs, and why not now</th></tr>
   <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduced MCP; Stage 7 introduced choosing between knowledge and tools - now built, see <em>Stage 7 - choosing a path</em> above.</td></tr>
-  <tr><td><strong>Conversation history</strong></td><td>Stage 8. Today every question is answered on its own, with no memory of earlier ones. The request sent to the model already holds a list of messages, so adding history later means adding earlier messages to that list - not redesigning the request format.</td></tr>
+  <tr><td><strong>Conversation history</strong></td><td>Now built, in Stage 8 - see <em>Stage 8 - conversation context</em> above. Stage 5 expected history to arrive as extra messages in the request; Stage 8 chose a separate fenced block of earlier <em>questions</em> instead, so earlier answers never look like evidence (§20.23).</td></tr>
   <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors already carry a <code>retryable</code> flag (Stage 4) saying whether trying again could help. Choosing how many retries, and how long to wait between them, needs a real provider's failure behaviour to measure - picking those numbers now would be guesswork.</td></tr>
   <tr><td><strong>Latency in the answer</strong></td><td>Latency means how long a request took. Stage 10 decides what a full request record should contain, timings included. Until then, <code>@traced</code> already records how long each function call took, in <code>logs/traces.log</code>.</td></tr>
 </table>
@@ -1580,6 +1640,14 @@ BKA_LLM_TIMEOUT_SECONDS=60.0
 BKA_LLM_MAX_RETRIES=2
 BKA_LLM_CONTEXT_MAX_CHUNKS=5     # how "never the whole knowledge base"
 BKA_LLM_CONTEXT_MAX_CHARS=12000  # is actually enforced
+
+# --- Agent and conversation (Stages 7 and 8) ---
+BKA_AGENT_CONFIDENT_SCORE=0.50           # below this, ONE refined second search
+BKA_CONVERSATION_MAX_HISTORY_TURNS=3     # earlier QUESTIONS a follow-up may send
+BKA_CONVERSATION_MAX_HISTORY_CHARS=1000  # oldest dropped whole; 0 turns = off
+BKA_CONVERSATION_MAX_TURNS=50            # kept per session
+BKA_CONVERSATION_MAX_SESSIONS=1000       # least recently used evicted
+BKA_CONVERSATION_TTL_SECONDS=1800        # idle session lifetime
 # BKA_LLM_API_KEY=           # environment only; SecretStr; LEAVE UNSET.
                              # Read ONLY by the two paid adapters, which refuse
                              # to construct without it. Spending therefore needs
@@ -1686,7 +1754,7 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_mcp_server.py</code><br><span class="muted">async</span></td><td><strong>The real protocol, not the handler functions.</strong> A genuine client session over the SDK's in-memory transport: a real <code>initialize</code>, <code>tools/list</code> and <code>tools/call</code> with real JSON-RPC framing. Asserts every listed tool carries a usable schema, that a not-found crosses the wire as a <em>result</em> while a malformed call crosses as an <em>error</em>, and - the point of the whole wrapper - that six calls return byte-identical payloads over the protocol and in-process. Ends by proving delegation: give the server a one-tool registry and it exposes one tool.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 891 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 971 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
@@ -1938,7 +2006,7 @@ infrastructure is built that the portfolio project does not need.</p>
   <tr><td>A new MCP tool</td><td>One tool module + registration. The agent discovers it.</td></tr>
   <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>, plus one branch in <code>app/llm/factory.py</code> and its entry in <code>AVAILABLE_PROVIDERS</code>. Nothing above <code>app/llm/</code> changes - the service, the CLI and every caller depend on the protocol and on the error types, never on a vendor. The adapter's only real work is translating its SDK's failures into the taxonomy in <code>base.py</code>.</td></tr>
   <tr><td>Streaming or async generation</td><td>An additional method on the protocol and its implementations. Deliberately absent in Stage 4 - it would be an untested interface with no caller until Stage 9.</td></tr>
-  <tr><td>Conversation history</td><td><code>CompletionRequest.messages</code> is already a tuple of turns, so Stage 8 appends rather than reshapes. That cost was paid up front precisely to avoid changing every call site later.</td></tr>
+  <tr><td>A persistent or shared session store (Redis, a database)</td><td>One class implementing <code>SessionStore</code> - <code>create</code>, <code>turns</code>, <code>append</code>, <code>delete</code> - passed to <code>ConversationService</code>. The follow-up rules and the agent are unchanged (§20.26).</td></tr>
   <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code> - <code>add</code>, <code>search</code>, <code>count</code>, <code>clear</code>. The retriever, agent and API are unchanged.</td></tr>
   <tr><td>A different embedding model</td><td>Change <code>BKA_EMBEDDING_MODEL</code> and rebuild. A different <em>kind</em> of embedder (hosted API, ONNX runtime) is one class implementing <code>Embedder</code>. The manifest check forces the re-index rather than letting the two drift.</td></tr>
   <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement - a BM25 scorer combined with the existing cosine scores behind the same <code>VectorStore.search</code> signature. See §20.3.1.</td></tr>
@@ -3332,6 +3400,132 @@ unlucky question.</p>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Keep the Stage 6 question-time error</strong></td><td>Crashes a valid composition on an ordinary question.</td></tr>
   <tr><td><strong>Quietly ignore a selector without a registry</strong></td><td>A configuration mistake would look like an agent that just never uses tools.</td></tr>
+</table>
+</div>
+
+<h3 style="margin-top:32px">Stage 8 - Conversation context</h3>
+
+<div class="note">
+  <strong>What these records cover, in plain English.</strong> Until Stage 8 every question
+  was answered on its own, as if nothing had been asked before. Real support conversations
+  are full of <strong>follow-ups</strong> - "what does it mean?", "and for CardSecurityModule?" -
+  where the words only make sense next to the previous question. Stage 8 lets the agent
+  keep a short memory of a conversation (a <strong>session</strong>) and use it to understand
+  a follow-up. The hard part is deciding <em>how much</em> of that memory to use, and keeping it
+  clearly apart from the documentation and tool readings that answers are built from. Each
+  record says what was chosen, why, and what was turned down. Recorded in
+  <code>docs/HANDOVER.md</code> §8.A-§8.C before any code was written.
+</div>
+
+<h3>20.23 Stage 8.1 - The model sees earlier questions, never earlier answers</h3>
+<div class="card">
+<p><strong>What.</strong> When a question is a follow-up, the model is sent the last few
+<em>earlier questions</em> in their own marked block, <code>&lt;conversation_history&gt;</code>. The
+system prompt says that block is <strong>not evidence</strong>: it only helps the model
+understand what "it" or "that" refers to, and must never be cited. Earlier
+<em>answers</em> are never sent.</p>
+
+<p><strong>Why.</strong> The question was put to the user with three options, and the user
+chose this one. An earlier answer looks like evidence but is not: it was written by the model,
+and its citations - <code>[1]</code>, <code>[2]</code> - point at passages from an earlier
+prompt that are no longer there. Sent back in, the model could "confirm" a claim from its own
+earlier words, and <code>[1]</code> would mean two different passages in one prompt. Earlier
+questions carry no such risk - they are what the user typed - and they are exactly what is
+needed to understand a follow-up.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Earlier questions and answers, as real chat turns</strong></td><td>The most natural shape for a chat model, but it turns the model's own past output into apparent evidence and makes citation numbers ambiguous.</td></tr>
+  <tr><td><strong>No history at all - only a rewritten question</strong></td><td>The smallest prompt, but the model could only guess at what "it" meant from the rewrite.</td></tr>
+</table>
+</div>
+
+<h3>20.24 Stage 8.2 - Follow-ups are resolved by rules that read only earlier questions</h3>
+<div class="card">
+<p><strong>What.</strong> Before the agent routes a follow-up, <code>app/conversation/context.py</code>
+turns it into a question that stands on its own, so tool selection and search work on it.
+Four deterministic rules, first match wins: a question that names its own identifier is left
+alone; "what about <em>X</em>?" swaps <em>X</em> into the previous question; a question with a
+reference word ("it", "that", "they") gets the previous question's identifiers - error code,
+transaction reference, config key, component - added; with no identifiers to carry, it gets the
+previous question's wording added instead.</p>
+
+<p><strong>Why.</strong> "Is it healthy?" names nothing a tool can act on, so without this the
+agent would search the documentation for the word "healthy" and miss the component entirely. A
+model could rewrite the question more flexibly, but that is a paid, variable call before every
+follow-up - the same objection that kept tool selection rule-based (§20.17). The identifiers are
+found by Stage 7's existing extractors, so nothing new decides what an identifier looks like.
+Reading only earlier <em>questions</em> - never answers or tool results - means no model-written
+or untrusted text can be carried into a search query.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Ask a model to rewrite the follow-up</strong></td><td>A paid, non-deterministic call per follow-up, testable only against the mock.</td></tr>
+  <tr><td><strong>Carry identifiers from earlier tool results</strong></td><td>Tool payloads are untrusted; letting them steer the next search is an injection path.</td></tr>
+  <tr><td><strong>Always add the previous question</strong></td><td>A new, unrelated question would be searched as if it were about the old topic.</td></tr>
+</table>
+</div>
+
+<h3>20.25 Stage 8.3 - History is sent only when it was needed, and within a limit</h3>
+<div class="card">
+<p><strong>What.</strong> A question that stands on its own gets <strong>no</strong> history block at
+all. A resolved follow-up gets at most <code>BKA_CONVERSATION_MAX_HISTORY_TURNS</code> (3) earlier
+questions and <code>BKA_CONVERSATION_MAX_HISTORY_CHARS</code> (1000) characters; when over the
+limit, the <em>oldest</em> questions are dropped <em>whole</em>. History does not count as evidence:
+a follow-up with no passage and no tool result is still refused with no model call.</p>
+
+<p><strong>Why.</strong> <code>prompt.md</code> Stage 8 says to avoid sending unnecessary history.
+History the question did not need only costs tokens and gives the model something irrelevant to
+latch on to. Dropping whole questions mirrors how passages are dropped (§20.4.7): half a question
+reads as a complete one and means something else. Keeping history out of the refusal guard keeps
+Stage 4's promise intact - an answer is never built from conversation alone.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Send the whole conversation every time</strong></td><td>Cost grows with every turn, and old topics compete with the current one.</td></tr>
+  <tr><td><strong>Truncate the oldest question mid-sentence</strong></td><td>A cut-off question can read as a different question.</td></tr>
+  <tr><td><strong>Count history as evidence</strong></td><td>Would let the model answer from what the user asked earlier, with nothing documented behind it.</td></tr>
+</table>
+</div>
+
+<h3>20.26 Stage 8.4 - Sessions live in a bounded in-memory store; an unknown session is an error</h3>
+<div class="card">
+<p><strong>What.</strong> A <code>SessionStore</code> protocol with one implementation,
+<code>InMemorySessionStore</code>. Session ids are random (<code>secrets</code>). Sessions expire after
+<code>BKA_CONVERSATION_TTL_SECONDS</code> idle; at most <code>BKA_CONVERSATION_MAX_SESSIONS</code> are
+kept (the least recently used is dropped); each keeps at most
+<code>BKA_CONVERSATION_MAX_TURNS</code> turns. An unknown or expired id raises
+<code>SessionNotFoundError</code>. A turn is stored only after it was answered successfully.</p>
+
+<p><strong>Why.</strong> Everything runs locally, and a conversation is short-lived working state, so
+a database would be infrastructure with no requirement behind it; the protocol is the seam where
+Redis or a database would go later (Stage 14). Every limit exists so memory cannot grow without end.
+Raising on an unknown id matters for Stage 9: silently starting a fresh session would make a
+follow-up quietly lose its context and be answered as a different question.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>A database or Redis now</strong></td><td>New infrastructure for a local, single-process portfolio app; the protocol keeps the door open.</td></tr>
+  <tr><td><strong>Create a new session for an unknown id</strong></td><td>A lost context would look like a normal answer to the wrong question.</td></tr>
+  <tr><td><strong>Keep the client's history instead of a server session</strong></td><td>The client could send any "history" it liked, including text posing as earlier questions.</td></tr>
+</table>
+</div>
+
+<h3>20.27 Stage 8.5 - Conversation wraps the agent; the agent stays single-question</h3>
+<div class="card">
+<p><strong>What.</strong> A new package, <code>app/conversation/</code>, holds the session store, the
+follow-up rules and <code>ConversationService</code>, which calls <code>KnowledgeAgent.ask()</code>.
+The agent only gains one appended parameter, <code>history</code>, which it passes to the LLM
+service. The agent never imports the conversation package.</p>
+
+<p><strong>Why.</strong> Every Stage 5-7 test asks the agent one question and checks one route.
+Putting sessions inside the agent would give every one of those tests state to set up and reset.
+Kept outside, a conversation is just "resolve the question, ask the agent, remember the turn", and
+each half is tested on its own - the same seam-not-layer rule as §20.5.5.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Sessions inside <code>KnowledgeAgent</code></strong></td><td>Mixes per-conversation state into a component that is stateless and easy to test today.</td></tr>
 </table>
 </div>
 

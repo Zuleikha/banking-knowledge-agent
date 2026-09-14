@@ -45,6 +45,8 @@ error: it looks complete.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.core.tracing import traced
@@ -101,8 +103,14 @@ class LLMService:
         question: str,
         retrieval: RetrievalResult,
         tool_results: tuple[ToolResult, ...] = (),
+        history: Sequence[str] = (),
     ) -> GroundedAnswer:
         """Answer ``question`` from the passages and tool results supplied.
+
+        **Stage 8: history is never evidence.** Earlier questions help the model
+        read a follow-up, but they do not count toward the refusal guard: a
+        follow-up with no passage and no tool result is refused, with no model
+        call, exactly as a first question would be.
 
         Args:
             question: The user's question, in natural language.
@@ -110,6 +118,8 @@ class LLMService:
                 valid input.
             tool_results: Evidence gathered by the MCP layer. Empty by default,
                 which is exactly the Stage 4 and Stage 5 behaviour.
+            history: Earlier questions of the conversation, oldest first. Empty
+                for a standalone question, which then gets no history block.
 
         Returns:
             The answer together with its sources and provenance. A refusal is
@@ -129,7 +139,9 @@ class LLMService:
         if not selected and not tool_results:
             return self._refuse(question, retrieval)
 
-        request = build_request(question, selected, self._settings, tool_results)
+        request = build_request(
+            question, selected, self._settings, tool_results, tuple(history)
+        )
         response = self._complete(request)
         self._validate(response)
 
@@ -164,6 +176,7 @@ class LLMService:
             chunks_available=answer.chunks_available,
             tools_used=answer.tools_used,
             tools=[result.tool for result in tool_results],
+            history_questions=len(history),
             sources=len(sources),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,

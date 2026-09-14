@@ -4,6 +4,8 @@
 
     python -m app.agent ask "<question>"   # answer one question
     python -m app.agent demo               # the five seed questions, end to end
+    python -m app.agent chat               # a conversation; follow-ups keep context
+    python -m app.agent conversation-demo  # a scripted conversation of follow-ups
 
 **By default every run is offline and free**: the embedding model is local, and
 the default provider is the in-process mock.
@@ -30,6 +32,8 @@ from collections.abc import Sequence
 
 from app.agent.factory import get_agent
 from app.agent.models import AgentAnswer
+from app.conversation.factory import get_conversation_service
+from app.conversation.models import ConversationAnswer
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.llm.factory import is_paid_provider
@@ -81,6 +85,21 @@ CONTROL_QUESTIONS: tuple[str, ...] = (
 )
 """Two questions the agent must decline, for two different reasons."""
 
+CONVERSATION_QUESTIONS: tuple[str, ...] = (
+    "What does error code LIM-4001 mean?",
+    # carried_identifiers: "it" is LIM-4001, so the error-code tool is called.
+    "Which component raises it?",
+    "What version is CoreBankingAdapter running?",
+    # substituted_identifier: the version question again, for another component.
+    "What about CardSecurityModule?",
+    # carried_identifiers from the substituted question: health of CSM.
+    "Is it healthy?",
+    "How would I troubleshoot a failed cash withdrawal?",
+    # carried_topic: no identifier to carry, so the previous topic is searched.
+    "What should I check first on that?",
+)
+"""One conversation exercising every Stage 8 resolution rule, in one session."""
+
 RULE = "=" * 78
 
 
@@ -109,6 +128,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Allow the demo to run against a paid provider (one call per question).",
     )
 
+    subparsers.add_parser(
+        "chat",
+        help="Hold a conversation; a blank line, 'exit' or end of input stops it.",
+    )
+    conversation_demo = subparsers.add_parser(
+        "conversation-demo", help="Run a scripted conversation of follow-up questions."
+    )
+    conversation_demo.add_argument(
+        "--paid",
+        action="store_true",
+        help="Allow a paid provider (one call per question).",
+    )
+
     args = parser.parse_args(argv)
 
     # Citations carry em dashes and middots; a cp1252 console would mangle them.
@@ -120,6 +152,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "ask":
         return _ask(args.question, settings)
+    if args.command == "chat":
+        return _chat(settings)
+    if args.command == "conversation-demo":
+        return _conversation_demo(settings, allow_paid=args.paid)
     return _demo(settings, allow_paid=args.paid)
 
 
@@ -174,6 +210,68 @@ def _demo(settings: Settings, allow_paid: bool = False) -> int:
         print()
         _print_answer(agent.ask(question))
     return 0
+
+
+def _chat(settings: Settings) -> int:
+    """Hold one conversation over standard input."""
+    _warn_if_paid(settings)
+    service = get_conversation_service(settings)
+    session = service.start()
+    print("Conversation started. A blank line, 'exit' or end of input stops it.")
+    try:
+        while True:
+            print("> ", end="", flush=True)
+            line = sys.stdin.readline()
+            question = line.strip()
+            if not line or not question or question.lower() in {"exit", "quit"}:
+                break
+            print()
+            _print_turn(service.ask(session, question))
+    finally:
+        service.end(session)
+    return 0
+
+
+def _conversation_demo(settings: Settings, allow_paid: bool = False) -> int:
+    """Run :data:`CONVERSATION_QUESTIONS` as one session."""
+    if _warn_if_paid(settings) and not allow_paid:
+        print(
+            f"REFUSED: conversation-demo would make up to "
+            f"{len(CONVERSATION_QUESTIONS)} paid calls. "
+            "Re-run with --paid to confirm you accept the cost."
+        )
+        return 2
+
+    service = get_conversation_service(settings)
+    provider = service.agent.llm_service.provider
+    print(RULE)
+    print(f"Provider: {provider.provider_id} / {provider.model_id}")
+    print(RULE)
+
+    session = service.start()
+    try:
+        for question in CONVERSATION_QUESTIONS:
+            print()
+            _print_turn(service.ask(session, question))
+    finally:
+        service.end(session)
+    return 0
+
+
+def _print_turn(result: ConversationAnswer) -> None:
+    """Print one conversation turn: how it was resolved, then the answer."""
+    context = result.context
+    print(f"#  turn {result.turn} · you asked: {context.question}")
+    if context.is_follow_up:
+        carried = f" · carried {', '.join(context.carried)}" if context.carried else ""
+        print(
+            f"   [follow-up: {context.resolution}{carried} · "
+            f"{len(context.history)} earlier question(s) sent, "
+            f"{context.history_dropped} dropped]"
+        )
+    else:
+        print("   [standalone: no conversation history sent]")
+    _print_answer(result.answer)
 
 
 def _print_answer(answer: AgentAnswer) -> None:

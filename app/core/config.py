@@ -73,6 +73,21 @@ class Settings(BaseSettings):
     # causes an identical re-search, and it never lowers the floor above.
     agent_confident_score: float = Field(default=0.50, ge=-1.0, le=1.0)
 
+    # --- Conversation context (Stage 8) ----------------------------------
+    # How much of a conversation a follow-up question may use. The window is
+    # the number of EARLIER QUESTIONS consulted and sent to the model; earlier
+    # answers are never sent (docs/HANDOVER.md 8.B). 0 turns disables
+    # conversation context entirely. The character budget drops the oldest
+    # questions whole, never mid-sentence -- the same rule as passages.
+    conversation_max_history_turns: int = Field(default=3, ge=0)
+    conversation_max_history_chars: int = Field(default=1000, ge=0)
+    # Store limits, so an in-memory session store cannot grow without bound:
+    # turns kept per session, sessions kept at once (least recently used is
+    # evicted), and how long an idle session lives.
+    conversation_max_turns: int = Field(default=50, ge=1)
+    conversation_max_sessions: int = Field(default=1000, ge=1)
+    conversation_ttl_seconds: float = Field(default=1800.0, gt=0.0)
+
     # --- LLM abstraction (Stages 4 and 5) --------------------------------
     # mock | anthropic | openai. The default stays "mock" -- deterministic,
     # in-process and free -- so nothing calls a paid API unless someone

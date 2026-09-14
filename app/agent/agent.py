@@ -44,6 +44,8 @@ exists to prevent.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.agent.models import (
     AgentAnswer,
     AgentDecision,
@@ -149,11 +151,18 @@ class KnowledgeAgent:
         return self._selector
 
     @traced
-    def ask(self, question: str) -> AgentAnswer:
+    def ask(self, question: str, history: Sequence[str] = ()) -> AgentAnswer:
         """Answer one technical question, or say why it cannot be answered.
+
+        The agent stays single-question. Stage 8's conversation layer resolves a
+        follow-up *before* calling this, and passes the earlier questions it used
+        as ``history``, which is handed to the LLM service unchanged and plays no
+        part in any routing decision here.
 
         Args:
             question: The question, in natural language.
+            history: Earlier questions of the conversation, oldest first. Empty
+                by default, which is exactly the Stage 7 behaviour.
 
         Returns:
             The answer together with the route taken, every choice point on the
@@ -197,7 +206,7 @@ class KnowledgeAgent:
             retrieval, passes = self._no_evidence(question), 0
             summary = RetrievalSummary.not_performed()
 
-        grounded = self._llm.answer(question, retrieval, tool_results)
+        grounded = self._llm.answer(question, retrieval, tool_results, tuple(history))
         evidence: DecisionOutcome = (
             "insufficient" if grounded.refused else "sufficient"
         )
@@ -226,6 +235,7 @@ class KnowledgeAgent:
             tools_called=len(tool_summaries),
             tools=[call.tool for call in tool_summaries],
             tools_found=[call.tool for call in tool_summaries if call.ok],
+            history_questions=len(history),
             refused=grounded.refused,
             llm_called=grounded.llm_called,
             documents=list(summary.documents),

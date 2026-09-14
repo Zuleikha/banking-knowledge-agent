@@ -17,9 +17,9 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 7 — Agent decision and tool selection *(awaiting approval)* |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), **six MCP support tools**, **an in-process tool registry**, **a real MCP server over stdio**, **agent decision paths (knowledge / retrieve more / tool / both / refuse) and a rule-based tool selector** |
-| **Not yet implemented** | Conversation context, web UI, Docker |
+| **Current stage** | Stage 8 — Conversation context *(awaiting approval)* |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), six MCP support tools, an in-process tool registry, a real MCP server over stdio, agent decision paths and a rule-based tool selector, **conversation sessions with rule-based follow-up resolution** |
+| **Not yet implemented** | Web UI, request observability, evaluation, Docker |
 
 > **Cloning this repository and running its tests costs nothing.** `BKA_LLM_PROVIDER`
 > defaults to a deterministic in-process **mock** — no account, no API key, no spend.
@@ -152,7 +152,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 879 tests
+.venv/Scripts/python.exe -m pytest                       # 971 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -281,6 +281,12 @@ All settings are read from the environment with the `BKA_` prefix. See
 | `BKA_LLM_CONTEXT_MAX_CHUNKS` | `5` | How "never the whole knowledge base" is enforced |
 | `BKA_LLM_CONTEXT_MAX_CHARS` | `12000` | Second half of the same budget |
 | `BKA_LLM_API_KEY` | *(unset)* | Environment only; `SecretStr`; nothing can use it yet |
+| `BKA_AGENT_CONFIDENT_SCORE` | `0.50` | Below it, the agent runs one refined second search |
+| `BKA_CONVERSATION_MAX_HISTORY_TURNS` | `3` | Earlier questions a follow-up may send; `0` disables context |
+| `BKA_CONVERSATION_MAX_HISTORY_CHARS` | `1000` | History budget; oldest questions dropped whole |
+| `BKA_CONVERSATION_MAX_TURNS` | `50` | Turns kept per session |
+| `BKA_CONVERSATION_MAX_SESSIONS` | `1000` | Sessions kept; least recently used evicted |
+| `BKA_CONVERSATION_TTL_SECONDS` | `1800` | Idle seconds before a session expires |
 | `BKA_LOG_LEVEL` | `INFO` | Log verbosity |
 | `BKA_LOG_FORMAT` | `console` | `console` locally, `json` in Docker |
 | `BKA_LOG_DIR` | `logs/` | Where log and trace files are written |
@@ -589,6 +595,31 @@ Q  What is the status of transaction TXN-19990101-000001?
 reads each tool's declared parameters (`error_code`, `transaction_reference`, `key`,
 `component`) and calls a tool when the question supplies them. A registered tool it
 could never select is refused when the agent is built, not discovered later.
+
+### Conversation context (Stage 8)
+
+Questions can be asked inside a **session**, and a follow-up keeps its meaning.
+`app/conversation/` wraps the agent: it resolves the follow-up **by rules** (no model
+call), then asks the agent the resolved question.
+
+| Rule | Example |
+|---|---|
+| `standalone` | First question, or one naming its own identifier — no history sent |
+| `carried_identifiers` | "Which component raises it?" → adds `LIM-4001` → the error-code tool runs |
+| `substituted_identifier` | "What about CardSecurityModule?" → the previous question, for that component |
+| `carried_topic` | "What should I check first on that?" → searched with the previous topic |
+
+- **The model sees earlier questions only**, in a `<conversation_history>` fence marked
+  *not evidence*. Earlier answers are never sent.
+- **History is never evidence**: a follow-up with no passage and no tool result is still
+  refused, with no model call.
+- **Bounded**: 3 earlier questions / 1000 characters sent; 50 turns, 1000 sessions and a
+  30-minute idle timeout in the in-memory store. An unknown session id raises.
+
+```bash
+.venv/Scripts/python.exe -m app.agent chat                # interactive; blank line ends it
+.venv/Scripts/python.exe -m app.agent conversation-demo   # seven turns, every rule
+```
 
 ---
 
