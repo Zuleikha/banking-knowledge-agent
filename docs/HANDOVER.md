@@ -52,8 +52,8 @@ The same stale "shown to a model in Stage 7" wording also appears in the `ToolPa
 in `app/mcp/models.py` and in `TestEverySpecExampleActuallyWorks` in `tests/test_mcp_tools.py` —
 fix all three together.
 
-**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§16 done. Continues at §17, then
-§18 and the §20 Stage 1–6 records.
+**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§18 done. Continues at §19 (design decisions summary), then
+the §20 Stage 1–6 decision records and §21.
 
 **Open question (not a wording fix — needs a decision):** guide §11 lists `GET /ready`
 (readiness: vector store and LLM reachable) as planned for **Stage 12**, but neither

@@ -2211,13 +2211,17 @@ omit. A test caught that; see decision record 6.4 and section 21.</p>
 <section id="deployment">
 <h2>17. Deployment</h2>
 
+<p>How the system runs today, side by side with how a production deployment would look. Only
+the left column is built; the right column is a design, written down now so that the move later
+is planned rather than improvised.</p>
+
 <table>
   <tr><th style="width:180px"></th><th>Local development</th><th>Production (design only)</th></tr>
-  <tr><td>Runtime</td><td>uvicorn with <code>--reload</code></td><td>Container behind a reverse proxy</td></tr>
-  <tr><td>Logs</td><td>Console + <code>logs/*.log</code></td><td>JSON to a log aggregator</td></tr>
-  <tr><td>Vector store</td><td>Embedded, on disk</td><td>Managed vector database</td></tr>
-  <tr><td>Secrets</td><td><code>.env</code> (git-ignored)</td><td>Secret manager injected as env vars</td></tr>
-  <tr><td>Scale</td><td>Single process</td><td>Horizontal - the API is stateless</td></tr>
+  <tr><td>Runtime</td><td>uvicorn with <code>--reload</code> (restarts when code changes)</td><td>Container behind a reverse proxy - a front server that receives all traffic and forwards it, handling HTTPS and limits</td></tr>
+  <tr><td>Logs</td><td>Console + <code>logs/*.log</code></td><td>JSON sent to a log aggregator - a central service that collects and searches the logs of every running copy</td></tr>
+  <tr><td>Vector store</td><td>Embedded, on disk</td><td>A managed (hosted) vector database, once the index outgrows one process (§10)</td></tr>
+  <tr><td>Secrets</td><td><code>.env</code> (git-ignored)</td><td>A secret manager - a secure vault service - injecting values as environment variables, so the app code does not change</td></tr>
+  <tr><td>Scale</td><td>Single process</td><td>Horizontal - several copies of the app behind the proxy. This first needs sessions moved to a shared store: today they live in one process's memory (§20.26), so a follow-up routed to a different copy would get 404</td></tr>
 </table>
 
 <p>Stage 14 documents the production architecture in full and keeps the boundary between
@@ -2229,23 +2233,25 @@ infrastructure is built that the portfolio project does not need.</p>
 <section id="extension">
 <h2>18. Extension points</h2>
 
-<p>The point of the seams: each of these should be an additive change, not a redesign.</p>
+<p>The point of the seams: each of these should be an <em>additive</em> change - adding a new
+piece behind an interface that already exists - not a redesign of what is already there. This
+table is the practical test of that claim: for each likely future change, exactly what has to
+be touched.</p>
 
 <table>
   <tr><th style="width:230px">To add…</th><th>Touch…</th></tr>
   <tr><td>A new knowledge source</td><td>A loader implementation. Chunking, embedding and retrieval are unchanged.</td></tr>
   <tr><td>A new banking domain</td><td>Documents + metadata. No code change.</td></tr>
-  <tr><td>A new MCP tool</td><td>One module in <code>app/mcp/tools/</code> implementing the <code>Tool</code> protocol, one name in <code>ToolName</code>, one line in <code>app/mcp/factory.py</code>. The registry, the protocol server, the agent and the prompt layer are all unchanged.</td></tr>
-  <tr><td>A tool that talks to a real system</td><td>That tool's module, plus settings for its endpoint and credentials. <code>ToolUnavailableError</code> and <code>SYNTHETIC_OBSERVED_AT</code> already exist for exactly this: the first is the retryable failure type, the second is the single symbol an injected clock replaces.</td></tr>
-  <tr><td>A different MCP transport (HTTP/SSE)</td><td><code>app/mcp/server.py</code> only - <code>build_server()</code> is transport-agnostic and <code>serve()</code> is the six lines that choose stdio.</td></tr>
-  <tr><td>A new MCP tool</td><td>One tool module + registration. The agent discovers it.</td></tr>
+  <tr><td>A new MCP tool</td><td>One module in <code>app/mcp/tools/</code> implementing the <code>Tool</code> protocol, one name in <code>ToolName</code> (the closed list of tool names), one line in <code>app/mcp/factory.py</code>. The registry, the protocol server, the agent and the prompt layer are all unchanged. Stage 7's rule-based selector reads the new tool's spec, so it can choose the tool straight away if it takes an input the selector already recognises (an error code, transaction reference, config key or component); a tool with an input it cannot recognise is refused when the agent is built.</td></tr>
+  <tr><td>A tool that talks to a real system</td><td>That tool's module, plus settings for its endpoint and credentials. <code>ToolUnavailableError</code> and <code>SYNTHETIC_OBSERVED_AT</code> already exist for exactly this: the first is the error type for "the backing system could not be reached - trying again may work", the second is the one fixed timestamp that a real clock, passed in, would replace.</td></tr>
+  <tr><td>A different MCP transport (HTTP/SSE - web requests, with Server-Sent Events for streaming replies)</td><td><code>app/mcp/server.py</code> only - <code>build_server()</code> is transport-agnostic and <code>serve()</code> is the six lines that choose stdio.</td></tr>
   <tr><td>A different LLM provider</td><td>One class implementing <code>LLMProvider</code>, plus one branch in <code>app/llm/factory.py</code> and its entry in <code>AVAILABLE_PROVIDERS</code>. Nothing above <code>app/llm/</code> changes - the service, the CLI and every caller depend on the protocol and on the error types, never on a vendor. The adapter's only real work is translating its SDK's failures into the taxonomy in <code>base.py</code>.</td></tr>
-  <tr><td>Streaming or async generation</td><td>An additional method on the protocol and its implementations. Deliberately absent in Stage 4 - it would be an untested interface with no caller until Stage 9.</td></tr>
+  <tr><td>Streaming or async generation</td><td>Streaming means sending the answer piece by piece as it is written, instead of all at once. It would be an additional method on the protocol and its implementations. Deliberately absent since Stage 4, when it would have been an untested interface with no caller - and Stage 9's page shipped without it: it waits for the complete answer.</td></tr>
   <tr><td>A persistent or shared session store (Redis, a database)</td><td>One class implementing <code>SessionStore</code> - <code>create</code>, <code>turns</code>, <code>append</code>, <code>delete</code> - passed to <code>ConversationService</code>. The follow-up rules and the agent are unchanged (§20.26).</td></tr>
   <tr><td>A different vector store</td><td>One class implementing <code>VectorStore</code> - <code>add</code>, <code>search</code>, <code>count</code>, <code>clear</code>. The retriever, agent and API are unchanged.</td></tr>
-  <tr><td>A different embedding model</td><td>Change <code>BKA_EMBEDDING_MODEL</code> and rebuild. A different <em>kind</em> of embedder (hosted API, ONNX runtime) is one class implementing <code>Embedder</code>. The manifest check forces the re-index rather than letting the two drift.</td></tr>
-  <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement - a BM25 scorer combined with the existing cosine scores behind the same <code>VectorStore.search</code> signature. See §20.3.1.</td></tr>
-  <tr><td>A reranker</td><td>A cross-encoder pass between <code>search</code> and the score floor in <code>Retriever.retrieve</code>. The floor and the result contract stay as they are.</td></tr>
+  <tr><td>A different embedding model</td><td>Change <code>BKA_EMBEDDING_MODEL</code> and rebuild. A different <em>kind</em> of embedder (a hosted API, or ONNX runtime - a faster way to run models locally) is one class implementing <code>Embedder</code>. The manifest check forces the re-index rather than letting the two drift.</td></tr>
+  <tr><td>Hybrid (lexical + vector) search</td><td>The most likely next retrieval improvement - a BM25 scorer (a classic keyword-matching score) combined with the existing cosine (meaning) scores, behind the same <code>VectorStore.search</code> signature. It helps exact identifiers such as error codes match even when meaning-based search ranks them low. See §20.3.1.</td></tr>
+  <tr><td>A reranker</td><td>A cross-encoder pass - a model that reads the question and each candidate passage <em>together</em>, which ranks more accurately but more slowly - between <code>search</code> and the score floor in <code>Retriever.retrieve</code>, re-scoring only the top few results. The floor and the result contract stay as they are.</td></tr>
 </table>
 </section>
 
