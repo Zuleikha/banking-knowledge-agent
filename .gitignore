@@ -47,3 +47,5 @@ ccp.txt
 docs/decisions/auto-changes.log
 # Reusable token-efficiency workflow notes, kept local.
 ai-dev-token-efficiency-workflow.md
+# Archived instruction files, kept local.
+docs/legacy/
