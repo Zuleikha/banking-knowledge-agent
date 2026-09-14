@@ -1742,9 +1742,14 @@ must not be applied to FastAPI route handlers (see <em>Known constraint: tracing
 <h2>12. Configuration</h2>
 <span class="tag t-done">BUILT</span>
 
-<p>One typed <code>Settings</code> object, read from <code>BKA_*</code> environment
-variables (optionally seeded from a local <code>.env</code>), validated by Pydantic and
-frozen. Invalid configuration fails loudly at startup.</p>
+<p>All configuration is one typed <code>Settings</code> object. It reads <code>BKA_*</code>
+environment variables (a local <code>.env</code> file can supply them too), and Pydantic checks
+each value against its declared type - a port must be a whole number, a log level must be one of
+a fixed list. The object is frozen, so nothing can change a setting while the app runs. A wrong
+value therefore stops the app at startup, with a message naming the setting, instead of causing
+a confusing failure later in the middle of a request. One caveat: an unrecognised
+<code>BKA_*</code> <em>name</em> (a typo) is ignored rather than rejected, so check spelling
+against <code>.env.example</code>.</p>
 
 <pre>BKA_ENVIRONMENT=local        # local | test | production
 BKA_HOST=127.0.0.1
@@ -1791,27 +1796,36 @@ BKA_LOG_FORMAT=console       # console locally, json in Docker
 BKA_LOG_DIR=logs
 BKA_LOG_TO_FILE=true</pre>
 
+<p class="muted">A selection of the settings, grouped by the stage that added them. The full
+list - including <code>BKA_APP_NAME</code>, <code>BKA_APP_VERSION</code> and
+<code>BKA_DEBUG</code> - with defaults and explanations is in <code>.env.example</code>.</p>
+
 <div class="note">
   <strong>Two settings deliberately default to "ask the model".</strong>
   <code>BKA_CHUNK_MAX_TOKENS</code> is unset by default so the chunker uses the
-  embedding model's own window, and the vector dimension is never configured at all -
-  it is read off the loaded model. Hardcoding either would be correct today and
+  embedding model's own window (the most tokens it can read - 256 today), and the vector
+  dimension (how many numbers each vector has - 384 today) is never configured at all - it
+  is read off the loaded model. Hardcoding either would be correct today and
   silently wrong the moment the model changes, and both failures show up as
   <em>bad search results</em> rather than as an exception.
 </div>
 
-<p><code>.env.example</code> is committed and documented. <code>.env</code> is
-git-ignored and must never be committed. Secrets come from the environment only -
-never hardcoded, never defaulted to a real value.</p>
+<p><code>.env.example</code> is committed and documents every setting, with its default
+and why it exists. <code>.env</code> - your local copy, which may hold real values - is
+git-ignored and must never be committed. Secrets come from the environment only - never
+hardcoded, never defaulted to a real value.</p>
 
 <div class="warn">
   <strong>The API key is typed, not just documented.</strong>
-  <code>BKA_LLM_API_KEY</code> is a Pydantic <code>SecretStr</code>, so it renders as
-  <code>**********</code> in any <code>repr()</code> or <code>model_dump()</code>. The
-  rule "never log secrets" is enforced by the type rather than by remembering - and it
-  is asserted in the suite. It is unset by default, and the two paid adapters refuse to
-  construct without it rather than falling through to a vendor SDK's own ambient
-  environment variable - which would turn a forgotten setting into a silent bill.
+  <code>BKA_LLM_API_KEY</code> is a Pydantic <code>SecretStr</code> - a special string type
+  that hides its value. It shows as <code>**********</code> whenever the settings are printed
+  or turned into a dictionary (<code>repr()</code>, <code>model_dump()</code>), which is exactly
+  how values usually end up in logs by accident. So the rule "never log secrets" is enforced by
+  the type rather than by everyone remembering it - and a test checks it. The key is unset by
+  default, and the two paid adapters refuse to start without it. They deliberately do
+  <em>not</em> fall back to the vendor SDK's own environment variable
+  (<code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>), which an SDK would otherwise
+  pick up silently - turning a forgotten setting into an unexpected bill.
 </div>
 </section>
 
