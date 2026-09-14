@@ -45,3 +45,5 @@ prompt1.md
 ccp.txt
 # Written by a local Claude Code hook, not by the application.
 docs/decisions/auto-changes.log
+# Reusable token-efficiency workflow notes, kept local.
+ai-dev-token-efficiency-workflow.md
