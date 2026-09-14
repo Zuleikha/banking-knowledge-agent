@@ -42,6 +42,16 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 **For Stage 10 onward:** at stage end, update `README.md` per `CLAUDE.md` §4a — Status, a short
 *Observability* subsystem section, any new `BKA_*` variables under Configuration, and the test count.
 
+**Known stale comment (not fixed — docs sessions do not touch application code):** the
+`ToolNotFoundError` docstring in `app/mcp/base.py` says that in Stage 7 it "becomes the guard
+against a model inventing a plausible-sounding tool". Stage 7 chose a **rule-based** selector
+built from the registry's own specs, so the agent cannot request an unregistered tool; the error
+now catches a caller bug or an MCP client naming a tool that does not exist (guide §8.4 already
+says this). Fix the docstring in the next stage that touches `app/mcp/`. Behaviour is unaffected.
+
+**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§8 done. Continues at §9, then
+§10–§13, §15–§18 and the §20 Stage 1–6 records.
+
 ### Commits made in the last session (2026-09-14, Stage 9 session), oldest first
 
 | Commit | What |
