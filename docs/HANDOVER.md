@@ -49,7 +49,7 @@ built from the registry's own specs, so the agent cannot request an unregistered
 now catches a caller bug or an MCP client naming a tool that does not exist (guide §8.4 already
 says this). Fix the docstring in the next stage that touches `app/mcp/`. Behaviour is unaffected.
 
-**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§12 done. Continues at §13, then
+**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§13 done. Continues at §14, then
 §15–§18 and the §20 Stage 1–6 records.
 
 **Open question (not a wording fix — needs a decision):** guide §11 lists `GET /ready`

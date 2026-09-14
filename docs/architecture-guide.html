@@ -1834,10 +1834,21 @@ hardcoded, never defaulted to a real value.</p>
 <h2>13. Observability</h2>
 <span class="tag t-done">BUILT (foundation) · <span class="tag t-todo">request tracking Stage 10</span></span>
 
+<div class="note">
+  <strong>In plain English.</strong> Observability means being able to see what the running
+  system did - which steps ran, how long they took, what failed - without attaching a debugger
+  or adding print statements after something has already gone wrong. Without it, a slow or
+  wrong answer can only be guessed at. Today the foundation exists: structured logs and
+  per-function timing traces. What is still missing is tying everything that happened during
+  one request together, which is Stage 10's job.
+</div>
+
 <h3>Two sinks, deliberately separate</h3>
+<p>A <em>sink</em> is a destination that log output is written to. There are two, so that
+high-volume timing traces never bury the application events you usually want to read.</p>
 <table>
   <tr><th style="width:180px">Sink</th><th>Contents</th></tr>
-  <tr><td><code>logs/app.log</code></td><td>Application events - startup, shutdown, requests, errors. JSON lines, size-rotated.</td></tr>
+  <tr><td><code>logs/app.log</code></td><td>Application events - startup and shutdown, and one event per retrieval, answer, conversation turn and API failure. One JSON object per line; size-rotated (a new file is started once the current one reaches a size limit, and the oldest are deleted). Per-request events arrive in Stage 10.</td></tr>
   <tr><td><code>logs/traces.log</code></td><td><code>@traced</code> function traces via the <code>bka.trace</code> logger, which has <code>propagate = False</code> so traces never leak into the application stream.</td></tr>
 </table>
 
@@ -1849,25 +1860,38 @@ hardcoded, never defaulted to a real value.</p>
  "level": "info",
  "timestamp": "2026-09-03T12:30:20.303038Z"}</pre>
 
+<p class="muted">One line per call of a <code>@traced</code> function: its full name (module plus
+function), how long it took in milliseconds, and whether it finished normally
+(<code>ok</code>) or raised (<code>error</code>, with an extra <code>error_type</code> field naming
+the kind of exception).</p>
+
 <div class="warn">
   <strong>Arguments are never logged.</strong> A traced function may receive a card
-  number, a customer identifier or an API key. Only the qualified name, duration and
-  outcome are recorded.
+  number, a customer identifier or an API key. Only the full function name, duration,
+  outcome and - on failure - the error <em>type</em> are recorded; never the error message,
+  which could itself contain one of those values.
 </div>
 
 <h3>Planned for Stage 10</h3>
-<p>Request ID propagated through <code>structlog.contextvars</code>; question, retrieval
-latency, retrieved documents, LLM latency, tool calls, tool latency, errors, and overall
-response latency - all as queryable fields.</p>
+<p>A <strong>request ID</strong> - a unique label given to each incoming request - attached
+automatically to every log line written while that request is handled, using
+<code>structlog.contextvars</code> (a way to carry a value through all the code a request passes
+through, without passing it as an argument). With it, every event from one question can be pulled
+out together. Planned fields: question, retrieval latency, retrieved documents, LLM latency, tool
+calls, tool latency, errors and overall response latency - each as a separate named field, so they
+can be filtered, summed and graphed rather than read line by line.</p>
 
 <h3>Known constraint: tracing and FastAPI</h3>
-<p><code>@traced</code> must <strong>not</strong> decorate FastAPI route handlers.
-FastAPI resolves a handler's postponed annotations against that function's
-<code>__globals__</code>; a wrapper defined in <code>app/core/tracing.py</code> resolves
-them against the tracing module instead, so dependency annotations silently degrade into
-query parameters and requests fail with <code>422</code>. This was caught by the test
-suite in Stage 1. Route handlers are traced by request middleware in Stage 10 - which is
-the architecturally correct layer for it anyway.</p>
+<p><code>@traced</code> must <strong>not</strong> decorate FastAPI route handlers. The route
+files use <code>from __future__ import annotations</code>, which stores each type hint as plain
+text to be looked up later (a <em>postponed annotation</em>). FastAPI looks that text up in the
+module where the handler function was defined - through the function's
+<code>__globals__</code>, its module's variables. A <code>@traced</code> wrapper is a new function
+defined in <code>app/core/tracing.py</code>, so FastAPI would look the names up <em>there</em>
+instead, fail to recognise the dependency types, and silently treat those arguments as ordinary
+query parameters - and every request would fail with <code>422</code>. The test suite caught this
+in Stage 1. Stage 10 will time requests in <em>middleware</em> instead: one piece of code that runs
+around every request, which is the right layer for it anyway.</p>
 </section>
 
 <!-- ================================================================== -->
