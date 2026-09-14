@@ -132,10 +132,18 @@ A personal technical reference for understanding and remembering the system. It 
   made**, in the same *what / why / what was rejected* form as previous entries
   (§20 decision records), not only in the stage-end summary. Do not wait to be
   reminded.
-- **Readability.** New or updated sections follow the plain-English rules in
-  `docs/improve.md` ("FUTURE CHANGES"): what it does, why it exists, what problem it
-  solves, how it connects to the previous and next stage. Technical term first, then a
-  simple explanation. Reuse the existing `.note` style; no new CSS or classes.
+- **Readability.** For each section, answer: what it does, why it exists, what
+  problem it solves, what would go wrong or be missing without it, and how it
+  connects to the previous and next stage. State the technical term first, then
+  explain it in plain English — do not assume prior knowledge of the specific
+  technology, even where general software engineering knowledge is fine to assume.
+  Define a term in full the first time it appears in a section; after that, a short
+  reminder is enough, not a full re-explanation every time it reappears. Self-check
+  before adding a section: could someone who understands software engineering but
+  not this specific technology read it and understand what's happening and why? If
+  not, improve it before adding it. Reuse the existing `.note` style; no new CSS or
+  classes. (This absorbs `docs/legacy/improve.md`'s "FUTURE CHANGES" rule, now archived —
+  its one-time rewrite task is already committed with Stage 7.)
 
 ---
 
@@ -204,6 +212,8 @@ Then STOP and wait. Do not continue automatically.
   quote only the lines that matter.
 - Read `docs/PROJECT_PLAN.md` only for the current stage, once per stage.
 - **Report only:** what changed, test result, and anything that needs a decision.
+- Before ending a session, run `/usage` and note the session's total cost/tokens
+  in the closing message (it resets on `/clear`, so this is the only look at it).
 
 ---
 
