@@ -1522,13 +1522,15 @@ contains no LLM: no provider is constructed, no key is read, nothing can cost mo
 <h2>9. LLM interaction</h2>
 <span class="tag t-done">BUILT</span>
 
-<pre class="plain">RetrievalResult (Stage 3)
+<pre class="plain">RetrievalResult (Stage 3)  ·  ToolResults (Stage 6)  ·  earlier questions (Stage 8)
       │
-      ▼  select_context      apply the budget: max 5 passages / 12,000 chars
+      ▼  select_context      apply the budget to PASSAGES: max 5 / 12,000 chars
       │                      passages dropped WHOLE, never truncated
-      ▼  build_request       frozen system prompt (v1.0.0)
-      │                      + fenced, numbered passages   ← untrusted data
-      │                      + the question                ← the instruction
+      ▼  build_request       frozen system prompt (v1.1.0), then ONE user message:
+      │                        &lt;conversation_history&gt;     ← context only, NOT evidence
+      │                        &lt;retrieved_documentation&gt;  ← untrusted data, cited [1]
+      │                        &lt;tool_results&gt;             ← untrusted data, cited [T1]
+      │                        the question               ← the instruction, always last
 CompletionRequest            system · messages · max_tokens
       │
       ▼  LLMProvider.complete()          ← the vendor-agnostic seam
@@ -1544,29 +1546,54 @@ GroundedAnswer               answer + sources + provenance
       │
       └──▶ logs/app.log  "llm.answered"   shape and cost only, never the text</pre>
 
-<p><strong>The rule:</strong> the LLM receives the <em>retrieved context</em>, never the
-whole knowledge base. That is what keeps cost, latency and prompt-injection surface
-bounded - and it is the difference between RAG and stuffing a prompt. It is enforced by
-two configured numbers and asserted against the real corpus in the suite, not left as an
-intention.</p>
+<div class="note">
+  <strong>Reading the diagram.</strong> This is the last step before an answer exists: turning
+  the gathered evidence into one request for the model, and checking what comes back.
+  <ul>
+    <li><strong>Fences</strong> - each kind of input sits in its own marked block. Documentation
+        and tool results are <em>evidence</em>, cited as <code>[1]</code> and
+        <code>[T1]</code>. Conversation history only helps the model understand words like "it",
+        and must never be cited.</li>
+    <li><strong>The question goes last</strong> - it is the one instruction the model should act
+        on, so it sits after, and outside, every block of untrusted text.</li>
+    <li><strong>The seam</strong> (<code>LLMProvider.complete()</code>) - everything above it is
+        the same whichever model answers; only the provider below it changes.</li>
+    <li><strong>Validate</strong> - a refused, cut-off or empty reply raises an error instead of
+        being shown as if it were a finished answer.</li>
+  </ul>
+</div>
 
-<p><strong>Nothing above <code>app/llm/</code> names a vendor.</strong> The application
-depends on the <code>LLMProvider</code> protocol and on the exception types in
-<code>app/llm/base.py</code> - never on an SDK, a model name, or a vendor's error
-classes. A test parses every import in the package to keep it that way.</p>
+<p><strong>The rule:</strong> the LLM receives the <em>retrieved context</em> - the few passages
+chosen for this question - never the whole knowledge base. That keeps three things small: cost
+(models charge per token read), latency (more text takes longer to read), and the
+prompt-injection surface (every extra document is more text that could try to smuggle in
+instructions). It is also what makes this RAG rather than "stuffing the prompt" - pasting every
+document in and hoping the model finds the right part. It is enforced by two settings,
+<code>BKA_LLM_CONTEXT_MAX_CHUNKS</code> and <code>BKA_LLM_CONTEXT_MAX_CHARS</code>, and checked
+against the real corpus in the test suite, not left as an intention.</p>
 
-<p><strong>No paid call exists yet.</strong> Stage 4 ships one provider, the
-deterministic in-process mock, so the suite is offline and free <em>by construction</em>
-rather than by discipline. Which real vendor the first adapter targets, and whether a
-key is ever wired in, is deferred to a decision before Stage 5. Requesting any other
-provider raises rather than silently falling back to the mock - see decision record 4.2.</p>
+<p><strong>Nothing above <code>app/llm/</code> names a vendor.</strong> The rest of the
+application depends only on the <code>LLMProvider</code> protocol (the interface every provider
+must fit) and the error types in <code>app/llm/base.py</code> - never on a vendor's SDK, a model
+name, or a vendor's own error classes. A test reads every import in the package to keep it that
+way, so swapping or adding a vendor cannot quietly spread vendor code through the app.</p>
+
+<p><strong>No paid call happens by default.</strong> Stage 4 shipped only the deterministic,
+in-process mock, so the test suite was free <em>by construction</em> rather than by being
+careful. Stage 5 then added two real, paid adapters - Anthropic and OpenAI - but the mock stays
+the default, and spending needs two deliberate acts: choosing a paid provider <em>and</em>
+setting <code>BKA_LLM_API_KEY</code>. No live API call has been made from this repository. An
+unrecognised provider name raises an error rather than silently falling back to the mock, so a
+fake model can never pass itself off as a real one - see decision record 4.2.</p>
 
 <table>
   <tr><th style="width:210px">Module</th><th>Responsibility</th></tr>
   <tr><td><code>app/llm/models.py</code></td><td>The shared vocabulary: <code>CompletionRequest</code>, <code>LLMResponse</code>, <code>TokenUsage</code>, <code>GroundedAnswer</code>. No vendor shapes.</td></tr>
-  <tr><td><code>app/llm/base.py</code></td><td>The <code>LLMProvider</code> protocol and the six-type error taxonomy, each carrying <code>retryable</code>.</td></tr>
+  <tr><td><code>app/llm/base.py</code></td><td>The <code>LLMProvider</code> protocol and the error taxonomy: seven named error types, each carrying <code>retryable</code> (whether trying again could help).</td></tr>
   <tr><td><code>app/llm/prompts.py</code></td><td>Versioned system instructions, context budgeting, fencing and escaping, request assembly.</td></tr>
-  <tr><td><code>app/llm/mock.py</code></td><td>The deterministic provider: synthesises, scripts, or raises - and records every request it was sent.</td></tr>
+  <tr><td><code>app/llm/mock.py</code></td><td>The free, deterministic default provider, with three modes: <em>synthesised</em> (builds a reply citing the passages it was given), <em>scripted</em> (returns replies a test supplies) and <em>handler</em> (calls a function, which may raise to simulate a failure). It records every request it was sent.</td></tr>
+  <tr><td><code>app/llm/anthropic_provider.py</code></td><td>Adapter for the real Anthropic API. <strong>Paid.</strong> Translates requests, replies and errors to and from the app's own types.</td></tr>
+  <tr><td><code>app/llm/openai_provider.py</code></td><td>Adapter for the real OpenAI API. <strong>Paid.</strong> Same job, for OpenAI's differently shaped API.</td></tr>
   <tr><td><code>app/llm/service.py</code></td><td>Orchestration: inject context, generate, reject unusable generations, attach provenance.</td></tr>
   <tr><td><code>app/llm/factory.py</code></td><td>The one place a provider is chosen from configuration.</td></tr>
   <tr><td><code>app/llm/__main__.py</code></td><td>CLI: <code>prompt</code> (show what is sent) · <code>ask</code> · <code>demo</code>.</td></tr>
@@ -1575,8 +1602,9 @@ provider raises rather than silently falling back to the mock - see decision rec
 <div class="note">
   <strong>See it rather than trust it.</strong>
   <code>python -m app.llm prompt "What component handles card authentication?"</code>
-  prints the complete request. The interesting part is what is <em>absent</em>: the other
-  110 chunks of the knowledge base.
+  prints the complete request that would be sent, without calling any model. The interesting
+  part is what is <em>absent</em>: the other 110 chunks of the knowledge base (115 in total,
+  minus the 5 that were selected).
 </div>
 </section>
 
