@@ -10,15 +10,16 @@ the default provider is the in-process mock.
 
 If ``BKA_LLM_PROVIDER`` names a paid vendor, both commands say so before doing
 anything, and ``demo`` refuses outright unless ``--paid`` is passed. ``demo``
-asks twelve questions, so an accidental paid run is twelve billed calls rather
-than one -- the command that fans out is the one that needs the seatbelt. This
-is a deliberate guard, not a formality: nothing else in the repository stands
-between an exported key and a bill.
+asks every question below, so an accidental paid run is one billed call per
+question rather than one -- the command that fans out is the one that needs the
+seatbelt. This is a deliberate guard, not a formality: nothing else in the
+repository stands between an exported key and a bill.
 
 What the output is designed to show is the *provenance*, not the prose. The mock
 provider's answer text is a wiring check, not a generated answer — the parts
-worth reading are which route was taken, how many passages were considered, how
-many reached the prompt, and which documents they came from.
+worth reading are the route (Stage 7: every choice point and its outcome), how
+many searches ran, how many passages reached the prompt, and which documents and
+tools they came from.
 """
 
 from __future__ import annotations
@@ -43,22 +44,32 @@ SEED_QUESTIONS: tuple[str, ...] = (
 """The five worked examples from ``prompt.md`` §13."""
 
 TOOL_QUESTIONS: tuple[str, ...] = (
-    # Each names an identifier a tool can act on, so each takes the Stage 6
-    # route: documentation for the vocabulary, a live reading for the fact.
+    # Asks what a code MEANS: an explanation of a live identifier, so both.
     "What does error code LIM-4001 mean?",
+    # Ask only for a reading: Stage 7's tool-only route, no search at all.
     "What is the status of transaction TXN-20260911-004473?",
     "Is CoreBankingAdapter healthy?",
     "What version is CardSecurityModule running?",
-    # A tool call that finds nothing. The answer must report that, not refuse.
+    # A reading that finds nothing. The tool-only plan pulls in documentation,
+    # and the answer must report the miss, not refuse.
     "What is the status of transaction TXN-19990101-000001?",
 )
-"""Five questions that exercise Agent -> MCP -> Tool -> Result (Stage 6).
+"""Five questions that exercise Agent -> MCP -> Tool -> Result (Stages 6 and 7).
 
 Chosen so the demo shows the point rather than merely the plumbing: two of these
 return a live value that *disagrees with the documentation* -- the effective ATM
 limit and the version CardSecurityModule is actually running -- which is the
 whole argument for having tools alongside retrieval.
 """
+
+RETRIEVE_MORE_QUESTIONS: tuple[str, ...] = (
+    # Weak first searches (measured 0.490 and 0.442 with the real model). The
+    # first is refined from the best passage's component, the second from the
+    # component the error-code tool reports (docs/HANDOVER.md 7.D).
+    "Why did the withdrawal reverse?",
+    "What does SWX-7004 mean?",
+)
+"""Two questions whose first search is weak enough to be refined (Stage 7)."""
 
 CONTROL_QUESTIONS: tuple[str, ...] = (
     # Answerable-looking, and outside the corpus: it must be refused after a
@@ -95,7 +106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     demo.add_argument(
         "--paid",
         action="store_true",
-        help="Allow the demo to run against a paid provider (7 billed calls).",
+        help="Allow the demo to run against a paid provider (one call per question).",
     )
 
     args = parser.parse_args(argv)
@@ -138,11 +149,13 @@ def _ask(question: str, settings: Settings) -> int:
 
 def _demo(settings: Settings, allow_paid: bool = False) -> int:
     """Answer the seed questions and the two control questions."""
-    questions = SEED_QUESTIONS + TOOL_QUESTIONS + CONTROL_QUESTIONS
+    questions = (
+        SEED_QUESTIONS + TOOL_QUESTIONS + RETRIEVE_MORE_QUESTIONS + CONTROL_QUESTIONS
+    )
     if _warn_if_paid(settings) and not allow_paid:
-        # Refused rather than warned: this command asks seven questions, so the
-        # cost of getting it wrong is seven calls, and the user cannot take it
-        # back once it has run.
+        # Refused rather than warned: this command asks every question above, so
+        # the cost of getting it wrong is that many calls, and the user cannot
+        # take it back once it has run.
         print(
             f"REFUSED: demo would make up to {len(questions)} paid calls. "
             "Re-run with --paid to confirm you accept the cost."
@@ -168,12 +181,15 @@ def _print_answer(answer: AgentAnswer) -> None:
     print(f"Q  {answer.question}")
     print(f"A  {answer.text}")
     print(f"   [decision: {answer.decision.reason} — {answer.decision.explanation}]")
+    route = " → ".join(f"{step.step}={step.outcome}" for step in answer.decisions)
+    print(f"   [route: {route}]")
 
     retrieval = answer.retrieval
     if retrieval.performed:
         top = "none" if retrieval.top_score is None else f"{retrieval.top_score:.3f}"
         print(
-            f"   [retrieval: {retrieval.chunks_returned} of "
+            f"   [retrieval: {retrieval.passes} search(es) · "
+            f"{retrieval.chunks_returned} of "
             f"{retrieval.candidates_considered} passages cleared "
             f"{retrieval.min_score} · top score {top}]"
         )

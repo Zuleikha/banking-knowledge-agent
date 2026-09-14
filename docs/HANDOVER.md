@@ -7,35 +7,40 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-11** · **Stage 6 — MCP Tools — COMPLETE AND APPROVED.**
+Last updated: **2026-09-14** · **Stage 7 — APPROVED 2026-09-14.** Guide committed whole with Stage 7, including the improve.md readability edits (user's choice); `docs/improve.md` itself not committed.
+Stage 6 — MCP Tools — complete and approved:
 Committed `93eeb22` and pushed to `origin/main`, push verified. Stage 6 scope and build
 methodology were decided and written into this file **before any code was written** —
 see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
 
-**Next stage: Stage 7 — Agent decision and tool selection. Not started.**
+**Stage 7 — Agent decision and tool selection — implemented and tested 2026-09-14; STOPPED
+for the user's approval. Nothing committed or pushed.** Decisions are recorded in *Stage 7
+decisions* below, written before any code. Guide sections written after the concurrent
+readability session paused — see Problems §19 (resolved).
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 6 is complete and approved.** Approved 2026-09-11, committed
-`93eeb22`, pushed to `origin/main`, push verified. **Nothing is in progress.** No
-half-finished work, no blockers, no open questions.
+**Session state:** **Stage 7 is implemented and tested, and STOPPED for approval.** Code,
+tests, `.env.example`, `README.md` and this file are done. **Not committed, not pushed.**
+The Stage 7 sections of `docs/architecture-guide.html` are written too (§20.17–§20.22),
+after the separate "Improve.md" session paused its edits (Problems §19).
 
-> Stage 6 decisions were written into this file **before** implementation began, per §2.
-> If this session is lost mid-stage, read *Stage 6 decisions* first: it records the scope,
-> the shared tool contract and the sub-agent build method, all of which were settled
-> before a line of code existed.
+> Stage 7 decisions were written into this file **before** implementation began, per §2.
+> If this session is lost, read *Stage 7 decisions* (§7.A–§7.D) first: scope, the
+> user's rules-only selector choice, the measured design, and the one contract change.
 
 ### State at checkpoint
 
 | | |
 |---|---|
 | Last **approved** stage | **Stage 6 — MCP Tools** (approved 2026-09-11) |
-| `HEAD` | `93eeb22` = `origin/main` — verified |
-| Working tree | Clean, apart from git-ignored local files |
-| Tests | **775 passed** · ruff clean · mypy strict clean (52 source files) |
-| Next stage | **Stage 7 — Agent decision and tool selection** (not started) |
+| Current stage | **Stage 7 — implemented, awaiting approval** |
+| `HEAD` | `6c930f5` = `origin/main` (Stage 6 docs commit) — Stage 7 is uncommitted |
+| Working tree | Stage 7: 12 modified + 1 new file. **Not Stage 7's:** `docs/improve.md` (new) and the readability edits in `docs/architecture-guide.html`, both from the "Improve.md" session |
+| Tests | **891 passed** (775 → 891) · ruff clean · mypy strict clean (52 source files) |
+| Next | User approval of Stage 7; then the guide's Stage 7 sections once the other session is done |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -135,11 +140,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 6 |
-| **Stage name** | MCP Tools |
-| **Status** | ✅ **COMPLETE AND APPROVED BY THE USER — committed and pushed** |
-| **Last completed step** | Approved 2026-09-11; committed `93eeb22` and pushed to `origin/main`, push verified |
-| **Next step** | **Stage 7 — Agent decision and tool selection** (`prompt.md` §15). Not started; wait for the user to start it |
+| **Stage number** | 7 |
+| **Stage name** | Agent Decision and Tool Selection |
+| **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash recorded in *Git*, in the follow-up docs commit) |
+| **Last completed step** | 891 tests passing, ruff and mypy clean, real-model demo verified (all five §15 paths), handover and README updated |
+| **Next step** | STOP. Wait for approval. Guide Stage 7 sections done |
+
+| Stage | Name | Status |
+|---|---|---|
+| 6 | MCP Tools | ✅ Approved 2026-09-11, committed `93eeb22`, pushed |
 
 ### Previous stage
 
@@ -293,7 +302,174 @@ same question.
 
 ---
 
+## Stage 7 decisions — recorded BEFORE implementation began
+
+**Decided by the user, 2026-09-14**, in the kickoff instruction and one clarifying
+question. Written here before any Stage 7 code existed, per `prompt.md` §2.
+
+### 7.A — Kickoff constraints (the user's instruction, verbatim in substance)
+
+| | |
+|---|---|
+| **Scope** | `prompt.md` §15: choose between answer-from-knowledge, retrieve-more, call a tool, use both, refuse. Expose the decision, not chain-of-thought: retrieval performed, documents used, tool used, tool result, final answer |
+| **Build on Stage 6, don't rebuild** | `DecisionReason` is **extended**, not replaced. `tool_policy.py`'s identifier rule is **replaced by a real selector**, not patched. `AgentAnswer` gains decisions; its existing fields are not re-plumbed |
+| **Build method** | **Single cohesive decision logic. No parallel sub-agents** — the opposite of Stage 6 §6.E, for the reason §6.E itself gave: the decision logic is shared state |
+| **Paid calls** | A live LLM call still needs explicit confirmation given separately at the time. This instruction does not imply it |
+| **Tests** | One test per decision path, at minimum |
+| **Docs** | Handover updated before any commit, mid-stage decisions included. Tool-selection reasoning in `docs/architecture-guide.html` §20 (chosen / rejected / why) |
+| **Tooling (§18)** | Always `./.venv/Scripts/python.exe -m pytest` / `-m ruff check .` / `-m mypy`. Never bare `python` or `pip` |
+| **Stop** | After implementation and tests. No commit or push without explicit approval |
+
+### 7.B — The tool selector: RULES ONLY, spec-driven
+
+The question was put to the user explicitly with three options and answered.
+
+| | |
+|---|---|
+| **Chosen** | A deterministic `ToolSelector` protocol with **one** implementation, a rule selector that is driven by the registry's `ToolSpec`s rather than a hardcoded tool table. Free, offline, deterministic, fully testable |
+| **Rejected — LLM-only selector** | Every question becomes an extra model call, which is a **paid** call in real use, and routing becomes non-deterministic and untestable without a provider |
+| **Rejected — both (rules default + LLM selector behind a setting)** | Offered as the recommended option and declined. Recorded honestly: the LLM selector could only have been proven against the mock, i.e. proven to parse, not to choose well |
+| **Where the reasoning is recorded** | `docs/architecture-guide.html` §20 (Stage 7 records) |
+
+### 7.C — Design, decided mid-stage BEFORE implementation (2026-09-14)
+
+Written after reading the Stage 6 code and **measuring** the real embedding model (free,
+local), before any Stage 7 code.
+
+**Measured evidence** (real `all-MiniLM-L6-v2`, real corpus, floor 0.25):
+
+| Question | Passages | Top | Rank-1 document |
+|---|---|---|---|
+| What does limits.atm.velocity_window_minutes do? | 5 | 0.717 | transaction-limits-configuration ✅ |
+| Is CoreBankingAdapter healthy? | 5 | 0.641 | core-banking-integration ✅ |
+| What does LIM-4001 mean? | 5 | 0.573 | platform-component-overview |
+| What version is CardSecurityModule running? | 5 | 0.492 | error-code-reference ❌ |
+| What is the status of transaction TXN-20260911-004473? | 5 | 0.462 | error-code-reference |
+| Status of TXN-19990101-000001? | 5 | 0.365 | error-code-reference |
+| COR-5015 | 3 | 0.340 | error-code-reference |
+| What is the capital of France? | 0 | — (raw 0.086) | — |
+| *LIM-4001? → + "LimitService"* | 5 | 0.557 → **0.674** | error-code-reference |
+| *SWX-7001 → + "TransactionSwitch"* | 5 | 0.425 → **0.630** | error-code-reference |
+
+Identifier-heavy questions clear the floor but rank weakly; appending the component a
+tool names lifts the top score by ~0.1–0.2. A component **filter** cannot help: it only
+removes passages, so it can never raise a score above the unfiltered pass.
+
+**The decision paths** — `DecisionReason` extended from 3 to 6 values:
+
+| §15 path | `DecisionReason` | Retrieve | Tools |
+|---|---|---|---|
+| Answer from knowledge | `knowledge_required` *(kept)* | 1 pass | — |
+| Retrieve additional knowledge | `additional_knowledge_required` *(new)* | 2 passes | — |
+| Call an MCP tool | `live_status_only` *(new)* | — | ✅ |
+| Use both | `knowledge_and_live_status_required` *(kept)* | 1–2 passes | ✅ |
+| Refuse — nothing to search | `no_searchable_content` *(kept)* | — | — |
+| Refuse — evidence insufficient | `insufficient_evidence` *(new)* | ✅ | — |
+
+**The rules** (all deterministic, no model call):
+
+1. **Plan.** No alphanumeric character → `no_searchable_content`. Else the selector
+   proposes tool calls. No calls → knowledge. Calls **and** the question asks for an
+   *explanation* (why / how / mean / cause / troubleshoot / fix / default …) → both.
+   Calls and it asks only for a *reading* → `live_status_only`, no retrieval.
+2. **A tool that finds nothing pulls in documentation.** If a `live_status_only` plan
+   gets any `ok=False` result, the agent searches the documentation too (final route:
+   both). Guards the costly direction of a form-classifier mistake.
+3. **Retrieve more** when a search ran **and** its top score is below
+   `BKA_AGENT_CONFIDENT_SCORE` (default **0.50**, from the table above) **and** a
+   refinement exists: a component named by a selected tool call or by a successful tool
+   result, not already in the question. Second query = question + component(s); passes
+   merged by chunk id, best score kept, capped at `retrieval_top_k`. No refinement → no
+   second pass (an identical re-search is pointless).
+4. **Refuse** through Stage 4's single guard, unchanged: no passage and no tool result.
+   The final reason becomes `insufficient_evidence`.
+
+**The selector** (`app/agent/tool_policy.py`, rewritten, not patched): a `ToolSelector`
+protocol and `RuleToolSelector`, built from `registry.specs()`. Argument extractors are
+keyed by **parameter name** (`error_code`, `transaction_reference`, `key`, `component`),
+not by tool. A tool is callable when all its *required* parameters are extracted and at
+least one argument was found; tools that share an argument (the three component tools)
+additionally need a question-form cue. A registered tool with a parameter no extractor
+understands **raises at construction** — a tool the selector cannot reach must be loud.
+`select_tools()` is removed.
+
+**The record.** `AgentAnswer.decision` becomes the **final** route (what actually ran).
+New `AgentAnswer.decisions: tuple[DecisionStep, ...]` — the ordered choice points
+(`plan`, `consult_documentation`, `retrieve_more`, `evidence`), each with a fixed
+outcome and a fixed sentence. Rules' outcomes, not reasoning prose: no chain-of-thought.
+`RetrievalSummary.passes` (0, 1 or 2) added.
+
+### 7.D — Refinement for knowledge-only questions: pseudo-relevance feedback (measured)
+
+Rule 3 as first written could never fire on a knowledge-only plan: with no tool call,
+nothing names a component. Resolved **by measurement**, before code:
+
+| Weak question (real model) | Top | + component of best documented passage | Top after |
+|---|---|---|---|
+| Why did the withdrawal reverse? | 0.490 | TransactionSwitch | **0.640** |
+| PIN? | 0.421 | AuthorizationService | **0.601** |
+| What caused that failure? | 0.489 | TransactionSwitch | **0.651** |
+| COR-5015 | 0.340 | TransactionSwitch | **0.515** |
+| What does SWX-7004 mean? | 0.442 | TransactionSwitch | **0.603** |
+| What is the capital of France? / sourdough | — | *0 passages → nothing to expand* | refused ✅ |
+
+**Rule 3, final.** Refinement terms, in priority order: (a) components named by the
+selected tool calls or by **successful** tool results (max 2); else (b) the component of
+the **highest-ranked passage that cleared the floor** whose component is a documented
+component (`Platform` is skipped). If that component is already named in the question
+there is nothing to add and no second pass runs. Every term must be a member of the
+documented component vocabulary, so tool-payload text can never reach a search query or
+the `rag.retrieved` log line. Exactly **one** second pass, never a loop.
+
+Off-topic questions are protected by construction: (b) only reads passages that already
+cleared the calibrated 0.25 floor, and an off-topic question has none.
+
+**Test impact, recorded before it happens.** The hashing embedder the offline suite uses
+tops out at 0.31–0.46, below 0.50, so two Stage 5 wiring tests (`test_the_question_is_
+passed_to_the_retriever_verbatim`, `test_one_question_triggers_exactly_one_retrieval…`)
+would see a second pass. Their guarantee is really "a *confident* first pass is one
+retrieval"; they are given `agent_confident_score=0.0` and say so. The second-pass
+behaviour itself is tested in the new `tests/test_agent_decisions.py`.
+
+**One contract changes, deliberately.** Stage 6 raised `RuntimeError` when an agent
+without a registry was handed a tool question. With a spec-driven selector an agent with
+no registry has **no tools to select**, so that question is answered from documentation
+exactly as in Stage 5. A selector passed *without* a registry still raises, at
+construction. The Stage 6 test is rewritten to assert the new contract — a design change,
+not a test edited to pass.
+
+---
+
 ## Current Work
+
+### Implemented in Stage 7 (awaiting approval — NOT committed)
+
+Built by the main session alone, **no sub-agents**, per the user's instruction (§7.A).
+Tests were written first and run red (collection failed on the missing
+`RuleToolSelector`) before any implementation.
+
+| File | What changed |
+|---|---|
+| `app/agent/tool_policy.py` — **rewritten** | `ToolSelector` protocol + `RuleToolSelector`, built from `registry.specs()`. Argument extractors keyed by **parameter name**. Refuses at construction a spec with no parameters, a parameter no extractor understands, or a component-only tool with no cue. Identifiers fan out; a component takes the first named. Registry order, capped at 4. `select_tools()` **removed** |
+| `app/agent/policy.py` — **rewritten** | `decide(question, selector)` = the plan. `asks_for_explanation`, `retrieval_is_weak`, `refinement_terms` (vocabulary-vetted), `record_step` (fixed sentence per outcome, `STEP_EXPLANATIONS`), `conclude` (route actually taken). `decide_retrieval` alias kept |
+| `app/agent/models.py` | `DecisionReason` **extended** 3 → 6. New `DecisionStep` with `DecisionStepName` / `DecisionOutcome` literals. `RetrievalSummary.passes`. `AgentAnswer.decisions` + `retrieved_more`. `decision` now records the route *taken*; the plan is `decisions[0]` |
+| `app/agent/agent.py` | Plan → tools → consult docs if a tool-only reading missed → search → at most **one** refined second search, merged by chunk id at best score, capped at `retrieval_top_k` → answer → conclude. `selector=` appended to the constructor; a selector without a registry raises `ValueError`. `agent.answered` log gains `plan`, `route`, `retrieval_passes` — step names and outcomes only |
+| `app/core/config.py` · `.env.example` | `BKA_AGENT_CONFIDENT_SCORE`, default **0.50**, measured (§7.C) |
+| `app/llm/mock.py` | Cites `[T1]` tool results when the prompt has any, so the tool-only route is not answered with a refusal-shaped sentence. No-tool behaviour byte-identical |
+| `app/agent/__main__.py` | Prints `[route: …]` and `N search(es)`; two retrieve-more demo questions; the stale "7 billed calls" help text corrected |
+| `app/agent/__init__.py` | Exports `AgentDecision`, `DecisionStep`, `RuleToolSelector`, `ToolSelector`, `decide` |
+
+### Stage 7 — what remains deliberately unfinished
+
+1. ~~Architecture guide Stage 7 sections~~ — **done** (§20.17–§20.22 and the section
+   updates), written in plain English with `.note` callouts per `docs/improve.md`.
+2. **No fleet-wide tool call.** A tool with only optional parameters still needs one
+   extracted argument; "is anything down?" is answered from documentation.
+3. **The explanation cue is an English word list.** Misreading an explanation as a reading
+   is guarded (a missed reading pulls in documentation); the other direction costs one
+   unnecessary search.
+4. **The 0.50 threshold is calibrated on ~20 questions by the corpus author.** Stage 11.
+5. **Answer quality is still unmeasured** — no live model call has been made. Stage 11.
 
 ### Implemented in Stage 6 (approved, committed `93eeb22`, pushed)
 
@@ -381,8 +557,8 @@ FastAPI at import and takes the whole suite with it.
 
 ### Currently being worked on
 
-**Nothing.** Stage 6 is complete, approved, committed (`93eeb22`) and pushed. Stage 7 has
-not been started.
+**Stage 7, stopped for approval.** Implementation, tests and all documentation are
+complete. Nothing is committed.
 
 ### What remains deliberately unfinished in Stage 6
 
@@ -809,6 +985,34 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
+### Added in Stage 7 (1 file, NOT committed)
+
+| File | Purpose |
+|---|---|
+| `tests/test_agent_decisions.py` (104) | One class per §15 path, the plan, the refinement rules, the selector, the decision record, construction, and the rules-only boundary |
+
+### Modified in Stage 7 (12 files, NOT committed)
+
+| File | Change |
+|---|---|
+| `app/agent/tool_policy.py` | Rewritten: `ToolSelector` + `RuleToolSelector`; `select_tools` removed |
+| `app/agent/policy.py` | Rewritten: plan, refinement, step records, conclusion |
+| `app/agent/models.py` | `DecisionReason` 3 → 6; `DecisionStep`; `passes`; `decisions` |
+| `app/agent/agent.py` | Orchestration of the five paths; `selector=`; merge |
+| `app/agent/__main__.py` | Route display; retrieve-more demo questions |
+| `app/agent/__init__.py` | Exports |
+| `app/core/config.py` | `agent_confident_score` |
+| `app/llm/mock.py` | `[T1]` citations for tool results |
+| `.env.example` | `BKA_AGENT_CONFIDENT_SCORE` |
+| `tests/test_agent.py` | Boundary guards moved forward to Stage 7 (six values; tool-only branch now exists); two wiring tests given `agent_confident_score=0.0` (§7.D) |
+| `tests/test_mcp_agent.py` | Routing tests reach the same assertions through `RuleToolSelector`; the no-registry test rewritten for the §7.C contract change, plus a new selector-without-registry test |
+| `README.md` · `docs/HANDOVER.md` | Documentation |
+
+> **In the working tree but NOT part of Stage 7:** `docs/improve.md` (untracked) and the
+> readability rewording in `docs/architecture-guide.html` — both from the separate
+> "Improve.md" session. Whether they go into the Stage 7 commit, a separate commit, or
+> neither is the user's decision.
+
 ### Added in Stage 6 (20 files, committed in `93eeb22`)
 
 | File | Purpose | Written by |
@@ -995,6 +1199,73 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 ---
 
 ## Testing
+
+### Result (Stage 7)
+
+**891 passed, 0 failed** (775 from Stages 1–6, **116 new**: 104 in the new file, 11 real-model
+decision-path tests in `test_agent_integration.py`, and one new test in
+`test_mcp_agent.py`; four existing tests rewritten for recorded design changes). Runtime ~67 s. `ruff check .` → *All checks passed!* · `mypy` (strict) →
+*Success: no issues found in 52 source files*.
+
+> ⚠️ Measured inside the Claude Code session, which is **elevated** (Problems §15).
+> Please confirm 891 in your own shell before approving.
+
+| File | Tests | Covers |
+|---|---|---|
+| `tests/test_agent_integration.py` | 38 (+11) | **The five paths with the real model** — seven measured questions pinned to their route and pass count; a refined search landing above the 0.50 bar it missed; every off-topic control refused after one search with `no_refinement_available` |
+| `tests/test_agent_decisions.py` | 104 | **Each §15 path** — knowledge (a confident search is one pass), retrieve-more (weak → refined query, merge dedupes at best score, cap, never a third search, no refinement when the question already names it), tool-only (no search at all, `[T1]` cited, a miss pulls in documentation), both (separate fences, a weak search refined with the tool's component), refuse (after searching and without, one sentence, a tool reading prevents it). **The plan** — seven routed questions, explanation vs reading cues. **Refinement** — tool terms preferred, failed readings ignored, only documented components allowed (a hostile payload cannot reach the query), `Platform` skipped. **The selector** — protocol, spec-driven arguments, registered tools only, loud construction failures, cues, fan-out, cap, order. **The record** — plan first/evidence last, same route same words, no argument value in any step, and the `agent.answered` log line carrying the route but no identifier and no explanation sentence. **Construction** and the **rules-only boundary** |
+| `tests/test_agent.py` | 78 | Stage 5 suite. Changed: literal guard → six values; tool-only guard inverted; two wiring tests pinned to a confident first pass |
+| `tests/test_mcp_agent.py` | 52 | Stage 6 suite through `RuleToolSelector`; no-registry contract rewritten; selector-without-registry added |
+
+### Commands used (Stage 7)
+
+```bash
+./.venv/Scripts/python.exe -m pytest                                  # 891 passed, ~67 s
+./.venv/Scripts/python.exe -m pytest tests/test_agent_decisions.py    # 104 passed
+./.venv/Scripts/python.exe -m pytest tests/test_agent_integration.py  # 38 passed (real model)
+./.venv/Scripts/python.exe -m ruff check .                            # All checks passed!
+./.venv/Scripts/python.exe -m mypy                                    # 52 source files
+./.venv/Scripts/python.exe -m app.agent demo                          # free: mock + local model
+```
+
+### Verified by hand (2026-09-14) — real embedding model, mock provider, FREE
+
+```
+§15 path          question                                         route
+knowledge         What component handles card authentication?      plan=knowledge_required → retrieve_more=not_needed
+                                                                   1 search · top 0.804
+retrieve more     Why did the withdrawal reverse?                  plan=knowledge_required → retrieve_more=performed
+                                                                   decision additional_knowledge_required · 2 searches · top 0.640
+tool only         Is CoreBankingAdapter healthy?                   plan=live_status_only → consult_documentation=not_needed
+                                                                   retrieval not performed · [T1] status · [T2] health
+tool miss → both  Status of TXN-19990101-000001?                   plan=live_status_only → consult_documentation=performed
+                                                                   → retrieve_more=performed · 2 searches · top 0.572
+both              What does error code LIM-4001 mean?              plan=knowledge_and_live_status_required · top 0.669
+both + refine     What does SWX-7004 mean?                         retrieve_more=performed · 2 searches · top 0.603
+refuse            What is the capital of France?                   plan=knowledge_required → no_refinement_available
+                                                                   decision insufficient_evidence · 0 model calls
+refuse            !!! ???                                          plan=no_searchable_content · 0 searches · 0 calls
+```
+
+**No live API call was made.** `BKA_LLM_PROVIDER` unset → mock; no `.env` file exists.
+
+### Stage 7 required coverage (`prompt.md` §15)
+
+| Requirement | Status |
+|---|---|
+| Answer from knowledge | ✅ `knowledge_required` |
+| Retrieve additional knowledge | ✅ `additional_knowledge_required` — one refined search, measured threshold |
+| Call an MCP tool | ✅ `live_status_only` — no search at all |
+| Use both | ✅ `knowledge_and_live_status_required` |
+| Refuse when evidence is insufficient | ✅ `insufficient_evidence` / `no_searchable_content`, through Stage 4's single guard |
+| Clear tool-selection behaviour | ✅ `RuleToolSelector`, spec-driven, loud at construction |
+| No hidden chain-of-thought | ✅ `DecisionStep` = rule outcome + fixed sentence; asserted identical for identical routes |
+| Expose retrieval performed · documents · tool · tool result · answer | ✅ `retrieval` · `retrieval.documents` + `sources` · `tools` · `tool_results` · `text`, plus `decision` and `decisions` — asserted together in one test |
+| Tests for each decision path | ✅ One class per path in `test_agent_decisions.py` |
+| Handover updated, mid-stage decisions included | ✅ §7.A–§7.D written before code |
+| Guide tool-selection reasoning (chosen / rejected / why) | ✅ Guide §20.17–§20.22 (six records), plus §1, §4, §5, §7, §14, §19, header and footer — written after the other session paused (Problems §19) |
+| No sub-agents | ✅ Main session only |
+| No paid call | ✅ None |
 
 ### Result (Stage 6)
 
@@ -1378,6 +1649,42 @@ Off-topic      all 5 return NO MATCH
 ---
 
 ## Problems and Decisions
+
+### 19. A second Claude Code session was editing the architecture guide — RESOLVED
+
+**What was found (2026-09-14, mid-Stage 7).** `git status` showed
+`docs/architecture-guide.html` modified before this session had touched it, and a new
+untracked `docs/improve.md`. `improve.md` is a user-written brief asking for a
+plain-English readability pass over the guide (no redesign, reuse `.note`, and a
+permanent rule that new sections explain their terms). `ListAgents` showed a peer
+session named **"Improve.md" — running**; the guide's mtime was seconds old and its diff
+grew from 126 to 147 lines between two checks.
+
+**What was done.** Nothing was written to the guide while the other session was active.
+The user said to leave the guide until the end. The "Improve.md" session then messaged
+that it had **paused** and would not touch the file until Stage 7's sections were in;
+the file was re-read and the Stage 7 sections were added by targeted edits only, leaving
+its wording edits (§1–§4) intact. **RESOLVED.** Still stale and not Stage 7's: §9 says
+"six-type error taxonomy" (it is seven since §20.5.9) — left for the readability pass.
+
+**For the commit.** The guide's readability edits and `improve.md` are not Stage 7 work.
+Staging them is the user's call.
+
+### 18. Bare `python` / `pip` resolve to system Python — ALWAYS use the venv
+
+Recorded at the user's instruction, 2026-09-14. System Python lacks the project's pinned
+dependencies: `structlog` fails first, and `sentence-transformers`, `torch`, `mcp`,
+`anthropic` and `openai` are right behind it. It happened at the start of this session —
+a bare `python -m pytest` failed at collection with `ModuleNotFoundError: structlog`.
+
+```bash
+./.venv/Scripts/python.exe -m pytest
+./.venv/Scripts/python.exe -m ruff check .
+./.venv/Scripts/python.exe -m mypy
+```
+
+Never bare `python` or `pip` (and see §7: `pip` is not in the uv venv — use
+`uv pip install --python .venv/Scripts/python.exe …`).
 
 ### 16. The provider decision changed mid-stage, and the venv had to be reverted
 
@@ -1769,14 +2076,23 @@ edit.
 
 ## Next Action
 
-**Stage 6 is complete and approved. It is committed and pushed.**
-`origin/main == HEAD == 93eeb22`, working tree clean, 775 tests passing, ruff clean,
+**Stage 7 is implemented and tested, and STOPPED for the user's approval.** Not
+committed, not pushed. `HEAD == origin/main == 6c930f5`. 891 tests passing, ruff clean,
 mypy strict clean over 52 source files.
 
-**The next action is to begin Stage 7 — Agent decision and tool selection — when the
-user asks for it.** Do not start it unprompted. Stage 6's approval does not carry over.
+**The next action:**
 
-### Stage 7 scope, for when it is started (`prompt.md` §15)
+1. **Wait for the user's explicit approval.** Do not commit or push before it.
+2. ~~Guide Stage 7 sections~~ — done. The "Improve.md" session can resume its
+   readability pass (it was waiting for this).
+3. On approval: re-run the three commands via `.venv` (Problems §18), `git add -An` to
+   list the exact file set, ask the user whether the guide readability edits and
+   `docs/improve.md` belong in this commit, then commit, push, verify, record the hash.
+
+> ⚠️ A live LLM call is still a paid call and still needs explicit confirmation at the
+> time. Stage 7 added none: every decision is a deterministic rule.
+
+### Stage 7 scope, as it was written before the stage started (`prompt.md` §15)
 
 Agent decision and tool selection: choosing between answering from knowledge, retrieving
 more, calling a tool, using both, or refusing. Three things Stage 6 leaves ready:

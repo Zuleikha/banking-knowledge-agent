@@ -1,10 +1,12 @@
 """Data contracts for the knowledge agent.
 
-Three types, describing the three things an agent run produces::
+The records one agent run produces::
 
-    question  --policy-->     RetrievalDecision   was retrieval required, and why
-    decision  --retriever-->  RetrievalSummary    what the search actually found
-    both      --service-->    AgentAnswer         the answer, plus that whole record
+    question  --policy-->     AgentDecision        the route taken, and why
+              --policy-->     DecisionStep x n     each choice point and its outcome
+    decision  --retriever-->  RetrievalSummary     what the search(es) actually found
+    decision  --registry-->   ToolCallSummary x n  what each tool call did
+    all       --service-->    AgentAnswer          the answer, plus that whole record
 
 ``AgentAnswer`` wraps rather than replaces
 :class:`~app.llm.models.GroundedAnswer`. The LLM layer's contract stays the LLM
@@ -18,6 +20,14 @@ happened: retrieval performed, documents used, tools called, final answer. If
 that information only exists in ``logs/app.log``, Stage 9 has to scrape its own
 logs to render a page. Returning it means the agent's decisions are assertable in
 a test and displayable in a UI without either party parsing prose.
+
+**Stage 7: decisions, not chain-of-thought.** ``prompt.md`` §15 forbids exposing
+hidden reasoning and asks for useful execution information instead. A
+:class:`DecisionStep` is the second kind of thing: a named choice point, the
+outcome a deterministic rule produced there, and a *fixed* sentence for that
+outcome. Two questions that take the same route are recorded in the same words
+— there is no per-question reasoning text anywhere in the record, because none is
+ever produced.
 """
 
 from __future__ import annotations
@@ -32,37 +42,82 @@ from app.rag.models import RetrievalResult
 
 DecisionReason = Literal[
     "knowledge_required",
+    "additional_knowledge_required",
+    "live_status_only",
     "knowledge_and_live_status_required",
+    "insufficient_evidence",
     "no_searchable_content",
 ]
-"""Why the agent searched, called tools, or did neither.
+"""The route the agent took for one question.
 
-Stage 5 had two values. Stage 6 **extends this literal** — as Stage 5's own
-docstring said it would — rather than introducing a parallel tool-decision type.
-One question produces one routing decision; two decision objects would be two
-things that must agree about the same question, and the day they disagreed
-neither would be wrong on its own terms.
+Stage 5 had two values and Stage 6 added a third. Stage 7 **extends the same
+literal** to cover every path ``prompt.md`` §15 names, rather than introducing a
+parallel type — one question still produces one routing decision:
 
-The new value is ``knowledge_and_live_status_required``: the question names
-something a tool can look up, so the agent does both.
+======================================  =====================================
+§15 path                                value
+======================================  =====================================
+Answer from knowledge                   ``knowledge_required``
+Retrieve additional knowledge           ``additional_knowledge_required``
+Call an MCP tool                        ``live_status_only``
+Use both knowledge and tools            ``knowledge_and_live_status_required``
+Refuse when evidence is insufficient    ``insufficient_evidence``
+Refuse: nothing to search for           ``no_searchable_content``
+======================================  =====================================
 
-**There is deliberately no tool-only value**, and the omission is the same kind
-of honesty as Stage 5's refusal to invent a topic classifier. A live reading is
-close to useless without the documentation that gives it meaning: knowing that
-``limits.atm.per_transaction_amount`` is effectively ``250.00`` only becomes an
-answer alongside the documented default of ``500.00`` and the explanation of what
-the key controls. Adding a branch that skips retrieval would save one cheap
-in-process search and cost the model the vocabulary it needs to interpret what
-the tool said. Stage 7 introduces genuine either/or selection, at which point
-that branch will be a real choice rather than a worse version of this one.
+**The tool-only value is new, and it is now a real choice.** Stage 6 refused to
+add one, arguing that a live reading needs documentation to be interpretable.
+That argument holds for a question asking *why* or *what it means*; it does not
+hold for "is CoreBankingAdapter healthy?", whose complete answer is the reading.
+Stage 7 can tell those two question forms apart, and it guards the costly
+direction of getting it wrong: a tool-only plan whose reading finds nothing
+searches the documentation too, and is recorded as using both.
+"""
+
+DecisionStepName = Literal[
+    "plan",
+    "consult_documentation",
+    "retrieve_more",
+    "evidence",
+]
+"""The choice points an agent run can pass through, in the order they occur.
+
+``plan`` and ``evidence`` are always recorded. ``consult_documentation`` is
+recorded only for a tool-only plan, and ``retrieve_more`` only when a search ran.
+"""
+
+DecisionOutcome = Literal[
+    "knowledge_required",
+    "additional_knowledge_required",
+    "live_status_only",
+    "knowledge_and_live_status_required",
+    "insufficient_evidence",
+    "no_searchable_content",
+    "performed",
+    "not_needed",
+    "no_refinement_available",
+    "sufficient",
+    "insufficient",
+]
+"""What a rule decided at one choice point.
+
+A ``plan`` step's outcome is the planned :data:`DecisionReason`; the other steps
+use the plain outcomes. One closed literal rather than one per step, so a step
+is a single flat record a UI can render in a loop.
 """
 
 
 class AgentDecision(BaseModel):
-    """The agent's routing decision for one question: search, tools, or neither.
+    """The route for one question: search, tools, or neither.
 
     Recorded even when the answer is a refusal, because *why* the agent did not
     search is a different diagnosis from *what* the search failed to find.
+
+    **From Stage 7, ``AgentAnswer.decision`` is the route actually taken** — whether
+    a search really ran, which tool calls were really made. The *planned* route is
+    the first :class:`DecisionStep`, and the two differ exactly when the agent
+    changed course: a tool-only plan that pulled in documentation, a knowledge
+    plan that needed a second search, a search that found nothing.
 
     Renamed from ``RetrievalDecision`` in Stage 6, when it stopped being only
     about retrieval. :data:`RetrievalDecision` remains as an alias so that
@@ -97,6 +152,25 @@ that would be a cost paid by readers of Stage 5's tests for no benefit to them.
 """
 
 
+class DecisionStep(BaseModel):
+    """One choice point in an agent run, and what the rule there decided.
+
+    The record ``prompt.md`` §15 asks for in place of chain-of-thought. Every
+    field is produced by a deterministic rule in :mod:`app.agent.policy`: the step
+    name, a closed outcome, and the fixed sentence for that outcome (the ``plan``
+    step carries the plan's own explanation). Nothing here is written per
+    question, and no step repeats an argument value.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    step: DecisionStepName = Field(description="Which choice point this was.")
+    outcome: DecisionOutcome = Field(description="What the rule decided there.")
+    explanation: str = Field(
+        min_length=1, description="The fixed sentence for this outcome."
+    )
+
+
 class RetrievalSummary(BaseModel):
     """What the retrieval step considered and returned.
 
@@ -109,6 +183,11 @@ class RetrievalSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     performed: bool = Field(description="Whether a search was actually run.")
+    passes: int = Field(
+        default=0,
+        ge=0,
+        description="Searches run: 0, 1, or 2 when a weak first pass was refined.",
+    )
     candidates_considered: int = Field(
         default=0, ge=0, description="Passages the store scored before the floor."
     )
@@ -127,13 +206,14 @@ class RetrievalSummary(BaseModel):
     )
 
     @classmethod
-    def from_result(cls, result: RetrievalResult) -> RetrievalSummary:
-        """Summarise a completed retrieval."""
+    def from_result(cls, result: RetrievalResult, passes: int = 1) -> RetrievalSummary:
+        """Summarise a completed retrieval, which may merge two passes."""
         seen: dict[str, None] = {}
         for scored in result.chunks:
             seen.setdefault(scored.chunk.document_id, None)
         return cls(
             performed=True,
+            passes=passes,
             candidates_considered=result.candidates_considered,
             chunks_returned=len(result.chunks),
             top_score=result.top_score,
@@ -206,13 +286,15 @@ class AgentAnswer(BaseModel):
 
     * a **grounded answer** — :attr:`is_grounded`; a model was consulted and at
       least one retrieved passage was in front of it;
+    * a **live reading** — :attr:`used_live_information` with
+      ``retrieval.performed`` false; the tools answered and nothing was searched;
     * a **refusal after searching** — :attr:`refused` with
       ``retrieval.performed`` true; the corpus was searched and had nothing
       close enough;
     * a **refusal without searching** — :attr:`refused` with
       ``retrieval.performed`` false; the question had nothing to search for.
 
-    All three are correct outcomes. Only the first is an answer.
+    All four are correct outcomes. :attr:`decisions` records how each was reached.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -222,7 +304,11 @@ class AgentAnswer(BaseModel):
     sources: tuple[str, ...] = Field(
         default=(), description="Citations for the passages placed in the prompt."
     )
-    decision: AgentDecision = Field(description="The routing decision taken.")
+    decision: AgentDecision = Field(description="The route actually taken.")
+    decisions: tuple[DecisionStep, ...] = Field(
+        default=(),
+        description="Each choice point, in order: the plan first, evidence last.",
+    )
     retrieval: RetrievalSummary = Field(description="What retrieval considered.")
     tools: tuple[ToolCallSummary, ...] = Field(
         default=(),
@@ -274,3 +360,8 @@ class AgentAnswer(BaseModel):
         exposed as one boolean so a Stage 9 interface does not have to infer it.
         """
         return bool(self.tool_results)
+
+    @property
+    def retrieved_more(self) -> bool:
+        """Whether a weak first search was refined and run a second time."""
+        return self.retrieval.passes > 1

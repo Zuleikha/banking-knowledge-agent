@@ -18,7 +18,7 @@ import pytest
 from app.agent.agent import KnowledgeAgent
 from app.agent.models import AgentDecision, RetrievalDecision, ToolCallSummary
 from app.agent.policy import decide
-from app.agent.tool_policy import COMPONENT_NAMES, MAX_TOOL_CALLS, select_tools
+from app.agent.tool_policy import COMPONENT_NAMES, MAX_TOOL_CALLS, RuleToolSelector
 from app.core.config import Settings
 from app.llm.mock import MockLLMProvider
 from app.llm.prompts import CONTEXT_OPEN, TOOL_CONTEXT_OPEN
@@ -29,6 +29,16 @@ from app.mcp.registry import ToolRegistry
 from app.rag.retriever import Retriever
 
 # --- Routing ---------------------------------------------------------------
+#
+# Stage 6 routed with a module function, select_tools(). Stage 7 replaced it with
+# RuleToolSelector, built from the registry's specs (docs/HANDOVER.md 7.C). These
+# tests kept their Stage 6 assertions and now reach them through the selector.
+
+
+@pytest.fixture
+def selector(tool_registry: ToolRegistry) -> RuleToolSelector:
+    """The Stage 7 selector over all six tools."""
+    return RuleToolSelector(tool_registry.specs())
 
 
 class TestTheRoutingDecision:
@@ -49,74 +59,96 @@ class TestTheRoutingDecision:
         ],
     )
     def test_an_identifier_selects_the_tool_that_can_act_on_it(
-        self, question: str, tool: str
+        self, selector: RuleToolSelector, question: str, tool: str
     ):
-        assert tool in {invocation.tool for invocation in select_tools(question)}
+        assert tool in {invocation.tool for invocation in selector.select(question)}
 
-    def test_a_plain_documentation_question_selects_no_tool(self):
-        assert select_tools("What component handles card authentication?") == ()
+    def test_a_plain_documentation_question_selects_no_tool(
+        self, selector: RuleToolSelector
+    ):
+        assert selector.select("What component handles card authentication?") == ()
 
-    def test_a_question_with_no_identifier_selects_no_tool(self):
-        assert select_tools("Why would an ATM transaction fail?") == ()
+    def test_a_question_with_no_identifier_selects_no_tool(
+        self, selector: RuleToolSelector
+    ):
+        assert selector.select("Why would an ATM transaction fail?") == ()
 
-    def test_the_decision_records_that_tools_were_chosen(self):
-        decision = decide("What does LIM-4001 mean?")
+    def test_the_decision_records_that_tools_were_chosen(
+        self, selector: RuleToolSelector
+    ):
+        decision = decide("What does LIM-4001 mean?", selector)
         assert decision.reason == "knowledge_and_live_status_required"
         assert decision.uses_tools
 
-    def test_a_tool_question_still_retrieves(self):
-        """Live readings need documentation to be interpretable."""
-        assert decide("What does LIM-4001 mean?").retrieve is True
+    def test_explaining_a_tool_reading_still_retrieves(
+        self, selector: RuleToolSelector
+    ):
+        """An explanation needs documentation to interpret the reading."""
+        assert decide("What does LIM-4001 mean?", selector).retrieve is True
 
-    def test_a_documentation_question_keeps_the_stage_5_reason(self):
-        decision = decide("What component handles card authentication?")
+    def test_a_documentation_question_keeps_the_stage_5_reason(
+        self, selector: RuleToolSelector
+    ):
+        decision = decide("What component handles card authentication?", selector)
         assert decision.reason == "knowledge_required"
         assert decision.tools == ()
 
-    def test_an_unsearchable_question_calls_nothing(self):
-        decision = decide("!!! ???")
+    def test_an_unsearchable_question_calls_nothing(
+        self, selector: RuleToolSelector
+    ):
+        decision = decide("!!! ???", selector)
         assert decision.reason == "no_searchable_content"
         assert decision.retrieve is False
         assert decision.tools == ()
 
-    def test_a_blank_question_raises(self):
+    def test_a_blank_question_raises(self, selector: RuleToolSelector):
         with pytest.raises(ValueError):
-            decide("   ")
+            decide("   ", selector)
 
-    def test_arguments_are_extracted_from_the_question(self):
-        invocation = select_tools("Why did TXN-20260911-004473 fail?")[0]
+    def test_arguments_are_extracted_from_the_question(
+        self, selector: RuleToolSelector
+    ):
+        invocation = selector.select("Why did TXN-20260911-004473 fail?")[0]
         assert invocation.arguments == {
             "transaction_reference": "TXN-20260911-004473"
         }
 
-    def test_a_lowercase_reference_is_normalised(self):
-        invocation = select_tools("check txn-20260911-004473 please")[0]
+    def test_a_lowercase_reference_is_normalised(self, selector: RuleToolSelector):
+        invocation = selector.select("check txn-20260911-004473 please")[0]
         assert invocation.arguments["transaction_reference"] == (
             "TXN-20260911-004473"
         )
 
-    def test_every_invocation_carries_a_displayable_reason(self):
-        for invocation in select_tools("Is CoreBankingAdapter healthy?"):
+    def test_every_invocation_carries_a_displayable_reason(
+        self, selector: RuleToolSelector
+    ):
+        for invocation in selector.select("Is CoreBankingAdapter healthy?"):
             assert invocation.reason.strip()
 
-    def test_the_same_call_is_not_queued_twice(self):
-        invocations = select_tools("LIM-4001 and LIM-4001 again")
+    def test_the_same_call_is_not_queued_twice(self, selector: RuleToolSelector):
+        invocations = selector.select("LIM-4001 and LIM-4001 again")
         assert len(invocations) == 1
 
-    def test_the_number_of_calls_is_capped(self):
+    def test_the_number_of_calls_is_capped(self, selector: RuleToolSelector):
         question = " ".join(f"LIM-400{n}" for n in range(1, 9))
-        assert len(select_tools(question)) <= MAX_TOOL_CALLS
+        assert len(selector.select(question)) <= MAX_TOOL_CALLS
 
-    def test_selection_is_deterministic(self):
+    def test_selection_is_deterministic(self, selector: RuleToolSelector):
         question = "Is CoreBankingAdapter healthy, and what does COR-5015 mean?"
-        assert select_tools(question) == select_tools(question)
+        assert selector.select(question) == selector.select(question)
 
-    def test_a_config_key_without_a_component_is_left_to_documentation(self):
+    def test_a_config_key_without_a_component_is_left_to_documentation(
+        self, selector: RuleToolSelector
+    ):
         """The tool needs both arguments; one alone is a documentation question."""
-        assert select_tools("What does limits.atm.velocity_window_minutes do?") == ()
+        assert (
+            selector.select("What does limits.atm.velocity_window_minutes do?") == ()
+        )
 
-    def test_ordinary_prose_does_not_look_like_an_error_code(self):
-        assert select_tools("The ATM ate my card and I am cross") == ()
+    def test_ordinary_prose_does_not_look_like_an_error_code(
+        self, selector: RuleToolSelector
+    ):
+        assert selector.select("The ATM ate my card and I am cross") == ()
 
     def test_the_policy_component_list_matches_what_the_tools_accept(
         self, tool_registry: ToolRegistry
@@ -322,12 +354,31 @@ class TestFailuresPropagate:
         with pytest.raises(ToolError):
             agent.ask("What does error code LIM-4001 mean?")
 
-    def test_a_missing_registry_is_a_loud_composition_error(
+    def test_an_agent_without_a_registry_has_no_tools_to_select(
         self, agent: KnowledgeAgent
     ):
-        """The policy asked for a tool and the agent has none: never silent."""
-        with pytest.raises(RuntimeError, match="tool registry"):
-            agent.ask("What does error code LIM-4001 mean?")
+        """Stage 7 contract (docs/HANDOVER.md 7.C).
+
+        Stage 6 raised here, because a registry-blind policy could select a tool
+        the agent could not call. The Stage 7 selector is built *from* the
+        registry, so an agent without one has nothing to select and answers from
+        documentation, exactly as the Stage 5 composition always did.
+        """
+        answer = agent.ask("What does error code LIM-4001 mean?")
+        assert answer.tool_results == ()
+
+    def test_a_selector_without_a_registry_is_a_loud_composition_error(
+        self, retriever: Retriever, llm_service: LLMService,
+        llm_settings: Settings, tool_registry: ToolRegistry,
+    ):
+        """Selecting tools the agent cannot call is still never silent."""
+        with pytest.raises(ValueError, match="registry"):
+            KnowledgeAgent(
+                retriever,
+                llm_service,
+                llm_settings,
+                selector=RuleToolSelector(tool_registry.specs()),
+            )
 
 
 class TestBackwardsCompatibility:
@@ -348,8 +399,8 @@ class TestBackwardsCompatibility:
 
 
 class TestTheStage6Boundary:
-    def test_the_agent_does_not_let_a_model_choose_tools_yet(self):
-        """Tool selection is deterministic until Stage 7 decides otherwise."""
+    def test_the_agent_does_not_let_a_model_choose_tools(self):
+        """Stage 7 decided: rules only, no model selector (docs/HANDOVER.md 7.B)."""
         import ast
         from pathlib import Path
 

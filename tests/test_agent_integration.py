@@ -22,6 +22,7 @@ from app.core.config import Settings
 from app.llm.mock import MockLLMProvider
 from app.llm.prompts import INSUFFICIENT_EVIDENCE
 from app.llm.service import LLMService
+from app.mcp.factory import build_tool_registry
 from app.rag.pipeline import build_index
 
 pytestmark = pytest.mark.integration
@@ -153,6 +154,71 @@ class TestRefusalWithRealSemantics:
         assert answer.decision.retrieve is True
         assert answer.retrieval.performed is True
         assert answer.retrieval.candidates_considered > 0
+
+
+@pytest.fixture
+def real_tool_agent(real_retriever, real_settings_module: Settings) -> KnowledgeAgent:
+    """The real index plus all six tools, with a fresh mock provider per test."""
+    return KnowledgeAgent(
+        real_retriever,
+        LLMService(MockLLMProvider(), real_settings_module),
+        real_settings_module,
+        tools=build_tool_registry(),
+    )
+
+
+DECISION_EXPECTATIONS = (
+    ("What component handles card authentication?", "knowledge_required", 1),
+    ("Why did the withdrawal reverse?", "additional_knowledge_required", 2),
+    ("Is CoreBankingAdapter healthy?", "live_status_only", 0),
+    ("What does error code LIM-4001 mean?", "knowledge_and_live_status_required", 1),
+    ("What does SWX-7004 mean?", "knowledge_and_live_status_required", 2),
+    (
+        "What is the status of transaction TXN-19990101-000001?",
+        "knowledge_and_live_status_required",
+        2,
+    ),
+    ("What is the capital of France?", "insufficient_evidence", 1),
+)
+"""Each §15 path with the real model, as measured on 2026-09-14.
+
+``docs/HANDOVER.md`` §7.C/§7.D records the scores behind these: the withdrawal
+and SWX-7004 questions top out at 0.490 and 0.442 before refinement, below the
+0.50 threshold, and rise to 0.640 and 0.603 after it. Pinning them means a
+corpus, model or threshold change that silently moves a question onto a
+different path fails here instead of changing the demo unnoticed.
+"""
+
+
+class TestDecisionPathsWithRealSemantics:
+    @pytest.mark.parametrize(("question", "reason", "passes"), DECISION_EXPECTATIONS)
+    def test_each_path_is_taken_with_the_real_model(
+        self, real_tool_agent: KnowledgeAgent, question, reason, passes
+    ):
+        answer = real_tool_agent.ask(question)
+        assert answer.decision.reason == reason
+        assert answer.retrieval.passes == passes
+
+    def test_a_refined_search_clears_the_confidence_threshold(
+        self, real_tool_agent: KnowledgeAgent, real_settings_module: Settings
+    ):
+        """The second search is worth running: it lands above the bar it missed."""
+        answer = real_tool_agent.ask("Why did the withdrawal reverse?")
+        assert answer.retrieved_more
+        assert answer.retrieval.top_score is not None
+        assert answer.retrieval.top_score >= real_settings_module.agent_confident_score
+
+    @pytest.mark.parametrize("question", OFF_TOPIC)
+    def test_an_off_topic_question_is_never_refined_into_an_answer(
+        self, real_tool_agent: KnowledgeAgent, question
+    ):
+        """Nothing cleared the floor, so there is nothing to refine with."""
+        answer = real_tool_agent.ask(question)
+        assert answer.refused
+        assert answer.retrieval.passes == 1
+        assert ("retrieve_more", "no_refinement_available") in [
+            (step.step, step.outcome) for step in answer.decisions
+        ]
 
 
 class TestParaphrase:

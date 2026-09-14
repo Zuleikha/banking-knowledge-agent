@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 6 - MCP Tools &nbsp;·&nbsp; Last updated 2026-09-11</div>
+    <div class="pill">Stage 7 - Agent Decision &amp; Tool Selection &nbsp;·&nbsp; Last updated 2026-09-14</div>
   </div>
 </header>
 
@@ -108,11 +108,23 @@
 
 <p>The Banking Knowledge Agent answers technical questions about a banking platform -
 ATM and self-service banking, digital banking, cards, payments, APIs, integrations,
-configuration and incident troubleshooting - and backs every answer with sources.</p>
+configuration and incident troubleshooting - and backs every answer with sources: each
+claim points to the document (or live tool reading) it came from, so a reader can check it
+rather than take it on trust.</p>
 
 <p>The objective is not a chatbot. It is a demonstration of production-oriented AI
-engineering: retrieval, an agent loop, tool use, guardrails, testing, observability and
-containerisation, each behind a clean boundary.</p>
+engineering - building an AI system the way a real product would need to be built:</p>
+<ul>
+  <li><strong>retrieval</strong> - finding the relevant documentation before answering</li>
+  <li><strong>an agent loop</strong> - code that decides what to do with a question, gathers
+      what it needs, then asks the model for an answer</li>
+  <li><strong>tool use</strong> - letting the system look up live data, not just documents</li>
+  <li><strong>guardrails</strong> - checks that stop unsafe or made-up output</li>
+  <li><strong>testing, observability and containerisation</strong> - proving it works,
+      recording what it did (logs and traces), and packaging it to run anywhere</li>
+</ul>
+<p>Each piece sits behind a clean boundary: it talks to the others only through a small,
+defined interface, so one piece can be changed or tested without touching the rest.</p>
 
 <pre class="plain">          User
             │
@@ -130,12 +142,33 @@ containerisation, each behind a clean boundary.</p>
    └────────┬─────────┘
             │
             ├──▶ RAG Knowledge Retrieval    Stages 2, 3  ✅
-            ├──▶ MCP Tools                  Stage 6
+            ├──▶ MCP Tools                  Stage 6  ✅
             ├──▶ Conversation Context       Stage 8
             └──▶ Guardrails                 Stage 13
             │
             ▼
    Source-backed Answer</pre>
+
+<div class="note">
+  <strong>Reading the diagram.</strong> A question travels top to bottom.
+  <ul>
+    <li><strong>API</strong> - the entry point: receives the question over HTTP and hands it on.</li>
+    <li><strong>Agent / LLM</strong> - the coordinator. The <em>agent</em> is ordinary code
+        that decides what information a question needs; the <em>LLM</em> (large language
+        model, e.g. Claude) writes the final answer from that information.</li>
+    <li><strong>RAG</strong> (retrieval-augmented generation) - searches the documentation
+        and hands the relevant passages to the model, so the answer comes from our
+        documents rather than the model's memory.</li>
+    <li><strong>MCP tools</strong> (Model Context Protocol) - a standard way to let the
+        agent call tools that read <em>live</em> system data, such as a transaction's
+        status or a service's health.</li>
+    <li><strong>Conversation context</strong> - remembers earlier questions, so a follow-up
+        like "and what about cards?" makes sense.</li>
+    <li><strong>Guardrails</strong> - safety checks around the whole flow.</li>
+  </ul>
+  Without the middle layers, the model would answer from general knowledge and could
+  confidently invent details about a platform it has never seen.
+</div>
 
 <h3>Build stages</h3>
 <table>
@@ -143,10 +176,10 @@ containerisation, each behind a clean boundary.</p>
   <tr><td>1</td><td>Project foundation - config, logging, tracing, health, tests</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>2</td><td>Domain knowledge - synthetic banking documents + loader</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>3</td><td>RAG pipeline - chunking, embeddings, vector store, retrieval</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>4</td><td>LLM abstraction - provider-agnostic prompt &amp; response layer</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>4</td><td>LLM abstraction - provider-agnostic prompt &amp; response layer (one interface, so Anthropic or OpenAI can be swapped in without changing the rest)</td><td><span class="tag t-done">BUILT</span></td></tr>
+  <tr><td>5</td><td>Knowledge agent - retrieve → ground → answer (find passages, answer only from them, refuse if there are none)</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>6</td><td>MCP tools - six synthetic support tools, registry + real MCP server</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>7</td><td>Agent decision &amp; tool selection</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>7</td><td>Agent decision &amp; tool selection - five decision paths, rule-based tool selector</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>8</td><td>Conversation context</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>9</td><td>Web interface</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>10</td><td>Observability</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -177,7 +210,7 @@ containerisation, each behind a clean boundary.</p>
 │   │   ├── dependencies.py       Shared FastAPI dependencies
 │   │   └── routes/
 │   │       └── health.py         GET /health
-│   ├── core/                     Cross-cutting concerns
+│   ├── core/                     Cross-cutting concerns - used by every layer
 │   │   ├── config.py             Typed settings from the environment
 │   │   ├── logging.py            structlog config + on-disk sinks
 │   │   └── tracing.py            @traced / @traced_async
@@ -218,9 +251,9 @@ containerisation, each behind a clean boundary.</p>
 │   │       └── service_health.py         check_service_health
 │   └── agent/                    Knowledge agent - the seam across rag/, llm/, mcp/
 │       ├── __main__.py           CLI: ask | demo
-│       ├── models.py             AgentDecision, RetrievalSummary, ToolCallSummary, AgentAnswer
-│       ├── policy.py             decide - search? tools? neither?
-│       ├── tool_policy.py        select_tools - route on identifiers, not topics
+│       ├── models.py             AgentDecision, DecisionStep, RetrievalSummary, ToolCallSummary, AgentAnswer
+│       ├── policy.py             decide / conclude - the five decision paths (Stage 7)
+│       ├── tool_policy.py        RuleToolSelector - tools chosen from the registry's specs
 │       ├── agent.py              KnowledgeAgent.ask - route, retrieve, call tools, generate
 │       └── factory.py            get_agent - composition from configuration
 ├── data/
@@ -263,21 +296,50 @@ containerisation, each behind a clean boundary.</p>
 ├── requirements-dev.txt          + test and tooling dependencies
 └── README.md</pre>
 
+<div class="note">
+  <strong>Reading the tree.</strong> A question passes through the folders in this order:
+  <code>api/</code> receives it → <code>agent/</code> decides what it needs →
+  <code>rag/</code> (documents) and <code>mcp/</code> (live tools) gather the evidence →
+  <code>llm/</code> writes the answer from it. <code>core/</code> (settings, logging,
+  tracing) is used by all of them.
+  <ul>
+    <li><strong>← seam</strong> - a deliberate joint between two parts of the system. Code
+        on one side depends only on a small interface, never on the details behind it.
+        Example: nothing above <code>app/llm/</code>'s seam knows whether the answer came
+        from Anthropic, OpenAI or the mock, so a vendor can be swapped without touching
+        the agent.</li>
+    <li><strong>← contract</strong> - the agreed shape of the data and errors that cross
+        a seam. Every tool must accept and return exactly these shapes.</li>
+    <li><strong>protocol</strong> (in comments such as "Embedder protocol") - Python's
+        <code>typing.Protocol</code>: a description of the methods a class must have.
+        Any class with those methods fits, including a fake one used in tests.</li>
+  </ul>
+</div>
+
 <p><strong>Directories added in later stages:</strong>
-<code>app/mcp/</code> (6), <code>app/web/</code> (9),
-<code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
+<code>app/web/</code> (9), <code>evals/</code> (11), <code>Dockerfile</code> (12).</p>
 
 <div class="note">
-  <strong><code>data/vectorstore/</code> is git-ignored on purpose.</strong> It is
-  <em>derived</em> from <code>data/knowledge/</code> - a build artefact, not a source.
-  Committing it would put a binary blob in every diff, and worse, would let the index
-  and the documents drift apart in version control with nothing to notice.
+  <strong><code>data/vectorstore/</code> is git-ignored on purpose.</strong> It holds the
+  search index - the documents converted into numbers the retriever can search. It is
+  <em>derived</em> from <code>data/knowledge/</code>: a build artefact (something generated
+  by running a command), not a source file anyone edits. Committing it would cause two
+  problems:
+  <ul>
+    <li>a large binary file would show up in diffs, which no one can review</li>
+    <li>worse, someone could edit a document without rebuilding the index, and git would
+        store the two out of step with nothing in version control to notice. (The app
+        itself does notice: the manifest's corpus fingerprint - a checksum of every
+        document - no longer matches, so loading raises <code>StaleIndexError</code>.)</li>
+  </ul>
   Rebuild it instead: <code>python -m app.rag build</code>.
 </div>
 
 <div class="warn">
-  <strong>Never</strong> create <code>banking-knowledge-agent/banking-knowledge-agent/</code>.
-  The repository root is the project root. Verify after every structural change.
+  <strong>Never</strong> create <code>banking-knowledge-agent/banking-knowledge-agent/</code>
+  - a second copy of the project folder inside itself. The repository root (the folder that
+  contains <code>.git</code>) is the project root, so <code>app/</code>, <code>tests/</code>
+  and <code>docs/</code> sit directly inside it. Verify after every structural change.
 </div>
 </section>
 
@@ -289,23 +351,23 @@ containerisation, each behind a clean boundary.</p>
 
 <table>
   <tr><th style="width:170px">Technology</th><th>Job</th><th style="width:90px">Stage</th></tr>
-  <tr><td><strong>Python 3.12</strong></td><td>The language with the mature LLM, embedding and vector-store ecosystem.</td><td>1</td></tr>
-  <tr><td><strong>FastAPI</strong></td><td>Async HTTP API with typed models, dependency injection and OpenAPI documentation generated from the code - the schema can never drift from the implementation.</td><td>1</td></tr>
-  <tr><td><strong>Pydantic v2</strong></td><td>Validation at the system boundary. Malformed input fails at the edge with a clear 422 instead of propagating into the agent.</td><td>1</td></tr>
-  <tr><td><strong>pydantic-settings</strong></td><td>Typed, environment-based configuration. Invalid config fails at startup, not at 3am. Keeps secrets out of source.</td><td>1</td></tr>
-  <tr><td><strong>structlog</strong></td><td>Logs are structured <em>events with fields</em>, not formatted prose. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code>, <code>request_id</code> as queryable fields - that is only possible if logging is structured from day one.</td><td>1</td></tr>
-  <tr><td><strong>uvicorn</strong></td><td>ASGI server for FastAPI's async request handling.</td><td>1</td></tr>
-  <tr><td><strong>pytest</strong></td><td>Test suite, including async API tests via <code>httpx</code> + <code>TestClient</code>.</td><td>1</td></tr>
-  <tr><td><strong>ruff</strong></td><td>Formatter and linter in one fast tool.</td><td>1</td></tr>
-  <tr><td><strong>mypy (strict)</strong></td><td>Static type checking. Catches interface drift between layers before runtime.</td><td>1</td></tr>
-  <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>Turns text into 384-dimension vectors so questions match documents by <em>meaning</em>, not shared words. Runs locally: no API key, no per-query cost, no network after the first download. Reads 256 word-piece tokens - the number the chunker is built around.</td><td>3</td></tr>
-  <tr><td><strong>NumPy</strong></td><td>The vector index <em>is</em> a NumPy matrix. Similarity search over the whole corpus is one <code>matrix @ query</code>, which at this size is faster than any index that could be built over it.</td><td>3</td></tr>
-  <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen - it is what sentence-transformers runs on. Pinned explicitly anyway: it is the largest artefact in the eventual image, so the CPU/GPU build choice belongs in <code>requirements.txt</code>, not in a transitive resolve.</td><td>3</td></tr>
-  <tr><td><strong>LLM provider seam</strong></td><td>Generates the natural-language answer from retrieved context. Behind an abstraction - the app is never coupled to one vendor.</td><td>4</td></tr>
-  <tr><td><strong><code>anthropic</code> + <code>openai</code> SDKs</strong></td><td><strong>Both</strong>, deliberately. One adapter proves an adapter can be written; two prove the abstraction - switching vendor is one config line and no code change. Neither is "the" chosen vendor, and neither is the default: <code>BKA_LLM_PROVIDER</code> stays on the free mock. Installing them does not enable spending (§20.5.6, §20.5.7).</td><td>5</td></tr>
-  <tr><td><strong>MCP</strong></td><td>A standard protocol for exposing tools to an agent, so tools are a versioned contract rather than ad-hoc function calls.</td><td>6</td></tr>
-  <tr><td><strong>PyYAML</strong></td><td>Parses document front matter. <code>safe_load</code> only - front matter must never be able to construct arbitrary Python objects.</td><td>2</td></tr>
-  <tr><td><strong>Docker</strong></td><td>Reproducible local runtime; the same image everywhere.</td><td>12</td></tr>
+  <tr><td><strong>Python 3.12</strong></td><td>The language with the most mature ecosystem for this work: the best-supported libraries for LLMs, embeddings and vector search are Python-first.</td><td>1</td></tr>
+  <tr><td><strong>FastAPI</strong></td><td>The web framework that exposes the system over HTTP. It is async (can wait on slow work, like a model call, without blocking other requests) and uses typed request/response models. Dependency injection means a route declares what it needs (e.g. settings) and FastAPI supplies it, so tests can swap in fakes. It also generates the OpenAPI documentation - the machine-readable description of every endpoint - from the code itself, so the docs can never fall out of step with what the API really does.</td><td>1</td></tr>
+  <tr><td><strong>Pydantic v2</strong></td><td>Checks incoming data at the system boundary - the point where outside data first enters the app. Malformed input is rejected right there with a clear HTTP <code>422</code> ("request understood, but the data is invalid"), instead of travelling into the agent and failing later somewhere harder to diagnose.</td><td>1</td></tr>
+  <tr><td><strong>pydantic-settings</strong></td><td>Loads configuration from environment variables into typed fields. A wrong or missing setting stops the app at startup, when someone is watching - not hours later in the middle of a request. Reading from the environment also keeps secrets such as API keys out of the source code.</td><td>1</td></tr>
+  <tr><td><strong>structlog</strong></td><td>Writes logs as structured <em>events with named fields</em> (e.g. <code>llm_ms=412</code>) rather than sentences. Fields can be filtered, summed and graphed; sentences have to be parsed first. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code> and <code>request_id</code> as searchable fields - that only works if logging is structured from day one, because old free-text logs cannot be converted reliably.</td><td>1</td></tr>
+  <tr><td><strong>uvicorn</strong></td><td>The server process that actually runs the FastAPI app and listens for requests. It speaks ASGI (Asynchronous Server Gateway Interface), the standard that lets Python web apps handle many requests concurrently.</td><td>1</td></tr>
+  <tr><td><strong>pytest</strong></td><td>Runs the test suite, including API tests that send real HTTP requests to the app in memory via <code>httpx</code> + <code>TestClient</code> - no running server needed.</td><td>1</td></tr>
+  <tr><td><strong>ruff</strong></td><td>Formatter (fixes code layout) and linter (flags likely bugs and bad patterns) in one fast tool.</td><td>1</td></tr>
+  <tr><td><strong>mypy (strict)</strong></td><td>Checks types without running the code. If one layer changes what a function accepts or returns and another layer still uses the old shape, mypy reports it before the code ever runs.</td><td>1</td></tr>
+  <tr><td><strong>sentence-transformers</strong><br><span class="muted">all-MiniLM-L6-v2</span></td><td>The embedding model: turns a piece of text into a vector - a list of 384 numbers that captures its meaning. Texts with similar meanings get similar numbers, so a question can match a document by <em>meaning</em> even when they share no words. Runs locally: no API key, no per-query cost, no network after the first download. It reads at most 256 tokens (word-pieces - common words are one token, rarer words are split into several), so the chunker keeps every chunk under that limit.</td><td>3</td></tr>
+  <tr><td><strong>NumPy</strong></td><td>The vector index <em>is</em> a NumPy matrix: one row of 384 numbers per chunk. Searching means scoring the question's vector against every row, which is a single matrix multiplication (<code>matrix @ query</code>). With only 115 chunks this brute-force check is instant - faster than building and querying a specialised search index.</td><td>3</td></tr>
+  <tr><td><strong>PyTorch (CPU)</strong></td><td>Not chosen directly - it is the engine sentence-transformers runs on. Pinned explicitly anyway: it is the largest download in the eventual Docker image, and it comes in a CPU and a much larger GPU build. Naming it in <code>requirements.txt</code> makes that choice deliberate, instead of leaving pip to pick a build as a side effect of installing sentence-transformers (a transitive dependency).</td><td>3</td></tr>
+  <tr><td><strong>LLM provider seam</strong></td><td>Writes the natural-language answer from the retrieved passages. The rest of the app talks to one interface, never to a vendor directly, so it is never tied to a single LLM company.</td><td>4</td></tr>
+  <tr><td><strong><code>anthropic</code> + <code>openai</code> SDKs</strong></td><td><strong>Both</strong>, deliberately. With one adapter, you only know that adapter works; the interface might secretly be shaped around that vendor. A second, different vendor proves the interface is genuinely neutral - switching is one config line and no code change. Neither is "the" chosen vendor, and neither is the default: <code>BKA_LLM_PROVIDER</code> stays on the free mock. Installing them does not enable spending (§20.5.6, §20.5.7).</td><td>5</td></tr>
+  <tr><td><strong>MCP</strong></td><td>Model Context Protocol - a standard way to describe tools to an agent: each tool's name, arguments and result shape. Tools become a versioned contract any MCP client can use, rather than one-off functions wired straight into this agent.</td><td>6</td></tr>
+  <tr><td><strong>PyYAML</strong></td><td>Reads each document's front matter (the metadata block at the top). <code>safe_load</code> only: plain YAML loading can be tricked into creating arbitrary Python objects, which would let a document run code.</td><td>2</td></tr>
+  <tr><td><strong>Docker</strong></td><td>Packages the app and everything it needs into one image, so it runs the same way on any machine.</td><td>12</td></tr>
 </table>
 </section>
 
@@ -319,231 +381,304 @@ containerisation, each behind a clean boundary.</p>
   <tr><th style="width:230px">Component</th><th>What it does</th></tr>
   <tr>
     <td><code>app/main.py</code><br><span class="muted">create_app()</span></td>
-    <td>Application factory. Loads settings, configures logging, builds the
-        <code>FastAPI</code> instance, stores settings on <code>app.state</code>,
-        mounts routers, and logs startup/shutdown through a lifespan handler.
-        A factory (rather than a bare module-level singleton) is what makes the
-        app testable with overridden configuration.</td>
+    <td>Application factory - a function that builds and returns a fresh app. Loads
+        settings, configures logging, builds the <code>FastAPI</code> instance, stores
+        settings on <code>app.state</code> (the app's own storage), mounts routers (attaches
+        the groups of endpoints), and logs startup/shutdown through a lifespan handler (code
+        that runs once when the app starts and stops).
+        Why a factory rather than one app created at import time (a module-level
+        singleton): each test can build its own app with different settings, instead of
+        every test sharing, and possibly corrupting, the same one.</td>
   </tr>
   <tr>
     <td><code>app/core/config.py</code><br><span class="muted">Settings</span></td>
-    <td>All configuration as one typed, frozen, validated object read from
-        <code>BKA_*</code> environment variables. <code>get_settings()</code> is
-        <code>lru_cache</code>d so the environment is parsed once.</td>
+    <td>All configuration as one typed, validated object read from
+        <code>BKA_*</code> environment variables. It is frozen - nothing can change a
+        setting after startup, so every part of the app sees the same values.
+        <code>get_settings()</code> is <code>lru_cache</code>d (Python remembers the result
+        after the first call), so the environment is read and checked only once.</td>
   </tr>
   <tr>
     <td><code>app/core/logging.py</code></td>
-    <td>Configures structlog + the stdlib bridge. Writes human-readable output to
-        stdout locally, JSON in production, and rotating JSON files to
-        <code>logs/</code>. Sets up a <em>separate</em> <code>bka.trace</code> logger
-        with <code>propagate = False</code>.</td>
+    <td>Configures structlog, plus a bridge from Python's built-in <code>logging</code>
+        module so messages from third-party libraries come out in the same format. Writes
+        human-readable output to the console locally, JSON in production, and rotating JSON
+        files (a new file once one gets large, old ones deleted) to <code>logs/</code>.
+        Sets up a <em>separate</em> <code>bka.trace</code> logger with
+        <code>propagate = False</code>, so trace events go only to the trace file and do not
+        also flood the main application log.</td>
   </tr>
   <tr>
     <td><code>app/core/tracing.py</code><br><span class="muted">@traced, @traced_async</span></td>
-    <td>Wraps a function so each call emits a structured trace event -
-        qualified name, duration in ms, ok/error outcome - to
-        <code>logs/traces.log</code>. Arguments are deliberately never recorded.</td>
+    <td>A decorator: put <code>@traced</code> above a function and every call writes a
+        structured trace event - the function's full name (module + function), how long it
+        took in ms, and whether it succeeded or raised - to <code>logs/traces.log</code>.
+        This shows where time goes and where failures start. Arguments are deliberately
+        never recorded, because they can contain questions, document text or secrets.</td>
   </tr>
   <tr>
     <td><code>app/api/dependencies.py</code></td>
-    <td><code>SettingsDep</code> resolves settings from <code>request.app.state</code>
-        rather than the cached global, so the app factory stays the single source
-        of truth.</td>
+    <td><code>SettingsDep</code> gives a route the settings of <em>the app handling the
+        request</em> (<code>request.app.state</code>), not the cached global copy. Without
+        this, a test that builds an app with special settings could have its routes quietly
+        read the global ones instead. The app factory stays the single source of truth.</td>
   </tr>
   <tr>
     <td><code>app/api/routes/health.py</code></td>
-    <td><code>GET /health</code> - a pure liveness check returning status, service
-        name, version and environment. It touches no downstream system.</td>
+    <td><code>GET /health</code> - a pure liveness check: "is this process running and
+        answering?" Returns status, service name, version and environment. It touches no
+        downstream system (index, model, tools), so a slow or broken dependency cannot make
+        a running app look dead.</td>
   </tr>
   <tr>
     <td><code>app/knowledge/models.py</code><br><span class="muted">DocumentMetadata, KnowledgeDocument</span></td>
     <td>The document contract. Every document carries <em>document, domain,
         component, version and type</em>, validated at load time.
         <code>Domain</code> and <code>DocType</code> are closed <code>Literal</code>
-        sets and unknown front-matter keys are rejected, so a typo fails the load
-        instead of silently creating a domain nothing filters on.</td>
+        sets (a fixed list of allowed values), and unknown front-matter keys are rejected.
+        So a typo such as <code>domain: card</code> instead of <code>cards</code> fails the
+        load, instead of quietly creating a new domain that no search filter will ever
+        match - making the document invisible.</td>
   </tr>
   <tr>
     <td><code>app/knowledge/loader.py</code><br><span class="muted">load_knowledge_base()</span></td>
     <td>Reads Markdown + YAML front matter from <code>data/knowledge/</code> into
         validated <code>KnowledgeDocument</code> objects. Strict by design: a
-        malformed, mislabelled, duplicated or empty document raises rather than
-        being skipped. Returns documents in sorted order so indexing runs are
-        reproducible.</td>
+        malformed, mislabelled, duplicated or empty document raises an error rather than
+        being skipped. A skipped document would simply vanish from every answer, and
+        nobody would know why. Returns documents in sorted order, so building the index
+        twice from the same files gives exactly the same result.</td>
   </tr>
   <tr>
     <td><code>app/rag/models.py</code><br><span class="muted">Chunk, EmbeddedChunk, ScoredChunk, RetrievalResult</span></td>
-    <td>The pipeline's data contracts. The one to know is <code>Chunk</code>, which
+    <td>The pipeline's data contracts. A <em>chunk</em> is one small passage of a
+        document - the unit that gets searched. The one to know is <code>Chunk</code>, which
         separates <code>content</code> (the passage as written, shown to a human and
         to the LLM) from <code>embedding_text</code> (the same passage with a
         <em>"Document title - Section"</em> prefix, which is what actually gets
-        embedded). <code>RetrievalResult</code> carries the outcome <em>and</em> the
-        reason for it, so an empty result is informative rather than just empty.</td>
+        embedded, i.e. turned into a vector). The prefix matters because a passage often
+        never names its own subject - a section called "Timeouts" may not say
+        <em>which</em> component's timeouts. <code>RetrievalResult</code> carries the
+        outcome <em>and</em> the reason for it, so an empty result says why it is empty.</td>
   </tr>
   <tr>
     <td><code>app/rag/chunker.py</code><br><span class="muted">chunk_documents()</span></td>
-    <td>Splits documents on Markdown <code>##</code> headings, with the size budget
-        measured in the embedding model's <em>own tokens</em>. Oversized sections are
-        broken at paragraph or table-row boundaries; a split table re-carries its
-        header row in every part. Guarantees no chunk exceeds the model's window.</td>
+    <td>Splits documents into chunks at Markdown <code>##</code> headings, so each chunk is
+        one coherent topic. Size is measured in the embedding model's <em>own tokens</em>,
+        not words, because the model's limit is in tokens and word counts do not convert
+        reliably. Oversized sections are broken at paragraph or table-row boundaries; a
+        split table repeats its header row in every part so each piece still makes sense
+        alone. Guarantees no chunk exceeds the model's window (the 256 tokens it can read) -
+        anything past that would be silently cut off and never searchable.</td>
   </tr>
   <tr>
     <td><code>app/rag/embeddings.py</code><br><span class="muted">Embedder protocol</span></td>
-    <td>Two implementations behind one protocol.
+    <td>Two implementations behind one protocol (a shared interface).
         <code>SentenceTransformerEmbedder</code> runs all-MiniLM-L6-v2 locally, loading
-        it lazily so importing the module stays cheap. <code>HashingEmbedder</code> is
-        deterministic and dependency-light, and is what the fast test suite runs on.
-        Both return L2-normalised vectors, so cosine similarity is a dot product
-        everywhere downstream.</td>
+        it lazily - only on first use - so importing the module stays fast.
+        <code>HashingEmbedder</code> is a simple stand-in with no model to download. It
+        matches on shared words, not meaning, and always gives the same output for the
+        same input - good enough to test chunking, ranking and filtering, and it is what the
+        fast test suite runs on. Search <em>quality</em> is tested against the real model. Both return L2-normalised vectors (scaled to length 1). That makes cosine
+        similarity - how closely two vectors point the same way, i.e. how similar two texts
+        are in meaning - equal to a plain dot product, the cheapest calculation available.</td>
   </tr>
   <tr>
     <td><code>app/rag/vectorstore.py</code><br><span class="muted">VectorStore protocol, InMemoryVectorStore</span></td>
-    <td>Exact cosine search over one NumPy matrix, persistable to disk. Filters are
-        applied <em>before</em> scoring. The saved manifest records which model built
-        the index and refuses to load it under a different one.</td>
+    <td>Exact cosine search over one NumPy matrix - every chunk is scored, nothing is
+        approximated - and it can be saved to disk. Filters (e.g. only the
+        <code>cards</code> domain) are applied <em>before</em> scoring, so excluded chunks
+        cannot take up result slots. The saved manifest records which model built the
+        index and refuses to load it under a different one: vectors from two different
+        models are not comparable, and mixing them would return nonsense scores.</td>
   </tr>
   <tr>
     <td><code>app/rag/retriever.py</code><br><span class="muted">Retriever.retrieve()</span></td>
     <td>Question → embedding → similarity search → threshold → scored chunks and
-        deduplicated sources. Composes an <code>Embedder</code> and a
-        <code>VectorStore</code>, both injected. No LLM anywhere, so retrieval
-        quality is measurable on its own.</td>
+        deduplicated sources. The threshold (score floor) drops chunks that score too low to
+        be relevant, so a question the documents do not cover returns nothing rather than
+        the least-bad matches. Uses an <code>Embedder</code> and a <code>VectorStore</code>
+        that are both passed in (injected), not created inside, so tests can supply
+        fakes. No LLM anywhere, so search quality can be measured on its own, separately
+        from answer quality.</td>
   </tr>
   <tr>
     <td><code>app/rag/pipeline.py</code><br><span class="muted">build_index(), load_retriever()</span></td>
-    <td>The offline path end to end, plus a SHA-256 fingerprint of the corpus so a
-        stale index is refused rather than silently served.</td>
+    <td>The offline path end to end - load documents, chunk, embed, save the index - done
+        ahead of time, not per question. Plus a SHA-256 fingerprint (a checksum) of the
+        corpus, so an index built from older documents is refused at load rather than
+        silently answering from out-of-date text.</td>
   </tr>
   <tr>
     <td><code>app/rag/__main__.py</code></td>
     <td>CLI: <code>build</code>, <code>search</code>, <code>demo</code>,
-        <code>calibrate</code>. Indexing is a build step, so it needs a way to be run;
-        <code>calibrate</code> exists so the score threshold can be re-derived from
-        data rather than inherited as a magic number.</td>
+        <code>calibrate</code>. Indexing is a build step, so it needs a command to run it.
+        <code>calibrate</code> measures scores for questions that should and should not
+        match, so the score threshold is worked out from real data rather than being an
+        unexplained number (a "magic number") nobody can justify or safely change.</td>
   </tr>
   <tr>
     <td><code>app/llm/models.py</code><br><span class="muted">CompletionRequest, LLMResponse, GroundedAnswer</span></td>
-    <td>The vocabulary the application uses to talk to any model. No vendor shapes.
-        <code>GroundedAnswer</code> carries provenance - sources, passages used,
-        whether a model was called at all - so a grounded answer and an honest refusal
-        are distinguishable without reading the prose.</td>
+    <td>The vocabulary the application uses to talk to any model - its own request and
+        response types, with no vendor's field names leaking in. <code>GroundedAnswer</code>
+        carries provenance (where the answer came from): sources, passages used, and whether
+        a model was called at all. So code can tell a grounded answer - one based only on
+        the supplied passages - from an honest refusal by checking fields, not by trying to
+        interpret the wording.</td>
   </tr>
   <tr>
     <td><code>app/llm/base.py</code><br><span class="muted">LLMProvider protocol</span></td>
-    <td>The seam. A protocol, so a test double or a future adapter qualifies
-        structurally - no inheritance, no registration. Also owns the six-type error
-        taxonomy each adapter translates its vendor's failures into, once, at the
-        boundary.</td>
+    <td>The seam - the one interface every model provider must fit. It is a protocol, so
+        any class with the right methods qualifies, whether a test double (a fake used in
+        tests) or a future vendor adapter, with no inheritance or registration needed. Also
+        owns the error taxonomy: seven named error types (timeout, rate limit, refusal and
+        so on). Each adapter translates its vendor's own exceptions into these once, at the
+        boundary, so the rest of the app handles "a timeout" the same way whichever vendor
+        produced it.</td>
   </tr>
   <tr>
     <td><code>app/llm/prompts.py</code><br><span class="muted">select_context(), build_request()</span></td>
-    <td>Versioned system instructions (v1.0.0), the context budget, and the fencing and
-        delimiter-escaping that make retrieved text untrusted data rather than
-        instructions.</td>
+    <td>Builds what is sent to the model:
+        <ul>
+          <li><strong>versioned system instructions</strong> (v1.0.0) - the fixed rules the
+              model must follow, versioned so a change in behaviour can be traced to a
+              change in wording</li>
+          <li><strong>the context budget</strong> - a size limit on how much retrieved text
+              goes into the prompt; whole passages are added until it is full, never cut
+              mid-passage</li>
+          <li><strong>fencing and delimiter-escaping</strong> - retrieved text is wrapped in
+              clearly marked tags, and any text inside it that imitates those tags is
+              neutralised. Without this, a document containing "ignore your instructions"
+              could be read by the model as an instruction (prompt injection) rather than as
+              data.</li>
+        </ul></td>
   </tr>
   <tr>
     <td><code>app/llm/mock.py</code><br><span class="muted">MockLLMProvider</span></td>
-    <td>The <strong>default</strong> provider: deterministic, in-process, free. Cites
-        back the passages it was actually given, so a context-injection bug shows up as
-        a missing citation. Records every request for assertion; can script responses or
-        raise, which is how the error paths are tested.</td>
+    <td>The <strong>default</strong> provider: a fake model that is deterministic (same
+        input, same output), runs inside the app, and costs nothing. It cites back the
+        passages it was actually given, so if a bug stops passages reaching the prompt,
+        the citations visibly go missing. It records every request so tests can check what
+        was sent, and can be told to return a set response or raise an error - which is how
+        the failure paths are tested without a real, paid model.</td>
   </tr>
   <tr>
     <td><code>app/llm/anthropic_provider.py</code><br><span class="muted">AnthropicProvider</span></td>
-    <td>Real Anthropic API. <strong>Paid.</strong> Translates the request, the response
-        and the whole SDK exception hierarchy. Reads text from the <em>text blocks</em>,
-        not <code>content[0]</code>, because with thinking on the first block is
-        reasoning. Client injectable, so it is tested offline.</td>
+    <td>Real Anthropic API. <strong>Paid.</strong> An adapter: translates the app's request
+        into Anthropic's format, the response back, and every Anthropic SDK exception into
+        the app's error types. A Claude reply is a list of blocks; it collects the
+        <em>text blocks</em> rather than taking <code>content[0]</code>, because when the
+        model thinks first, the first block is its reasoning, not the answer. The SDK
+        client is passed in (injectable), so tests use a fake client and never go online.</td>
   </tr>
   <tr>
     <td><code>app/llm/openai_provider.py</code><br><span class="muted">OpenAIProvider</span></td>
-    <td>Real OpenAI API. <strong>Paid.</strong> Same seam, different shape: system prompt
-        as a message, <code>max_completion_tokens</code>, and a refusal reported on the
-        message while <code>finish_reason</code> still says <code>"stop"</code>. Its
-        existence is what proves the abstraction (§20.5.6).</td>
+    <td>Real OpenAI API. <strong>Paid.</strong> Fits the same seam, but OpenAI's API is
+        shaped differently: the system prompt is sent as a message,
+        the length limit is called <code>max_completion_tokens</code>, and a refusal is
+        reported on the message while <code>finish_reason</code> still says
+        <code>"stop"</code> - so a naive check would treat a refusal as a normal answer. Its
+        existence is what proves the interface is genuinely vendor-neutral (§20.5.6).</td>
   </tr>
   <tr>
     <td><code>app/llm/service.py</code><br><span class="muted">LLMService.answer()</span></td>
-    <td>Inject context → generate → reject unusable generations → attach provenance.
-        Refuses without calling the provider when retrieval found nothing. Does not
-        retrieve: that is the caller's job, and the agent that decides is Stage 5.</td>
+    <td>Inject context (put the passages into the prompt) → generate → reject unusable
+        generations (cut off at the length limit, refused, or empty - these raise an error
+        rather than being shown as an answer) → attach provenance. When retrieval found
+        nothing, it refuses without calling the provider at all, so there is no request
+        that could come back with an invented answer. It does not retrieve: that is the
+        caller's job, and the agent that decides is Stage 5.</td>
   </tr>
   <tr>
     <td><code>app/llm/factory.py</code><br><span class="muted">get_provider(), get_llm_service()</span></td>
-    <td>The one place a provider is chosen from configuration - three of them, with
-        <code>mock</code> the default. Names vendors as strings but imports none: the SDK
-        import is deferred into the branch that needs it, so a missing SDK cannot stop
-        the app from starting on the mock. Also owns <code>PAID_PROVIDERS</code>, which
-        is what the CLIs check before spending.</td>
+    <td>The one place a provider is chosen from configuration - three options, with
+        <code>mock</code> the default. It names vendors only as text, and imports a vendor's
+        SDK only inside the branch that actually uses it. So if the Anthropic or OpenAI
+        package is not installed, the app still starts normally on the mock. Also owns
+        <code>PAID_PROVIDERS</code>, the list the command-line tools check before doing
+        anything that would cost money.</td>
   </tr>
   <tr>
     <td><code>app/llm/__main__.py</code></td>
-    <td>CLI: <code>prompt</code> prints the exact request that would be sent - context
-        injection is this stage's claim, and a claim you cannot see is one you cannot
-        check. <code>ask</code> and <code>demo</code> run it end to end, offline.</td>
+    <td>CLI: <code>prompt</code> prints the exact request that would be sent to the model.
+        This stage's main promise is that the retrieved passages really are put into the
+        prompt, and printing the request is how you can see that for yourself.
+        <code>ask</code> and <code>demo</code> run it end to end, offline.</td>
   </tr>
   <tr>
     <td><code>app/mcp/models.py</code><br><span class="muted">ToolSpec, ToolResult, ToolInvocation</span></td>
-    <td>The tool vocabulary. A result carries its own provenance - which tool, whether it found anything, when it was observed - so live readings never become indistinguishable from documentation. Also emits the JSON Schema the protocol layer needs.</td>
+    <td>The tool vocabulary: the shapes of a tool's description (<code>ToolSpec</code>), a call (<code>ToolInvocation</code>) and its answer (<code>ToolResult</code>). A result carries its own provenance - which tool produced it, whether it found anything, and when the reading was taken - so a live reading can never be mistaken for documentation later in the flow. It also produces each tool's JSON Schema (a standard, machine-readable description of the arguments a tool accepts), which the MCP server needs to advertise the tools.</td>
   </tr>
   <tr>
     <td><code>app/mcp/base.py</code><br><span class="muted">Tool protocol, ToolError taxonomy</span></td>
-    <td>The seam, built like <code>LLMProvider</code>: a protocol, not an ABC. Holds the rule that a not-found is data while a malformed call raises, and the shared argument helpers that keep six independently-written tools failing identically.</td>
+    <td>The seam for tools, built like <code>LLMProvider</code>: a protocol (any class with the right methods counts as a tool), not an ABC (abstract base class, which every tool would have to inherit from). It holds the key rule of the tool layer: <em>"not found" is a normal answer, but a badly formed call is an error</em> - asking about a transaction that does not exist returns a result, while a missing argument raises. It also holds shared helpers for checking arguments, so all six tools - written separately - reject bad input in exactly the same way.</td>
   </tr>
   <tr>
     <td><code>app/mcp/registry.py</code><br><span class="muted">ToolRegistry.call()</span></td>
-    <td>The MCP layer the agent actually talks to. Registration is explicit, never discovered. Wraps an untyped tool exception into <code>ToolExecutionError</code>, and logs tool and argument <em>names</em> but never argument values or payloads.</td>
+    <td>The list of available tools, and the part of the MCP layer the agent actually talks to. Tools are registered explicitly - each one is named in code - never discovered by scanning folders, so a tool cannot be switched on by accident just because a file exists. If a tool fails with an unexpected exception, the registry wraps it in <code>ToolExecutionError</code>, so callers only ever handle the tool layer's own error types. It logs tool and argument <em>names</em>, but never argument values or results, because those can contain transaction references or other sensitive data.</td>
   </tr>
   <tr>
     <td><code>app/mcp/server.py</code><br><span class="muted">build_server(), serve()</span></td>
-    <td>The real MCP server, official SDK, stdio JSON-RPC. A wrapper over the registry with no tool logic and no data of its own - asserted by a test that greps the module for domain strings.</td>
+    <td>The real MCP server, built with the official <code>mcp</code> SDK. It talks over stdio JSON-RPC: requests and replies are JSON messages passed through the process's standard input and output, which is how MCP clients such as Claude Desktop or an IDE connect to it. It is only a thin wrapper that passes calls to the registry, with no tool logic or data of its own, so there is only one copy of each tool to keep correct. A test enforces this by checking that the file contains none of the synthetic data values (e.g. <code>LIM-4001</code>, <code>TransactionSwitch</code>).</td>
   </tr>
   <tr>
     <td><code>app/mcp/tools/*.py</code><br><span class="muted">six modules</span></td>
-    <td>One tool per module, each owning its own synthetic dataset and importing nothing from its siblings. Pure: no clock, no I/O, no randomness, so the same arguments always give the same result.</td>
+    <td>One tool per file, each holding its own invented (synthetic) data and importing nothing from the other tool files, so each can be changed or tested on its own. Each tool is pure: it does not read the clock, touch files or the network, or use randomness. The same arguments therefore always give the same result, which keeps tests reliable. In a real deployment, this is where calls to live banking systems would go.</td>
   </tr>
   <tr>
-    <td><code>app/agent/tool_policy.py</code><br><span class="muted">select_tools()</span></td>
-    <td>Chooses tools by the identifiers a question contains - an error code, a transaction reference, a component, a config key - and extracts their arguments in the same step, because a tool is callable exactly when the question supplies what it needs.</td>
+    <td><code>app/agent/tool_policy.py</code><br><span class="muted">ToolSelector, RuleToolSelector</span></td>
+    <td>Chooses which tools to call, and with what inputs. It is built from the tools' own
+        <em>specs</em> (each tool's published description of the inputs it accepts), so it
+        reads a question for exactly those inputs - an error code, a transaction reference,
+        a config key, a component - and calls a tool when the question supplies them. A
+        tool it could never select is refused when the agent is built, not discovered later.
+        Rules only, no model (§20.17).</td>
   </tr>
   <tr>
-    <td><code>app/agent/models.py</code><br><span class="muted">AgentDecision, RetrievalSummary, ToolCallSummary, AgentAnswer</span></td>
+    <td><code>app/agent/models.py</code><br><span class="muted">AgentDecision, DecisionStep, RetrievalSummary, ToolCallSummary, AgentAnswer</span></td>
     <td>The execution record as a returned value. <code>AgentAnswer</code> wraps the LLM
-        layer's <code>GroundedAnswer</code> unmodified and adds the route taken and what
-        retrieval considered - so Stage 9 renders provenance instead of scraping logs.
+        layer's <code>GroundedAnswer</code> unmodified and adds the route taken, each
+        choice made on the way (<code>decisions</code>, Stage 7) and what retrieval
+        considered - so Stage 9 renders provenance instead of scraping logs.
         The summary carries shape, never passage text.</td>
   </tr>
   <tr>
-    <td><code>app/agent/policy.py</code><br><span class="muted">decide()</span></td>
-    <td>Is a knowledge search required? One substantive branch in Stage 5, and the
-        module says why a keyword classifier or an LLM router would be a guess rather
-        than a decision. Stages 6 and 7 add branches here.</td>
+    <td><code>app/agent/policy.py</code><br><span class="muted">decide(), conclude()</span></td>
+    <td>Every decision the agent makes, as deterministic rules: the plan (knowledge, a
+        tool, both, or nothing to search), whether a weak search is worth one refined
+        retry, and the route that was actually taken. One module, so the whole decision
+        logic can be read in one place.</td>
   </tr>
   <tr>
     <td><code>app/agent/agent.py</code><br><span class="muted">KnowledgeAgent.ask()</span></td>
-    <td>The seam between <code>rag/</code> and <code>llm/</code>: decide → retrieve →
-        generate → record. Builds no prompts and owns no model. A question it declines to
+    <td>The seam between <code>rag/</code>, <code>mcp/</code> and <code>llm/</code>: plan →
+        call tools → search (once more if weak) → generate → record. It carries out the
+        decisions <code>policy.py</code> makes; it makes none itself. Builds no prompts
+        and owns no model. A question it declines to
         search is routed through Stage 4's empty-evidence guard, so there is exactly one
         refusal sentence in the system. Provider failures propagate.</td>
   </tr>
   <tr>
     <td><code>app/agent/factory.py</code><br><span class="muted">get_agent()</span></td>
-    <td>Composition in one place: retriever + provider + settings. It does not choose a
-        provider itself - that stays in <code>app/llm/factory.py</code>, so
-        <code>BKA_LLM_PROVIDER</code> is interpreted once.</td>
+    <td>Composition in one place - the single function that assembles a working agent from
+        its parts: retriever + provider + settings. It does not pick the LLM provider
+        itself; it asks <code>app/llm/factory.py</code>. So the <code>BKA_LLM_PROVIDER</code>
+        setting is read in exactly one place, and two parts of the app can never disagree
+        about which model is in use.</td>
   </tr>
   <tr>
     <td><code>app/agent/__main__.py</code></td>
     <td>CLI: <code>ask</code> and <code>demo</code>. Prints the decision, the retrieval
-        record and the citations, because the mock's prose is a wiring check and the
-        provenance is the part worth reading.</td>
+        record and the citations alongside the answer. With the free mock provider, the
+        answer text itself only proves the parts are connected - it is not a real model's
+        writing. The useful output is the provenance: which route was taken and which
+        sources the answer drew on.</td>
   </tr>
 </table>
 
 <h3>Planned</h3>
 <table>
   <tr><th style="width:230px">Component</th><th>Responsibility</th><th style="width:70px">Stage</th></tr>
-  <tr><td><code>app/agent/tool_selection.py</code></td><td>Model-driven tool choice, replacing the deterministic identifier rule in <code>tool_policy.py</code>.</td><td>7</td></tr>
   <tr><td><code>app/agent/context.py</code></td><td>Session handling and bounded conversation history.</td><td>8</td></tr>
 </table>
 </section>
@@ -552,34 +687,37 @@ containerisation, each behind a clean boundary.</p>
 <section id="dataflow">
 <h2>5. Data flow</h2>
 
-<h3>Today (Stage 6)</h3>
-<p>Two independent paths. The agent now joins <em>three</em> collaborators - retrieval,
-tools and generation - but the whole chain is still only reachable from the CLI: the API
-does not call it until Stage 9.</p>
+<h3>Today (Stage 7)</h3>
+<p>Two independent paths. The agent joins <em>three</em> collaborators - retrieval,
+tools and generation - and since Stage 7 it <em>chooses</em> which of them a question
+needs (§7), so not every question passes through every box below. The whole chain is
+still only reachable from the CLI: the API does not call it until Stage 9.</p>
 
 <pre class="plain">HTTP GET /health                     python -m app.agent ask "..."
    │                                    │
    ▼                                    ▼
 FastAPI router                       KnowledgeAgent.ask()
-   │  SettingsDep reads                 │  decide_retrieval → RetrievalDecision
+   │  SettingsDep reads                 │  decide → plan: knowledge? tools? both?
    │  request.app.state.settings        │
    ▼                                    ├── no searchable content ──▶ empty result
-HealthResponse (Pydantic)               ▼
-   │                                 Retriever            DOCUMENTATION
-   ├──▶ logs/app.log                    │  embed → filter → cosine → top-k → floor
+HealthResponse (Pydantic)               ▼  RuleToolSelector → inputs the tool specs declare
+   │                                 ToolRegistry          LIVE READINGS
+   ├──▶ logs/app.log                    │  0..4 calls, in-process, synthetic
    └──▶ HTTP 200 JSON                   ▼
-                                     RetrievalResult (chunks + sources + why)
-                                        │
-                                        ├──▶ logs/app.log  "rag.retrieved"
-                                        │
-                                        ▼  select_tools → identifiers in the question
-                                     ToolRegistry          LIVE READINGS
-                                        │  0..4 calls, in-process, synthetic
-                                        ▼
                                      ToolResult × n  (tool · ok · summary · data)
                                         │
                                         ├──▶ logs/app.log  "mcp.tool_called"
-                                        ▼        tool + argument NAMES only
+                                        │        tool + argument NAMES only
+                                        ▼
+                                     Retriever            DOCUMENTATION
+                                        │  embed → filter → cosine → top-k → floor
+                                        │  skipped for a pure live reading,
+                                        ▼  unless a tool found nothing
+                                     RetrievalResult (chunks + sources + why)
+                                        │  weak? ONE refined search, merged
+                                        │
+                                        ├──▶ logs/app.log  "rag.retrieved"
+                                        ▼
                                      LLMService.answer(question, retrieval, tools)
                                         │  budget → TWO fences → generate → validate
                                         │
@@ -590,7 +728,8 @@ HealthResponse (Pydantic)               ▼
                                         │
                                         ├──▶ logs/app.log  "llm.answered"
                                         ▼        provider, model, chunks, tools, tokens
-                                     AgentAnswer  + decision + retrieval summary
+                                     AgentAnswer  + decision + decisions (each step)
+                                        │         + retrieval summary
                                         │         + tool summaries + tool results
                                         └──▶ logs/app.log  "agent.answered"
                                                  route and shape only — never the
@@ -772,7 +911,7 @@ Windows and inside a container.</p>
 <!-- ================================================================== -->
 <section id="agent">
 <h2>7. Agent flow</h2>
-<span class="tag t-done">BUILT - Stage 5</span>
+<span class="tag t-done">BUILT - Stages 5 &amp; 7</span>
 
 <p>Stage 5 is the first component that owns a complete request. Stages 3 and 4 each built
 one half and were deliberately kept ignorant of the other - the retriever has no LLM
@@ -800,13 +939,107 @@ AgentAnswer      text · sources · decision · retrieval summary · GroundedAns
    └──▶ logs/app.log  "agent.answered"   route and shape only - never the question,
                                          the passages or the answer text</pre>
 
-<h3>Three outcomes, and a caller can tell them apart without reading the prose</h3>
+<p class="muted">That diagram is the Stage 5 shape. Stage 7 put a real choice in the
+middle of it - described next.</p>
+
+<h3>Stage 7 - choosing a path</h3>
+<span class="tag t-done">BUILT - Stage 7</span>
+
+<div class="note">
+  <strong>In plain English.</strong> Until Stage 7 the agent always searched the
+  documentation, and also called a tool whenever the question mentioned something a tool
+  could look up. Now it <em>chooses</em>. For each question it decides what evidence it
+  actually needs - documents, a live reading from a tool, both, or nothing - and it can
+  try one more, better-aimed search when the first one comes back weak. It records each
+  choice it made, so a reader can see <em>what</em> happened without the system writing
+  out its "thinking". Without this, a question like "is CoreBankingAdapter healthy?" would
+  run a pointless document search, and a vague question would be answered from a weak
+  search with no second attempt.
+  <br><br>
+  <strong>How it connects.</strong> It sits between the pieces built before it - Stage 5's
+  agent, Stage 3's search and Stage 6's tools - and decides which of them each question
+  uses. What comes next builds on its record: Stage 8 adds conversation context, so a
+  follow-up question can reuse earlier evidence, and Stage 9's web page will show the
+  recorded choices beside each answer.
+</div>
+
+<p>Every choice is a <strong>deterministic rule</strong> - the same question always takes
+the same path, and no model is asked to decide anything (§20.17). The rules live in
+<code>app/agent/policy.py</code>; <code>app/agent/agent.py</code> only carries them out.</p>
+
+<pre class="plain">Question
+   │
+   ▼  PLAN                                    decide()        policy.py
+   │    nothing searchable ("!!! ???") ─────────────────────▶ no_searchable_content
+   │    no tool can act on the question ────────────────────▶ knowledge_required
+   │    a tool can, and it asks WHY / HOW / what it MEANS ──▶ knowledge_and_live_status_required
+   │    a tool can, and it only asks for a READING ─────────▶ live_status_only
+   │
+   ▼  CALL TOOLS                               ToolRegistry
+   │    live_status_only, but a tool found nothing ──▶ search the documentation too
+   │
+   ▼  SEARCH, AND MAYBE ONCE MORE               Retriever
+   │    top score ≥ 0.50 ──────────────────────────▶ one search is enough
+   │    weaker, and a component name to add ───────▶ ONE refined search, results merged
+   │    weaker, nothing to add ─────────────────────▶ keep the one search
+   │
+   ▼  ANSWER                                    LLMService    Stage 4's guard, unchanged
+   │    no passage and no tool result ──▶ refuse, no model call
+   │
+   ▼  CONCLUDE                                  conclude()    the route actually taken</pre>
+
+<table>
+  <tr><th style="width:190px">Path <span class="muted">(<code>prompt.md</code> §15)</span></th><th style="width:230px"><code>decision.reason</code></th><th>Example (real model, measured)</th></tr>
+  <tr><td><strong>Answer from knowledge</strong></td><td><code>knowledge_required</code></td><td>"What component handles card authentication?" - one search, top score 0.804</td></tr>
+  <tr><td><strong>Retrieve more knowledge</strong></td><td><code>additional_knowledge_required</code></td><td>"Why did the withdrawal reverse?" - first search 0.490, refined with <em>TransactionSwitch</em> → 0.640</td></tr>
+  <tr><td><strong>Call a tool</strong></td><td><code>live_status_only</code></td><td>"Is CoreBankingAdapter healthy?" - two tool readings, no search at all</td></tr>
+  <tr><td><strong>Use both</strong></td><td><code>knowledge_and_live_status_required</code></td><td>"What does error code LIM-4001 mean?" - the code's live lookup plus the documentation that explains it</td></tr>
+  <tr><td><strong>Refuse</strong></td><td><code>insufficient_evidence</code><br><code>no_searchable_content</code></td><td>"What is the capital of France?" - searched, nothing cleared the floor, no model call</td></tr>
+</table>
+
+<h3>How a tool gets chosen</h3>
+<p><code>RuleToolSelector</code> is built from the registry's tool <em>specs</em> - each
+tool's own list of the inputs it takes. It knows how to spot four kinds of input in a
+question: an error code (<code>LIM-4001</code>), a transaction reference
+(<code>TXN-20260911-004473</code>), a config key (<code>limits.atm.daily_withdrawal_amount</code>)
+and a component name. A tool is called when the question contains every input the tool
+requires.</p>
+<p>A component name alone is not enough, because three tools take one. For those, the
+question must also say <em>which kind</em> of reading it wants - "healthy" / "down" for
+health and status, "version" / "running" for the version tool. If a tool were ever
+registered that the selector could never choose - an input it cannot recognise, or a
+component-only tool with no such word - the agent refuses to be built. That turns a
+silent gap into an error you see immediately.</p>
+
+<h3>Decisions, not reasoning</h3>
+<p><code>prompt.md</code> §15 forbids exposing hidden chain-of-thought (a model's
+step-by-step private reasoning). What the agent returns instead is
+<code>AgentAnswer.decisions</code>: each <em>choice point</em> it passed, the outcome a rule
+produced there, and a fixed sentence for that outcome. Two questions that take the same
+route are recorded in exactly the same words, which is how you can tell nothing was
+"reasoned" per question. The log line records only the step names and outcomes.</p>
+<pre class="plain">Q  What is the status of transaction TXN-19990101-000001?
+   [decision: knowledge_and_live_status_required]
+   [route: plan=live_status_only → consult_documentation=performed
+           → retrieve_more=performed → evidence=sufficient]
+   [retrieval: 2 search(es) · 5 of 115 passages cleared 0.25 · top score 0.572]
+   [tool: check_transaction_status -> not found (NOT_FOUND)]</pre>
+<p class="muted">Read that route left to right: the plan was a pure reading; the tool found
+no such transaction, so the documentation was searched; that search was weak, so it was
+refined once; there was enough evidence to answer.</p>
+
+<h3>Four outcomes, and a caller can tell them apart without reading the prose</h3>
 <table>
   <tr><th style="width:190px">Outcome</th><th>How it is identified</th><th>What it means</th></tr>
   <tr>
     <td><strong>Grounded answer</strong></td>
     <td><code>is_grounded</code> - a model was consulted with ≥1 passage in front of it</td>
     <td>Answer the documentation supports, with citations</td>
+  </tr>
+  <tr>
+    <td><strong>Live reading</strong> <span class="muted">(Stage 7)</span></td>
+    <td><code>used_live_information</code> + <code>not retrieval.performed</code></td>
+    <td>Answered from tool readings alone, cited <code>[T1]</code>. <em>"Here is what the system reports."</em></td>
   </tr>
   <tr>
     <td><strong>Refused after searching</strong></td>
@@ -819,7 +1052,7 @@ AgentAnswer      text · sources · decision · retrieval summary · GroundedAns
     <td>The question had nothing to search for. <em>"That isn't a question."</em></td>
   </tr>
 </table>
-<p>All three are correct outcomes. Only the first is an answer. A provider failure is
+<p>All four are correct outcomes. The first two are answers. A provider failure is
 <strong>none</strong> of them - it raises, because a broken model and an undocumented
 answer need different responses from whoever is reading.</p>
 
@@ -892,7 +1125,7 @@ Q  !!! ???
 <h3>What Stage 5 deliberately does not do</h3>
 <table>
   <tr><th style="width:210px">Not here</th><th>Where it belongs, and why not now</th></tr>
-  <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduces MCP; Stage 7 introduces choosing between knowledge and tools. There is nothing to choose between yet.</td></tr>
+  <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduced MCP; Stage 7 introduced choosing between knowledge and tools - now built, see <em>Stage 7 - choosing a path</em> above.</td></tr>
   <tr><td><strong>Conversation history</strong></td><td>Stage 8. Every question here is independent, and the request contract already carries a message tuple so history appends rather than reshapes.</td></tr>
   <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors carry a <code>retryable</code> flag from Stage 4; deciding a retry policy without a real provider's failure behaviour would be guessing at numbers.</td></tr>
   <tr><td><strong>Latency in the answer</strong></td><td>Stage 10 decides deliberately what a request record contains. <code>@traced</code> already records per-call duration to <code>logs/traces.log</code>.</td></tr>
@@ -1321,17 +1554,18 @@ the architecturally correct layer for it anyway.</p>
   <tr><td><code>tests/test_llm_prompts.py</code></td><td>The system instructions (grounding rules, citation requirement, the exact refusal sentence, no vendor and no proprietary reference in the text), the context budget (chunk and character limits, order preserved, never truncated, always at least one passage), rendering and citation metadata, and the <strong>injection defence</strong>: attribute escaping, and a passage containing the literal closing fence failing to escape it. Ends with the stage's central claim asserted against the real corpus - only the selected passages reach the prompt, and every other document is absent from it.</td></tr>
   <tr><td><code>tests/test_llm_provider.py</code></td><td>Protocol conformance (including a structurally-typed implementation that inherits nothing), the full error taxonomy and its <code>retryable</code> flags, the mock's three modes, the factory refusing an unavailable provider without falling back, and configuration - including that a key set in the environment appears in <em>neither</em> a repr nor a dump. Ends with the safety property: an AST walk over every module in <code>app/llm/</code> asserting no vendor SDK, no HTTP client and no URL.</td></tr>
   <tr><td><code>tests/test_llm_service.py</code></td><td>What actually reaches the provider (versioned system prompt, question present once, passages fenced, knowledge base absent, budgets honoured), the refusal path making <em>no</em> provider call at all, and error handling: timeout and rate limit propagate with their retry hints, an untyped vendor exception is wrapped with its cause preserved, and refused / truncated / empty generations raise rather than being shown.</td></tr>
-  <tr><td><code>tests/test_agent.py</code></td><td>The routing policy (every real question retrieves; a question with no searchable content does not; a keyword classifier's two failure cases would break and are asserted against), the wiring (the question reaches the retriever verbatim, one question is one retrieval and one generation, the retrieved passages reach the prompt and the whole knowledge base does not), <strong>both refusal routes</strong> - after searching and without searching - producing the identical sentence with <em>zero</em> provider calls, the execution record, and failures propagating rather than being disguised as refusals. Ends with the stage boundary, which in Stage 6 did its job: two of its guards (&quot;the agent holds no tools&quot;, &quot;the decision literal has exactly two values&quot;) failed the moment MCP landed, forcing a decision record before they were moved forward.</td></tr>
+  <tr><td><code>tests/test_agent.py</code></td><td>The routing policy (every real question retrieves; a question with no searchable content does not; a keyword classifier's two failure cases would break and are asserted against), the wiring (the question reaches the retriever verbatim, one question is one retrieval and one generation, the retrieved passages reach the prompt and the whole knowledge base does not), <strong>both refusal routes</strong> - after searching and without searching - producing the identical sentence with <em>zero</em> provider calls, the execution record, and failures propagating rather than being disguised as refusals. Ends with the stage boundary, which in Stage 6 did its job: two of its guards (&quot;the agent holds no tools&quot;, &quot;the decision literal has exactly two values&quot;) failed the moment MCP landed, forcing a decision record before they were moved forward. They fired again in Stage 7 and moved forward again: the literal now has six values, and the "no tool-only branch" guard became "the tool-only branch exists". Two wiring tests now pin a <em>confident</em> first search, because a weak one may legitimately be retried.</td></tr>
   <tr><td><code>tests/test_llm_adapters.py</code></td><td><strong>Both vendor adapters, entirely offline.</strong> Every test injects a fake SDK client, so nothing here reaches a network or costs anything. Covers what each adapter <em>sends</em> (system prompt placement, <code>max_tokens</code> vs <code>max_completion_tokens</code>, no sampling parameters), what it makes of the <em>reply</em> (every stop-reason and finish-reason value, a leading thinking block not mistaken for the answer, an OpenAI refusal that arrives labelled <code>"stop"</code>, null content, a reply with no choices), and the full <em>error translation</em> for both hierarchies including the ordering traps - a timeout is a connection error, a 500 is a status error - with the right <code>retryable</code> flag on each. Ends with the same assertions run against <strong>both</strong> adapters through the service and through the agent, which is what makes the abstraction evidence rather than a claim. Also asserts the cost guard: a missing key refuses before a client exists, and <code>demo</code> refuses a paid run before building anything.</td></tr>
-  <tr><td><code>tests/test_agent_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>The seed questions, with real semantics.</strong> Each of the five is answered from its own document, cites it, and clears the floor above 0.5; three off-topic controls are refused after being searched, at zero model cost; and two paraphrases with no shared vocabulary still find the right document. Shares one module-scoped index across the file - the transformer is loaded once, the provider is fresh per test so call counts stay meaningful.</td></tr>
+  <tr><td><code>tests/test_agent_integration.py</code><br><span class="muted">marked <code>integration</code></span></td><td><strong>The seed questions, with real semantics.</strong> Each of the five is answered from its own document, cites it, and clears the floor above 0.5; three off-topic controls are refused after being searched, at zero model cost; and two paraphrases with no shared vocabulary still find the right document. Since Stage 7 it also pins <strong>each decision path with the real model</strong> - seven measured questions to their route and number of searches, a refined search landing above the 0.50 bar it missed, and every off-topic question refused after a single search. Shares one module-scoped index across the file - the transformer is loaded once, the provider is fresh per test so call counts stay meaningful.</td></tr>
   <tr><td><code>tests/test_mcp_registry.py</code></td><td>The tool contract and the registry: a tool qualifying structurally with no inheritance, the error taxonomy and its <code>retryable</code> flags, the shared argument helpers failing identically for every tool, a duplicate registration refused, an unknown tool naming what <em>does</em> exist, an untyped tool exception wrapped with its cause preserved, and explicit registration proven by importing a tool module and asserting nothing registered itself. Ends with the closed failure vocabulary: every not-found path across all six tools must return a code from <code>TOOL_FAILURE_CODES</code>.</td></tr>
   <tr><td><code>tests/test_mcp_tools.py</code></td><td>Two halves. <strong>Per tool:</strong> purity (same arguments, same result), undeclared arguments rejected, blank required arguments rejected, optional arguments genuinely optional, no credential-shaped field in any payload, and every documented <code>example</code> in every spec actually resolving - because Stage 7 puts those examples in front of a model as the format to imitate. <strong>Cross-tool:</strong> the three component tools accepting the same nine components and echoing the same canonical spelling; every error code a transaction reports being explainable by the lookup tool; a component's recent codes carrying that component's prefix; and the version agreement that encodes a contradiction two sub-agents actually shipped.</td></tr>
   <tr><td><code>tests/test_mcp_injection.py</code></td><td><strong>The Stage 4 defence, re-aimed at tool results.</strong> A hostile summary, payload value, payload <em>key</em> and error message each failing to close the fence; a tool result failing to forge a <em>documentation</em> fence or a passage; every delimiter parametrised; the escape asserted to be visible rather than silent; the system prompt asserted to name the tool fence, declare it untrusted and separate designed-behaviour from reported-behaviour; the prompt version asserted to have been bumped; and the question asserted to remain outside every fence even under attack. One structural test walks the AST of <code>prompts.py</code> and requires exactly one escaping function to exist, because two that agree today are two that can drift.</td></tr>
-  <tr><td><code>tests/test_mcp_agent.py</code></td><td>Routing (an identifier selects the tool that can act on it; plain prose selects none; ordinary text is not mistaken for an error code; duplicates collapsed; the call count capped; selection deterministic), the flow end to end, and the <strong>separation</strong>: documentation and tool results in different fences, in that order, on the real prompt. Then the execution record, including the test that caught a genuine leak - the loggable summary must carry argument <em>names</em> and not values. Ends with evidence handling (a tool result alone prevents a refusal; nothing at all still refuses with Stage 4's exact sentence) and failures propagating rather than silently dropping the live half of an answer.</td></tr>
+  <tr><td><code>tests/test_agent_decisions.py</code><br><span class="muted">Stage 7</span></td><td><strong>One test class per decision path.</strong> Most tests <em>script</em> the retriever - a stand-in that returns scores the test chooses, from real corpus chunks - so each test can put the agent on exactly the path it means to check. Covers: a confident search answered once; a weak search refined with the right component, merged without duplicates, capped, and never retried twice; a pure reading with no search at all; a reading that finds nothing pulling in documentation; both kinds of evidence in separate prompt fences; both refusal routes using Stage 4's one sentence. Then the rules on their own - the plan, the explanation-vs-reading cue, which component names may refine a search (a hostile tool payload cannot reach the query) - the selector (spec-driven inputs, loud construction failures, cues, fan-out - two error codes in a question means two tool calls - the cap of four calls per question, and call order), and the record: the same route in the same words, no identifier in any step, and the log line carrying the route but no identifier. Ends by asserting that planning and selection import nothing from <code>app.llm</code>.</td></tr>
+  <tr><td><code>tests/test_mcp_agent.py</code></td><td>Routing, reached since Stage 7 through <code>RuleToolSelector</code> (an identifier selects the tool that can act on it; plain prose selects none; ordinary text is not mistaken for an error code; duplicates collapsed; the call count capped; selection deterministic), the flow end to end, and the <strong>separation</strong>: documentation and tool results in different fences, in that order, on the real prompt. Then the execution record, including the test that caught a genuine leak - the loggable summary must carry argument <em>names</em> and not values. Ends with evidence handling (a tool result alone prevents a refusal; nothing at all still refuses with Stage 4's exact sentence) and failures propagating rather than silently dropping the live half of an answer.</td></tr>
   <tr><td><code>tests/test_mcp_server.py</code><br><span class="muted">async</span></td><td><strong>The real protocol, not the handler functions.</strong> A genuine client session over the SDK's in-memory transport: a real <code>initialize</code>, <code>tools/list</code> and <code>tools/call</code> with real JSON-RPC framing. Asserts every listed tool carries a usable schema, that a not-found crosses the wire as a <em>result</em> while a malformed call crosses as an <em>error</em>, and - the point of the whole wrapper - that six calls return byte-identical payloads over the protocol and in-process. Ends by proving delegation: give the server a one-tool registry and it exposes one tool.</td></tr>
 </table>
 
-<pre>.venv/Scripts/python.exe -m pytest                       # 775 tests
+<pre>.venv/Scripts/python.exe -m pytest                       # 891 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m mypy</pre>
@@ -1641,9 +1875,17 @@ infrastructure is built that the portfolio project does not need.</p>
       <td>Spending needs two deliberate acts - switch the provider <em>and</em> supply a key - so <code>git clone &amp;&amp; pytest</code> still costs nothing. See §20.5.7.</td></tr>
   <tr><td><strong>The no-vendor test was narrowed, not deleted</strong></td>
       <td>Adding adapters is exactly when that guard starts earning its keep. Two named modules are exempt; everything else is default-denied. See §20.5.8.</td></tr>
+  <tr><td><strong>Tools are chosen by rules built from the tools' own specs, not by a model</strong></td>
+      <td>Free, repeatable and testable; a model selector would add a paid call to every question and could only be proven against the mock. The user chose this explicitly. See §20.17.</td></tr>
+  <tr><td><strong>A real tool-only path, guarded</strong></td>
+      <td>A question that only asks for a reading needs no document search - but if the reading finds nothing, the documentation is searched anyway. See §20.18 and §20.19.</td></tr>
+  <tr><td><strong>Retrieve more = one refined search, never a lower bar</strong></td>
+      <td>A weak search is repeated once with a documented component name added. The score floor is never lowered, so an off-topic question still gets refused. Threshold measured at 0.50. See §20.20.</td></tr>
+  <tr><td><strong>Decisions are recorded; reasoning is not</strong></td>
+      <td>Each choice point is a rule outcome with a fixed sentence, so the same route always reads the same way. See §20.21.</td></tr>
 </table>
 
-<p class="muted">The full reasoning behind each Stage 3, 4 and 5 decision - including
+<p class="muted">The full reasoning behind each Stage 3 to 7 decision - including
 the alternatives that were rejected and why - is in §20.</p>
 </section>
 
@@ -2805,6 +3047,173 @@ guard against something a test catches reliably.</p>
 </table>
 </div>
 
+<h3 style="margin-top:32px">Stage 7 - Agent decision and tool selection</h3>
+
+<div class="note">
+  <strong>What these records cover, in plain English.</strong> Stage 7 is about the agent
+  <em>choosing</em>: which tools to call, whether to search the documentation, whether to
+  search again, and when to give up. Each record below says what was chosen, why, and what
+  else was considered and turned down. Two terms recur: a <strong>spec</strong> is a
+  tool's published description of the inputs it takes; a <strong>score</strong> is how
+  closely a document passage matches the question, from 0 to 1 (the search's "top score"
+  is its best match); the <strong>floor</strong> (0.25, from Stage 3) is the minimum score a
+  passage needs to be used at all. Every number was measured with the real embedding model on this
+  corpus - see <code>docs/HANDOVER.md</code> §7.C and §7.D.
+</div>
+
+<h3>20.17 Stage 7.1 - Tools are chosen by rules built from the tools' own specs, not by a model</h3>
+<div class="card">
+<p><strong>What.</strong> <code>RuleToolSelector</code>, behind a <code>ToolSelector</code>
+protocol (an interface any class can satisfy without inheriting from it). It is built from
+<code>registry.specs()</code>. It recognises inputs by their <em>name</em> -
+<code>error_code</code>, <code>transaction_reference</code>, <code>key</code>,
+<code>component</code> - rather than by tool, and calls a tool when the question supplies
+every input that tool requires. Construction fails if a registered tool could never be
+selected. Stage 6's <code>select_tools()</code> is removed, not patched.</p>
+
+<p><strong>Why.</strong> The question was put to the user with three options - rules only,
+a model only, or both with rules as the default - and the user chose rules only. A model
+selector means an extra model call for every question, which is a <em>paid</em> call in
+real use, and it makes routing vary from run to run. And it could only ever have been
+tested against the mock provider, which proves the code can read the model's reply, not
+that the model picks the right tool. Building from the specs is what makes the rules
+reusable: a new tool that takes an error code is selectable the moment it is registered,
+with no change to the selector. Failing at construction turns "a tool that is quietly
+never used" into an error the developer sees at once.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>A model chooses the tools</strong></td><td>A paid call per question, different answers on different runs, and nothing but the mock to test it with.</td></tr>
+  <tr><td><strong>Both: rules by default, a model behind a setting</strong></td><td>Offered as the recommended option and declined by the user. It doubles the stage's surface for a selector whose quality could not be measured without spending money.</td></tr>
+  <tr><td><strong>Patch Stage 6's <code>select_tools()</code></strong></td><td>It hard-wired every tool by name. Adding branches to it would keep that coupling and make a seventh tool a selector change.</td></tr>
+  <tr><td><strong>Selector that ignores the registry</strong></td><td>Stage 6's shape. It could choose a tool the agent did not have, which is why Stage 6 needed a runtime error for it (§20.22).</td></tr>
+</table>
+</div>
+
+<h3>20.18 Stage 7.2 - Six decision reasons in one literal; the tool-only path becomes real</h3>
+<div class="card">
+<p><strong>What.</strong> <code>DecisionReason</code> (a fixed list of allowed values) is
+extended from three values to six: <code>additional_knowledge_required</code>,
+<code>live_status_only</code> and <code>insufficient_evidence</code> are new.
+<code>AgentAnswer.decision</code> now records the route <em>actually taken</em>; the
+original plan is the first entry in <code>AgentAnswer.decisions</code>. They differ exactly
+when the agent changed course.</p>
+
+<p><strong>Why.</strong> One question should still produce one routing decision, so the
+existing literal is extended rather than joined by a second type (the Stage 6 rule,
+§20.15). Stage 6 refused a tool-only path because a live reading usually needs the
+documentation to make sense of it. That is true for "what does LIM-4001 mean?" and false for
+"is CoreBankingAdapter healthy?", whose whole answer <em>is</em> the reading - searching the
+documentation there adds passages that compete with it for the model's attention. Stage 7
+can tell those two questions apart (§20.19), so the tool-only path is now a genuine choice
+rather than a weaker copy of "both".</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Keep "no tool-only path"</strong></td><td>Every health or version question would pay for a search whose passages can only distract from the reading.</td></tr>
+  <tr><td><strong>A separate <code>ToolDecision</code> type</strong></td><td>Two records of one decision that must agree - the objection from §20.15, unchanged.</td></tr>
+  <tr><td><strong>Record only the plan</strong></td><td>Hides the interesting cases: a plan that searched twice, or a tool-only plan that had to fall back to documents.</td></tr>
+</table>
+</div>
+
+<h3>20.19 Stage 7.3 - "Explanation or reading?" is judged from the question's form, not its topic</h3>
+<div class="card">
+<p><strong>What.</strong> Once a tool has been selected, <code>asks_for_explanation()</code>
+looks for words that ask for an explanation - <em>why, how, mean, cause, troubleshoot, fix,
+default</em> and similar. If one is present the agent uses both tools and documents;
+otherwise it uses the tools alone. A tool-only plan whose reading finds nothing searches the
+documentation anyway.</p>
+
+<p><strong>Why.</strong> Stage 5 rejected a topic keyword list ("contains <em>ATM</em> →
+search") because a topic word is a guess about meaning (§20.5.1). This is a different kind of
+word list: it is about the <em>kind of answer</em> asked for, not the subject, and it only
+runs on questions that already name something a tool can look up. Its mistakes are uneven,
+and the costly one is guarded. Treating an explanation as a reading would leave out the
+documentation, so a reading that finds nothing always pulls the documentation in. Treating a
+reading as an explanation only costs one extra search.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Always use both (Stage 6)</strong></td><td>Safe but makes the tool-only path impossible, which is one of the five behaviours <code>prompt.md</code> §15 requires.</td></tr>
+  <tr><td><strong>Ask a model which it is</strong></td><td>The same objection as §20.17: a paid, variable call to answer a question a short word list answers well enough, with a guard on the bad direction.</td></tr>
+  <tr><td><strong>Topic keywords ("status", "current")</strong></td><td>The Stage 5 mistake again: "what is the current daily limit?" is a documentation question.</td></tr>
+</table>
+</div>
+
+<h3>20.20 Stage 7.4 - Retrieve more: one refined search, a measured threshold, never a lower bar</h3>
+<div class="card">
+<p><strong>What.</strong> When a search's top score is below
+<code>BKA_AGENT_CONFIDENT_SCORE</code> (0.50), the agent runs <strong>one</strong> more search:
+the question plus a documented component name. That name comes from the tools first (an input
+they were given, or a component a successful reading reports), or otherwise from the
+best-matching passage that already passed the 0.25 floor. The two searches are merged - one
+entry per passage at its better score - and capped at the usual five. If no name is
+available, the search is not repeated.</p>
+
+<p><strong>Why.</strong> Measured on the real model: documentation questions score 0.71-0.82,
+while short identifier questions score 0.34-0.49 and often rank the wrong document first.
+Adding the component name lifted real weak searches from 0.490 to 0.640 and from 0.442 to
+0.603. <em>Filtering</em> to that component cannot help: a filter only removes passages, so it
+can never raise the top score. Two properties keep this safe. The floor is never lowered, and
+an off-topic question has no passage above the floor to take a name from, so it is still
+refused. And only names from the fixed list of nine documented components can be added, so
+text from a tool's payload - which is untrusted - can never reach the search query or the log
+line that records it.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Lower the floor on the second search</strong></td><td>That invents relevance: the floor is what makes "nothing matched" an honest refusal.</td></tr>
+  <tr><td><strong>Filter by component</strong></td><td>Measured to be useless - it can only remove passages, never find a better one.</td></tr>
+  <tr><td><strong>Keep searching until confident</strong></td><td>Unbounded cost, and every extra term pulls the query further from what was asked.</td></tr>
+  <tr><td><strong>Add the tool's summary text to the query</strong></td><td>Puts untrusted text, possibly containing identifiers, into the search and into <code>logs/app.log</code>.</td></tr>
+  <tr><td><strong>Always search twice</strong></td><td>Doubles the search cost for the confident majority, which are already at 0.7-0.8.</td></tr>
+</table>
+</div>
+
+<h3>20.21 Stage 7.5 - Decisions are recorded; reasoning is not</h3>
+<div class="card">
+<p><strong>What.</strong> <code>AgentAnswer.decisions</code> is a list of
+<code>DecisionStep</code>s - <code>plan</code>, <code>consult_documentation</code>,
+<code>retrieve_more</code>, <code>evidence</code> - each with a fixed outcome and a fixed
+sentence for that outcome. No step contains an input value such as a transaction reference.
+The <code>agent.answered</code> log line records only <code>step:outcome</code> pairs.</p>
+
+<p><strong>Why.</strong> <code>prompt.md</code> §15 asks for useful execution information
+instead of hidden chain-of-thought (a model's private step-by-step reasoning). A fixed sentence per outcome makes that checkable rather than a promise: two
+questions on the same route produce identical records, and a test asserts it. Keeping values
+out of the steps means the record is as safe to display as the Stage 6 tool summaries, and
+keeping the sentences out of the log avoids copying display text into the log file, which is
+written to disk and kept.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>A written reasoning paragraph per question</strong></td><td>That is the chain-of-thought <code>prompt.md</code> §15 excludes, and it cannot be tested for being true.</td></tr>
+  <tr><td><strong>Log the explanation sentences</strong></td><td>Adds nothing the step names do not already say, and would be the first free text in a log line that is otherwise shape only.</td></tr>
+  <tr><td><strong>Final decision only</strong></td><td>Cannot show <em>why</em> a question was searched twice or fell back from a tool to the documents.</td></tr>
+</table>
+</div>
+
+<h3>20.22 Stage 7.6 - No tool registry means no tools, not an error</h3>
+<div class="card">
+<p><strong>What.</strong> The agent builds its selector from its registry. An agent built with
+no registry has no selector and answers every question from documents, as in Stage 5. Passing a
+selector <em>without</em> a registry raises <code>ValueError</code> when the agent is
+constructed.</p>
+
+<p><strong>Why.</strong> Stage 6 raised an error at question time when a tool question reached
+an agent without tools, because its selection rule did not know which tools the agent had.
+Building the selector from the registry removes that possibility, so the remaining case - no
+tools at all - is simply the valid Stage 5 setup. The one real mistake left, a selector with
+nothing to call, still fails loudly, and now fails earlier: at construction, not at the first
+unlucky question.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Keep the Stage 6 question-time error</strong></td><td>Crashes a valid composition on an ordinary question.</td></tr>
+  <tr><td><strong>Quietly ignore a selector without a registry</strong></td><td>A configuration mistake would look like an agent that just never uses tools.</td></tr>
+</table>
+</div>
+
 </section>
 <!-- ================================================================== -->
 <section id="subagents">
@@ -3018,7 +3427,7 @@ work out, do it yourself.</p>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 6 (MCP Tools) · Last updated 2026-09-11<br>
+  Stage 7 (Agent Decision &amp; Tool Selection) · Last updated 2026-09-14<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

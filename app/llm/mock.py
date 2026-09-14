@@ -35,7 +35,11 @@ from app.core.logging import get_logger
 from app.core.tracing import traced
 from app.llm.base import LLMResponseError
 from app.llm.models import CompletionRequest, LLMResponse, StopReason, TokenUsage
-from app.llm.prompts import INSUFFICIENT_EVIDENCE
+from app.llm.prompts import (
+    INSUFFICIENT_EVIDENCE,
+    TOOL_CITATION_PREFIX,
+    TOOL_RESULT_OPEN,
+)
 
 logger = get_logger(__name__)
 
@@ -43,6 +47,9 @@ MOCK_PROVIDER_ID = "mock"
 MOCK_MODEL_ID = "mock-deterministic-v1"
 
 _PASSAGE_ID_PATTERN = re.compile(r'<passage id="(\d+)"')
+_TOOL_RESULT_ID_PATTERN = re.compile(
+    re.escape(TOOL_RESULT_OPEN) + r' id="(' + TOOL_CITATION_PREFIX + r'\d+)"'
+)
 _QUESTION_PATTERN = re.compile(r"^Question: (.+)$", re.MULTILINE | re.DOTALL)
 
 # Roughly four characters per token. Deliberately crude: it exists so usage
@@ -164,8 +171,26 @@ class MockLLMProvider:
         """
         text = request.user_text
         passage_ids = _PASSAGE_ID_PATTERN.findall(text)
+        tool_ids = _TOOL_RESULT_ID_PATTERN.findall(text)
         question_match = _QUESTION_PATTERN.search(text)
         question = question_match.group(1).strip() if question_match else "(unknown)"
+
+        if tool_ids:
+            # Stage 7's tool-only route puts readings and no passages in the
+            # prompt. Citing them keeps the mock an honest wiring check for that
+            # route instead of answering it with a refusal-shaped sentence.
+            citations = "".join(f"[{identifier}]" for identifier in passage_ids)
+            citations += "".join(f"[{identifier}]" for identifier in tool_ids)
+            return self._build(
+                f"Answering from the supplied evidence. "
+                f"Question: {question} "
+                f"This response was assembled from {len(passage_ids)} retrieved "
+                f"passage(s) and {len(tool_ids)} tool result(s) {citations} by the "
+                f"deterministic mock provider; it is a wiring check, not a "
+                f"generated answer.",
+                stop_reason="end_turn",
+                prompt_chars=len(request.system) + len(text),
+            )
 
         if not passage_ids:
             return self._build(

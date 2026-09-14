@@ -172,11 +172,15 @@ class TestWiring:
     def test_the_question_is_passed_to_the_retriever_verbatim(
         self, retrieval: RetrievalResult, llm_settings: Settings
     ):
+        # A confident first pass: Stage 7 repeats a *weak* search, and the hashing
+        # embedder scores below the designed 0.50 threshold (HANDOVER 7.D). The
+        # second pass is tested in test_agent_decisions.py.
+        settings = llm_settings.model_copy(update={"agent_confident_score": 0.0})
         retriever = RecordingRetriever(retrieval)
         agent = KnowledgeAgent(
             retriever,  # type: ignore[arg-type]
-            LLMService(MockLLMProvider(), llm_settings),
-            llm_settings,
+            LLMService(MockLLMProvider(), settings),
+            settings,
         )
         agent.ask("Which API is used for payment authorisation?")
         assert retriever.queries == ["Which API is used for payment authorisation?"]
@@ -184,12 +188,14 @@ class TestWiring:
     def test_one_question_triggers_exactly_one_retrieval_and_one_generation(
         self, retrieval: RetrievalResult, llm_settings: Settings
     ):
+        """A confident first pass is one retrieval (see HANDOVER 7.D)."""
+        settings = llm_settings.model_copy(update={"agent_confident_score": 0.0})
         provider = MockLLMProvider()
         retriever = RecordingRetriever(retrieval)
         agent = KnowledgeAgent(
             retriever,  # type: ignore[arg-type]
-            LLMService(provider, llm_settings),
-            llm_settings,
+            LLMService(provider, settings),
+            settings,
         )
         agent.ask("What component handles card authentication?")
         assert retriever.call_count == 1
@@ -522,7 +528,7 @@ class TestStageBoundary:
     Stage 6 they did exactly that. They are moved forward rather than deleted:
     their value is not the specific values they assert but that changing them is
     a deliberate act which forces a decision record to be written first (see
-    ``docs/HANDOVER.md`` §6.F for the one this move required).
+    ``docs/HANDOVER.md`` §6.F, and §7.C for the Stage 7 move).
     """
 
     def test_an_agent_built_without_a_registry_still_has_no_tools(
@@ -543,7 +549,7 @@ class TestStageBoundary:
         assert first.text == second.text
         assert not hasattr(agent, "history")
 
-    def test_the_decision_literal_has_exactly_the_stage_6_values(self):
+    def test_the_decision_literal_has_exactly_the_stage_7_values(self):
         """Guards against a branch being added without a decision record."""
         from typing import get_args
 
@@ -551,27 +557,25 @@ class TestStageBoundary:
 
         assert set(get_args(DecisionReason)) == {
             "knowledge_required",
+            "additional_knowledge_required",
+            "live_status_only",
             "knowledge_and_live_status_required",
+            "insufficient_evidence",
             "no_searchable_content",
         }
 
-    def test_there_is_still_no_tool_only_branch(self):
-        """Stage 6 adds tools *alongside* retrieval, never instead of it.
+    def test_the_tool_only_branch_exists_and_is_deliberate(self):
+        """Stage 6 had no tool-only branch and said Stage 7 might add one.
 
-        A tool-only value would mean answering from a live reading with no
-        documentation to interpret it. Stage 7 may add one deliberately; until
-        then its absence is a decision (``docs/HANDOVER.md`` §6.F), not an
-        oversight.
+        Stage 7 did, as a real choice with a guard on its costly direction: a
+        tool-only plan whose reading finds nothing searches the documentation
+        too (``docs/HANDOVER.md`` §7.C, rule 2).
         """
         from typing import get_args
 
         from app.agent.models import DecisionReason
 
-        assert not [
-            value
-            for value in get_args(DecisionReason)
-            if "tool" in value and "knowledge" not in value
-        ]
+        assert "live_status_only" in get_args(DecisionReason)
 
     def test_the_agent_package_imports_no_vendor_sdk(self):
         import ast

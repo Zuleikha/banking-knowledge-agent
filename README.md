@@ -17,9 +17,9 @@ containerisation and clean architecture.
 
 | | |
 |---|---|
-| **Current stage** | Stage 6 — MCP Tools |
-| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), **six MCP support tools**, **an in-process tool registry**, **a real MCP server over stdio** |
-| **Not yet implemented** | LLM-driven tool selection, conversation context, web UI, Docker |
+| **Current stage** | Stage 7 — Agent decision and tool selection *(awaiting approval)* |
+| **Implemented** | Config, structured logging, tracing, health endpoint, knowledge base + loader, chunking, embeddings, vector store, retrieval, prompt management, context injection, provider seam, grounded answers, the knowledge agent, two concrete LLM adapters (Anthropic + OpenAI), **six MCP support tools**, **an in-process tool registry**, **a real MCP server over stdio**, **agent decision paths (knowledge / retrieve more / tool / both / refuse) and a rule-based tool selector** |
+| **Not yet implemented** | Conversation context, web UI, Docker |
 
 > **Cloning this repository and running its tests costs nothing.** `BKA_LLM_PROVIDER`
 > defaults to a deterministic in-process **mock** — no account, no API key, no spend.
@@ -152,7 +152,7 @@ curl http://127.0.0.1:8000/health
 ## Test
 
 ```bash
-.venv/Scripts/python.exe -m pytest                       # 775 tests
+.venv/Scripts/python.exe -m pytest                       # 879 tests
 .venv/Scripts/python.exe -m pytest -m "not integration"  # skip the real model
 .venv/Scripts/python.exe -m ruff check .                 # lint
 .venv/Scripts/python.exe -m ruff format .                # format
@@ -225,8 +225,8 @@ banking-knowledge-agent/
 │   └── agent/               # The seam across rag/, mcp/ and llm/
 │       ├── __main__.py      # CLI: ask | demo
 │       ├── models.py        # AgentDecision, RetrievalSummary, ToolCallSummary, AgentAnswer
-│       ├── policy.py        # decide — search? tools? neither?
-│       ├── tool_policy.py   # select_tools — route on identifiers, not topics
+│       ├── policy.py        # decide / conclude — the five decision paths
+│       ├── tool_policy.py   # RuleToolSelector — tools chosen from the registry's specs
 │       ├── agent.py         # KnowledgeAgent.ask — decide, retrieve, call tools, generate
 │       └── factory.py       # get_agent — composition from configuration
 ├── data/
@@ -552,13 +552,43 @@ collapsing them would quietly fold infrastructure noise into the refusal rate.
 
 | Piece | What it does |
 |---|---|
-| **Routing decision** | `decide()` returns an `AgentDecision` carrying the rule that produced it and any tool calls to make. Stage 6 added a second real branch — tools alongside retrieval — selected on *identifiers* in the question rather than on topic keywords. |
+| **Routing decision** | `decide()` plans the route and `conclude()` records the route actually taken, each as an `AgentDecision`. Stage 6 added tools alongside retrieval; Stage 7 made it a real choice between five paths — see *Agent decisions* below. |
 | **One refusal path** | A question the agent declines to search is routed through the Stage 4 empty-evidence guard, not given a refusal of its own — so the insufficient-evidence sentence has exactly one definition in the system. |
 | **Execution record** | `AgentAnswer` returns the decision and a retrieval summary alongside the answer, so a UI renders provenance instead of scraping logs. The summary carries *shape*; passage text stays out of it. |
 | **A seam, not a layer** | The agent builds no prompts, owns no model and does no scoring. Retriever and service are injected, which is what keeps 104 agent tests offline, deterministic and free. |
 
 Full reasoning, including rejected alternatives, is in §20.5 of
 [`docs/architecture-guide.html`](docs/architecture-guide.html).
+
+### Agent decisions (Stage 7)
+
+The agent chooses a path for every question. **Every choice is a deterministic rule** —
+no model decides anything, so routing is free, offline and testable.
+
+| Path | `decision.reason` | When |
+|---|---|---|
+| Answer from knowledge | `knowledge_required` | No tool can act on the question; the search is confident |
+| Retrieve more | `additional_knowledge_required` | The first search is weak (top score < `BKA_AGENT_CONFIDENT_SCORE`, 0.50) → **one** second search with a documented component name added |
+| Call a tool | `live_status_only` | The question names something a tool can look up and asks only for a *reading* — no search at all |
+| Use both | `knowledge_and_live_status_required` | It asks *why / how / what it means* about that thing — or a tool-only reading found nothing |
+| Refuse | `insufficient_evidence` · `no_searchable_content` | No passage and no tool result — Stage 4's one refusal sentence, no model call |
+
+The answer shows **decisions, not reasoning**. `AgentAnswer.decisions` lists each choice
+point with a fixed outcome, so the same route is always recorded in the same words:
+
+```
+Q  What is the status of transaction TXN-19990101-000001?
+   [decision: knowledge_and_live_status_required]
+   [route: plan=live_status_only → consult_documentation=performed
+           → retrieve_more=performed → evidence=sufficient]
+   [retrieval: 2 search(es) · 5 of 115 passages cleared 0.25 · top score 0.572]
+   [tool: check_transaction_status -> not found (NOT_FOUND)]
+```
+
+**Tools are chosen by `RuleToolSelector`**, built from the registry's own tool specs: it
+reads each tool's declared parameters (`error_code`, `transaction_reference`, `key`,
+`component`) and calls a tool when the question supplies them. A registered tool it
+could never select is refused when the agent is built, not discovered later.
 
 ---
 

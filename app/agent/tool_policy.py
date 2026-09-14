@@ -1,53 +1,59 @@
-"""Deciding which MCP tools, if any, a question calls for.
+"""Choosing which MCP tools a question calls for, and with which arguments.
 
-Kept in its own module rather than folded into :mod:`app.agent.policy`, because
-the two answer genuinely different questions and will diverge sharply in Stage 7:
-the retrieval decision stays a single rule, while tool selection becomes the
-stage's whole subject.
+**Stage 7 replaced Stage 6's rule rather than patching it.** Stage 6 had a single
+function that knew all six tools by name and hard-wired which identifier fed
+which tool. Stage 7 inverts that: the selector is *built from the registry's
+specs*, and reads each tool's declared parameters to decide whether the question
+supplies them::
 
-**The rule: route on identifiers, not on topics.** A tool is selected when the
-question contains something that tool can actually act on — an error code, a
-transaction reference, a configuration key, a component name. Nothing else
-selects a tool.
+    registry.specs() ──▶ RuleToolSelector        validated at construction, loudly
+                              │
+    question ────────────────▶ select()
+                              │  for each spec, in registry order:
+                              │    extract every parameter the spec declares
+                              │    all REQUIRED parameters found?
+                              │    at least one argument found?
+                              │    only a shared scope argument found? then its cue
+                              ▼
+                         ToolInvocation x 0..4
 
-This is a deliberately different kind of rule from the keyword classifier Stage 5
-rejected for retrieval, and the difference is what makes it defensible:
+**Arguments are extracted by parameter name, not by tool.** An extractor knows
+what an ``error_code``, a ``transaction_reference``, a configuration ``key`` or a
+``component`` looks like, and nothing about which tool wants one. A seventh tool
+taking an ``error_code`` is selectable the moment it is registered; a tool
+declaring a parameter no extractor understands is refused when the selector is
+built, because a registered tool that can never be chosen is a silent gap.
 
-* A *topic* keyword is a guess about meaning. ``"payment"`` in *"what is a
-  payment in cricket?"* looks exactly like ``"payment"`` in a real question, and
-  a list of banking words is a guess about the corpus wearing the costume of a
-  decision.
-* An *identifier* is a fact about form. ``LIM-4001`` matches ``PREFIX-NNNN``, a
-  shape the platform defines and the error-code reference documents. A string of
-  that shape in a question is not evidence about what the user meant; it is the
-  argument a tool needs, sitting in plain sight.
+**Rules, not a model — by the user's decision** (``docs/HANDOVER.md`` §7.B). An
+LLM selector was offered and declined: it would add a paid model call to every
+question, make routing non-deterministic, and could only ever have been proven
+against the mock — proven to parse, not to choose well.
 
-And the tools force the issue: ``look_up_error_code`` cannot be called without an
-error code. Argument availability, not intent, is what makes a tool callable at
-all — so extraction and selection are the same act, and a rule that pretended
-otherwise would select tools it then could not call.
+**Why identifiers select on their own and a component does not.** Stage 6's
+argument still holds: an identifier is a fact about *form* — ``LIM-4001`` matches
+the documented ``PREFIX-NNNN`` shape — not a guess about meaning, and a tool is
+callable exactly when the question supplies what it needs. A component name is
+different. Three tools take one, so a component alone cannot say *which* reading
+is wanted; those tools additionally need a cue in the question
+(:data:`SELECTION_CUES`). A component-only tool with no cue is refused at
+construction, because it would otherwise be called for every mention of every
+component.
 
-**Why no LLM router here.** Stage 5 argued that paying a model call to choose
-between one option and itself was not worth it. That argument is weaker now —
-there are real options — but the honest position is that this rule is
-deterministic, free, offline and testable, and Stage 7 is explicitly the stage
-that weighs a model-driven selector against it. Building the LLM router here
-would spend Stage 7's design decision early, and quietly make the whole tool
-layer untestable without a provider.
-
-**False positives are cheap; false negatives are not.** Calling a tool that finds
-nothing costs an in-process dictionary lookup and gives the model a true
-statement — *no transaction has that reference*. Failing to call a tool that
-would have found something produces an answer from documentation alone that reads
-as authoritative and may be stale. The thresholds below lean accordingly.
+**False positives are still cheap; false negatives are not.** Calling a tool that
+finds nothing costs a dictionary lookup and gives the model a true statement.
+Missing a tool produces a documentation-only answer that reads as authoritative
+and may be stale.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from itertools import product
+from typing import Protocol
 
 from app.core.tracing import traced
-from app.mcp.models import ToolInvocation
+from app.mcp.models import ToolInvocation, ToolSpec
 
 ERROR_CODE_PATTERN = re.compile(r"\b([A-Z]{3})-(\d{4})\b")
 """The documented platform error-code form, ``PREFIX-NNNN``.
@@ -83,30 +89,14 @@ COMPONENT_NAMES: tuple[str, ...] = (
     "DeviceManager",
     "ConfigurationStore",
 )
-"""The nine documented runtime components.
+"""The nine documented runtime components — the default component vocabulary.
 
-Matched case-insensitively as whole words. Listed here rather than imported from
-a tool because this module decides *whether* to call a tool and must not depend
-on any particular tool's internals — the same separation that let the six tools
-be built independently. ``tests/test_mcp_agent.py`` asserts this list agrees with
-what the tools actually accept.
+Injectable into :class:`RuleToolSelector` rather than read from a tool, because
+the selector decides *whether* to call a tool and must not depend on any tool's
+internals. ``tests/test_mcp_agent.py`` asserts the list agrees with what the
+tools actually accept. :mod:`app.agent.policy` also uses it to vet the component
+names allowed into a refined search query.
 """
-
-_COMPONENT_PATTERN = re.compile(
-    r"\b(" + "|".join(COMPONENT_NAMES) + r")\b", re.IGNORECASE
-)
-
-_CANONICAL_COMPONENTS = {name.casefold(): name for name in COMPONENT_NAMES}
-
-_HEALTH_WORDS = re.compile(
-    r"\b(health|healthy|unhealthy|up|down|degraded|outage|responding|"
-    r"probe|liveness|readiness)\b",
-    re.IGNORECASE,
-)
-
-_VERSION_WORDS = re.compile(
-    r"\b(version|versions|release|build|patch|upgraded|running)\b", re.IGNORECASE
-)
 
 MAX_TOOL_CALLS = 4
 """Ceiling on tool calls for a single question.
@@ -114,101 +104,273 @@ MAX_TOOL_CALLS = 4
 A question naming four components and three error codes would otherwise fan out
 into a dozen calls, and the prompt would arrive at the model as a wall of tool
 output with the actual question buried at the bottom. The calls are cheap; the
-model's attention is not. Deterministic ordering plus a hard ceiling keeps the
-prompt bounded and reproducible.
+model's attention is not.
 """
 
+SCOPE_PARAMETERS: frozenset[str] = frozenset({"component"})
+"""Parameters that say *where* to look rather than *what* to look up.
 
-def _first_component(question: str) -> str | None:
-    """Return the canonical name of the first component mentioned, if any."""
-    match = _COMPONENT_PATTERN.search(question)
-    if match is None:
-        return None
-    return _CANONICAL_COMPONENTS[match.group(1).casefold()]
+Several tools share them, so finding one does not by itself say which tool is
+wanted. Every other parameter an extractor understands is an identifier.
+"""
+
+PARAMETER_LABELS: Mapping[str, str] = {
+    "error_code": "error code",
+    "transaction_reference": "transaction reference",
+    "key": "configuration key",
+    "component": "component",
+}
+"""How each parameter is named in a displayable selection reason."""
+
+_HEALTH_CUE = re.compile(
+    r"\b(health|healthy|unhealthy|up|down|degraded|outage|responding|alive|"
+    r"probe|liveness|readiness)\b",
+    re.IGNORECASE,
+)
+
+_STATUS_CUE = re.compile(
+    r"\b(status|state|healthy|unhealthy|up|down|degraded|outage|incident|"
+    r"operational|backlog|queue|instances|error\s+rate)\b",
+    re.IGNORECASE,
+)
+
+_VERSION_CUE = re.compile(
+    r"\b(version|versions|release|build|patch|upgraded|running)\b", re.IGNORECASE
+)
+
+SELECTION_CUES: Mapping[str, re.Pattern[str]] = {
+    "check_service_health": _HEALTH_CUE,
+    "get_component_status": _STATUS_CUE,
+    "retrieve_system_version": _VERSION_CUE,
+}
+"""Question-form cues for the tools a shared scope argument cannot tell apart.
+
+These are cues about *what kind of reading* is asked for — health, state,
+version — not banking topic keywords. "Is CoreBankingAdapter healthy?" matches
+both the health and the status cue, deliberately: a probe result and the
+operational state are the two halves of that answer.
+"""
+
+ArgumentExtractor = Callable[[str], tuple[str, ...]]
+"""Finds every value of one parameter kind in a question, in order, unique."""
+
+
+def _unique(values: Iterable[str]) -> tuple[str, ...]:
+    """Distinct values, first occurrence first."""
+    return tuple(dict.fromkeys(values))
 
 
 @traced
-def select_tools(question: str) -> tuple[ToolInvocation, ...]:
-    """Choose the tool calls ``question`` warrants, with their arguments.
+def extract_error_codes(question: str) -> tuple[str, ...]:
+    """Every documented-form error code in ``question``."""
+    return _unique(match.group(0) for match in ERROR_CODE_PATTERN.finditer(question))
 
-    Selection and argument extraction happen together because they are the same
-    act: a tool is callable exactly when the question contains the identifier it
-    needs.
 
-    Args:
-        question: The user's question, in natural language.
+@traced
+def extract_transaction_references(question: str) -> tuple[str, ...]:
+    """Every transaction reference in ``question``, normalised to upper case."""
+    return _unique(
+        match.group(0).upper()
+        for match in TRANSACTION_REFERENCE_PATTERN.finditer(question)
+    )
 
-    Returns:
-        The invocations to make, in a deterministic order, capped at
-        :data:`MAX_TOOL_CALLS`. Empty when the question names nothing a tool can
-        act on — which is the common case, and not a failure.
+
+@traced
+def extract_configuration_keys(question: str) -> tuple[str, ...]:
+    """Every dotted configuration key in ``question``."""
+    return _unique(
+        match.group(1) for match in CONFIGURATION_KEY_PATTERN.finditer(question)
+    )
+
+
+@traced
+def component_extractor(components: Sequence[str]) -> ArgumentExtractor:
+    """Build an extractor for ``components``, matched as whole words, any case.
+
+    Raises:
+        ValueError: If ``components`` is empty — a vocabulary with nothing in it
+            would silently disable every component tool.
     """
-    invocations: list[ToolInvocation] = []
-    seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
+    if not components:
+        raise ValueError("The component vocabulary must name at least one component.")
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(name) for name in components) + r")\b",
+        re.IGNORECASE,
+    )
+    canonical = {name.casefold(): name for name in components}
 
-    def add(tool: str, arguments: dict[str, str], reason: str) -> None:
-        """Append an invocation unless the identical call is already queued."""
-        key = (tool, tuple(sorted(arguments.items())))
-        if key in seen:
-            return
-        seen.add(key)
-        invocations.append(
+    def extract(question: str) -> tuple[str, ...]:
+        return _unique(
+            canonical[match.group(1).casefold()]
+            for match in pattern.finditer(question)
+        )
+
+    return extract
+
+
+class ToolSelector(Protocol):
+    """Anything that turns a question into the tool calls it warrants.
+
+    A protocol, like ``Embedder``, ``LLMProvider`` and ``Tool``: an implementation
+    qualifies structurally, and a test double needs no inheritance. There is one
+    implementation, :class:`RuleToolSelector`, by decision (``HANDOVER.md`` §7.B).
+    """
+
+    def select(self, question: str) -> tuple[ToolInvocation, ...]:
+        """Return the tool calls ``question`` warrants, possibly none."""
+        ...
+
+
+class RuleToolSelector:
+    """Selects tools from the specs it was built with, by deterministic rules.
+
+    Free, offline, deterministic and testable without a provider. Built by
+    :class:`~app.agent.agent.KnowledgeAgent` from its registry, so it can only
+    ever select a tool the agent can actually call.
+    """
+
+    def __init__(
+        self,
+        specs: Iterable[ToolSpec],
+        components: Sequence[str] = COMPONENT_NAMES,
+        cues: Mapping[str, re.Pattern[str]] = SELECTION_CUES,
+        max_calls: int = MAX_TOOL_CALLS,
+    ) -> None:
+        """Build and validate a selector.
+
+        Args:
+            specs: The tools that may be selected, in the order to call them.
+                Normally ``registry.specs()``.
+            components: The component vocabulary to recognise.
+            cues: Question-form cues keyed by tool name.
+            max_calls: Ceiling on calls for one question.
+
+        Raises:
+            ValueError: If a spec declares no parameters, declares a parameter
+                no extractor understands, or can only be selected by a shared
+                scope argument and has no cue. Each is a tool the selector
+                could never choose correctly, and that is refused here rather
+                than discovered as a question that silently went unanswered.
+        """
+        if max_calls < 1:
+            raise ValueError("max_calls must be at least 1.")
+        self._extractors: dict[str, ArgumentExtractor] = {
+            "error_code": extract_error_codes,
+            "transaction_reference": extract_transaction_references,
+            "key": extract_configuration_keys,
+            "component": component_extractor(components),
+        }
+        self._specs = tuple(specs)
+        self._cues = dict(cues)
+        self._max_calls = max_calls
+        for spec in self._specs:
+            self._validate(spec)
+
+    @property
+    def specs(self) -> tuple[ToolSpec, ...]:
+        """The tools this selector can choose between, in call order."""
+        return self._specs
+
+    @traced
+    def select(self, question: str) -> tuple[ToolInvocation, ...]:
+        """Choose the tool calls ``question`` warrants, with their arguments.
+
+        Args:
+            question: The user's question, in natural language.
+
+        Returns:
+            Invocations in registry order, one per identifier value, capped at
+            ``max_calls``. Empty when the question supplies nothing a tool can
+            act on — the common case, and not a failure.
+        """
+        found = {
+            name: extractor(question) for name, extractor in self._extractors.items()
+        }
+        invocations = [
             ToolInvocation(
-                tool=tool,  # type: ignore[arg-type]
+                tool=spec.name,
                 arguments=arguments,
-                reason=reason,
+                reason=self._reason(spec, arguments),
             )
-        )
+            for spec in self._specs
+            for arguments in self._argument_sets(spec, found, question)
+        ]
+        return tuple(invocations[: self._max_calls])
 
-    for match in ERROR_CODE_PATTERN.finditer(question):
-        code = match.group(0)
-        add(
-            "look_up_error_code",
-            {"error_code": code},
-            f"The question names the error code {code}.",
-        )
-
-    for match in TRANSACTION_REFERENCE_PATTERN.finditer(question):
-        reference = match.group(0).upper()
-        add(
-            "check_transaction_status",
-            {"transaction_reference": reference},
-            f"The question names the transaction reference {reference}.",
-        )
-
-    component = _first_component(question)
-
-    for match in CONFIGURATION_KEY_PATTERN.finditer(question):
-        key = match.group(1)
-        # A configuration key is only actionable with a component to scope it
-        # to, and the tool requires both. Without one named, the question is
-        # about what the key means -- which the documentation answers -- rather
-        # than what it is currently set to.
-        if component is None:
-            continue
-        add(
-            "get_system_configuration",
-            {"component": component, "key": key},
-            f"The question names the configuration key {key}.",
-        )
-
-    if component is not None:
-        if _HEALTH_WORDS.search(question):
-            add(
-                "check_service_health",
-                {"component": component},
-                f"The question asks about the health of {component}.",
+    def _validate(self, spec: ToolSpec) -> None:
+        """Refuse a spec this selector could never choose correctly."""
+        if not spec.parameters:
+            raise ValueError(
+                f"Tool '{spec.name}' declares no parameters, so there is nothing "
+                "in a question a rule could select it on."
             )
-            add(
-                "get_component_status",
-                {"component": component},
-                f"The question asks about the operational state of {component}.",
+        unknown = sorted(
+            parameter.name
+            for parameter in spec.parameters
+            if parameter.name not in self._extractors
+        )
+        if unknown:
+            raise ValueError(
+                f"Tool '{spec.name}' declares parameter(s) {unknown} that no "
+                "argument extractor understands, so it could never be selected. "
+                "Add an extractor to RuleToolSelector before registering it."
             )
-        if _VERSION_WORDS.search(question):
-            add(
-                "retrieve_system_version",
-                {"component": component},
-                f"The question asks about the version of {component}.",
+        scope_only = all(
+            parameter.name in SCOPE_PARAMETERS for parameter in spec.parameters
+        )
+        if scope_only and spec.name not in self._cues:
+            raise ValueError(
+                f"Tool '{spec.name}' takes only a component, which several tools "
+                "share, so it needs a question-form cue; without one it would be "
+                "called for every mention of every component."
             )
 
-    return tuple(invocations[:MAX_TOOL_CALLS])
+    def _argument_sets(
+        self,
+        spec: ToolSpec,
+        found: Mapping[str, tuple[str, ...]],
+        question: str,
+    ) -> list[dict[str, str]]:
+        """Every argument combination the question supplies for ``spec``.
+
+        Identifier parameters fan out — two error codes are two calls. A scope
+        parameter takes the first component named, as in Stage 6.
+        """
+        choices: list[tuple[str, tuple[str, ...]]] = []
+        for parameter in spec.parameters:
+            values = found[parameter.name]
+            if not values:
+                if parameter.required:
+                    return []
+                continue
+            if parameter.name in SCOPE_PARAMETERS:
+                values = values[:1]
+            choices.append((parameter.name, values))
+        if not choices:
+            return []
+
+        cue = self._cues.get(spec.name)
+        has_identifier = any(name not in SCOPE_PARAMETERS for name, _ in choices)
+        if cue is None and not has_identifier:
+            return []
+        if cue is not None and not cue.search(question):
+            return []
+
+        names = [name for name, _ in choices]
+        return [
+            dict(zip(names, combination, strict=True))
+            for combination in product(*(values for _, values in choices))
+        ]
+
+    @staticmethod
+    def _reason(spec: ToolSpec, arguments: Mapping[str, str]) -> str:
+        """A displayable sentence naming what the call acts on.
+
+        Displayed, never logged: it names argument values, which is exactly why
+        :class:`~app.agent.models.ToolCallSummary` does not carry it.
+        """
+        named = " and ".join(
+            f"the {PARAMETER_LABELS.get(name, name)} {value}"
+            for name, value in arguments.items()
+        )
+        return f"The question names {named}, which {spec.name} takes as input."

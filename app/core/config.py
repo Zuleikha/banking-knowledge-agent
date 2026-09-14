@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # `python -m app.rag calibrate` if either changes.
     retrieval_min_score: float = Field(default=0.25, ge=-1.0, le=1.0)
 
+    # --- Agent decision (Stage 7) ----------------------------------------
+    # A completed search whose top score is below this is "weak", and the agent
+    # may run ONE refined second search. Measured, not guessed: documentation
+    # questions top out at 0.71-0.82 with the real model, identifier-heavy ones
+    # at 0.34-0.49 (docs/HANDOVER.md 7.C/7.D). A weak search is only repeated
+    # when a documented component is available to refine it with, so this never
+    # causes an identical re-search, and it never lowers the floor above.
+    agent_confident_score: float = Field(default=0.50, ge=-1.0, le=1.0)
+
     # --- LLM abstraction (Stages 4 and 5) --------------------------------
     # mock | anthropic | openai. The default stays "mock" -- deterministic,
     # in-process and free -- so nothing calls a paid API unless someone
