@@ -14,9 +14,10 @@ methodology were decided and written into this file **before any code was writte
 see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
 
 **Stage 7 — Agent decision and tool selection — approved 2026-09-14, committed `a3728d9`,
-pushed and verified.** **Stage 8 — Conversation context — IMPLEMENTED AND TESTED, awaiting approval.
-NOT committed.** Decisions in *Stage 8 decisions* §8.A–§8.C. Instruction-file
-restructuring committed separately as `d47f522`, pushed. Decisions are recorded in *Stage 7
+pushed and verified.** **Stage 8 — Conversation context — APPROVED 2026-09-14, committed `2abbb39`, pushed and
+verified.** Decisions in *Stage 8 decisions* §8.A–§8.C. Committed separately before it:
+instruction-file restructuring `d47f522` and the guide readability pass `249f04e`.
+**Next stage: Stage 9 — Web interface. Not started.** Decisions are recorded in *Stage 7
 decisions* below, written before any code. Guide sections written after the concurrent
 readability session paused — see Problems §19 (resolved).
 
@@ -25,9 +26,9 @@ readability session paused — see Problems §19 (resolved).
 ## ⏱️ SESSION CHECKPOINT — start here
 
 **Session state:** **Stage 7 is complete and approved** (2026-09-14), committed `a3728d9`,
-pushed to `origin/main`, push verified. **Stage 8 is implemented and tested, stopped for
-approval, NOT committed**: decisions §8.A–§8.C (including the user's "past questions only"
-choice), guide records §20.23–§20.27, 971 tests passing. Instruction files were restructured mid-stage: `CLAUDE.md` is
+pushed to `origin/main`, push verified. **Stage 8 is approved** (2026-09-14), committed
+`2abbb39`, pushed, verified `origin/main == HEAD`: decisions §8.A–§8.C, guide records
+§20.23–§20.27, 971 tests passing. Nothing is in progress; Stage 9 not started. Instruction files were restructured mid-stage: `CLAUDE.md` is
 now the sole authority, stage detail is in `docs/PROJECT_PLAN.md`, and `prompt.md` /
 `ccp.txt` are archived in `docs/legacy/`.
 The Stage 7 sections of `docs/architecture-guide.html` are written too (§20.17–§20.22),
@@ -42,11 +43,12 @@ after the separate "Improve.md" session paused its edits (Problems §19).
 | | |
 |---|---|
 | Last **approved** stage | **Stage 7 — Agent decision and tool selection** (approved 2026-09-14) |
-| Current stage | **Stage 8 — Conversation context — implemented and tested, awaiting approval** |
-| `HEAD` | `d47f522` (instruction-file restructuring) = `origin/main` — verified |
+| Last approved stage (update) | **Stage 8 — Conversation context** (approved 2026-09-14, `2abbb39`) |
+| Current stage | **None in progress** — Stage 9 not started |
+| `HEAD` | `2abbb39` = `origin/main` — verified (plus this file's own docs commit) |
 | Working tree | Stage 7: 12 modified + 1 new file. **Not Stage 7's:** `docs/improve.md` (new) and the readability edits in `docs/architecture-guide.html`, both from the "Improve.md" session |
 | Tests | **971 passed** (891 → 971) · ruff clean · mypy strict clean (58 source files) |
-| Next | User approval of Stage 8, then resolve Problems §20 before committing |
+| Next | Stage 9 — Web interface — when the user asks for it |
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -2142,7 +2144,10 @@ source for reassessment in Stage 13.
 | **Stage 5 docs commits** | `26fa239`, then `96204f1` — both pushed |
 | **Stage 6 commit** | `93eeb22` — `feat(stage-6): MCP tools - six synthetic support tools, registry and server` |
 | **Stage 7 commit** | `a3728d9` — `feat(stage-7): agent decision and tool selection - five paths, rule-based selector` |
-| **Restructuring commit** | `d47f522` — `docs: restructure instruction files for token efficiency` — pushed, verified `origin/main == HEAD`. Stage 8 is **not** committed |
+| **Restructuring commit** | `d47f522` — `docs: restructure instruction files for token efficiency` — pushed |
+| **Guide readability commit** | `249f04e` — `docs(guide): plain-English readability pass over sections 1-5` (+187/−66, the separate improve.md session's edits) — pushed |
+| **Stage 8 commit** | `2abbb39` — `feat(stage-8): conversation context - sessions and rule-based follow-ups` — 18 files, 2,418 insertions, 34 deletions |
+| **Stage 8 push** | ✅ `d47f522..2abbb39` pushed; verified `origin/main == local HEAD == 2abbb39` |
 | **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Working tree** | Clean, apart from git-ignored local files |
@@ -2258,7 +2263,13 @@ files.
 **Stage 8 is approved and committed** (readability edits first as `249f04e`, then Stage 8;
 hashes in *Git*). **The next action is Stage 9 — Web interface — when the user asks for
 it.** Read only its section of `docs/PROJECT_PLAN.md`. Still uncommitted and not Stage 8's:
-the user's `/usage` rule in `CLAUDE.md`, and untracked `docs/improve.md`.
+the user's `/usage` rule in `CLAUDE.md`.
+
+> ⚠️ **Found after the Stage 8 commit, not done by this session (awaiting the user):**
+> `docs/improve.md` was moved to `docs/legacy/improve.md` (untracked, not git-ignored), so
+> `CLAUDE.md` §4's pointer to `docs/improve.md` is stale; and `docs/legacy/ccp.txt` no
+> longer exists anywhere in the repository. It was git-ignored and never committed, so
+> git cannot restore it; its content is not needed — `CLAUDE.md` is the sole authority.
 
 *Superseded:* **The next action is to begin Stage 8 — Conversation context — when the user asks for
 it.** Do not start it unprompted. Stage 7's approval does not carry over.
