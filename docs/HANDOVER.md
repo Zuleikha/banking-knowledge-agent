@@ -13,8 +13,8 @@ Committed `93eeb22` and pushed to `origin/main`, push verified. Stage 6 scope an
 methodology were decided and written into this file **before any code was written** —
 see *Stage 6 decisions*. Stage 5 remains approved (`1478631`, `6ebe947`).
 
-**Stage 7 — Agent decision and tool selection — implemented and tested 2026-09-14; STOPPED
-for the user's approval. Nothing committed or pushed.** Decisions are recorded in *Stage 7
+**Stage 7 — Agent decision and tool selection — approved 2026-09-14, committed `a3728d9`,
+pushed and verified. Next stage: Stage 8 — Conversation context. Not started.** Decisions are recorded in *Stage 7
 decisions* below, written before any code. Guide sections written after the concurrent
 readability session paused — see Problems §19 (resolved).
 
@@ -22,8 +22,8 @@ readability session paused — see Problems §19 (resolved).
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 7 is implemented and tested, and STOPPED for approval.** Code,
-tests, `.env.example`, `README.md` and this file are done. **Not committed, not pushed.**
+**Session state:** **Stage 7 is complete and approved** (2026-09-14), committed `a3728d9`,
+pushed to `origin/main`, push verified. Nothing is in progress.
 The Stage 7 sections of `docs/architecture-guide.html` are written too (§20.17–§20.22),
 after the separate "Improve.md" session paused its edits (Problems §19).
 
@@ -35,9 +35,9 @@ after the separate "Improve.md" session paused its edits (Problems §19).
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 6 — MCP Tools** (approved 2026-09-11) |
-| Current stage | **Stage 7 — implemented, awaiting approval** |
-| `HEAD` | `6c930f5` = `origin/main` (Stage 6 docs commit) — Stage 7 is uncommitted |
+| Last **approved** stage | **Stage 7 — Agent decision and tool selection** (approved 2026-09-14) |
+| Current stage | **None in progress** — Stage 8 not started |
+| `HEAD` | `a3728d9` = `origin/main` — verified (plus this file's own docs commit) |
 | Working tree | Stage 7: 12 modified + 1 new file. **Not Stage 7's:** `docs/improve.md` (new) and the readability edits in `docs/architecture-guide.html`, both from the "Improve.md" session |
 | Tests | **891 passed** (775 → 891) · ruff clean · mypy strict clean (52 source files) |
 | Next | User approval of Stage 7; then the guide's Stage 7 sections once the other session is done |
@@ -1969,7 +1969,9 @@ source for reassessment in Stage 13.
 | **Stage 5 Checkpoint B commit** | `6ebe947` — `feat(stage-5b): two concrete LLM adapters - Anthropic and OpenAI` |
 | **Stage 5 docs commits** | `26fa239`, then `96204f1` — both pushed |
 | **Stage 6 commit** | `93eeb22` — `feat(stage-6): MCP tools - six synthetic support tools, registry and server` |
-| **Push status** | ✅ Pushed to `origin/main` (`96204f1..93eeb22`); verified `origin/main == local HEAD == 93eeb22` |
+| **Stage 7 commit** | `a3728d9` — `feat(stage-7): agent decision and tool selection - five paths, rule-based selector` |
+| **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
+| **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 6** | 34 files: 20 added, 14 modified — 9,132 insertions, 215 deletions |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
@@ -2076,18 +2078,15 @@ edit.
 
 ## Next Action
 
-**Stage 7 is implemented and tested, and STOPPED for the user's approval.** Not
-committed, not pushed. `HEAD == origin/main == 6c930f5`. 891 tests passing, ruff clean,
-mypy strict clean over 52 source files.
+**Stage 7 is complete and approved. It is committed (`a3728d9`) and pushed**, verified
+`origin/main == HEAD`. 891 tests passing, ruff clean, mypy strict clean over 52 source
+files.
 
-**The next action:**
+**The next action is to begin Stage 8 — Conversation context — when the user asks for
+it.** Do not start it unprompted. Stage 7's approval does not carry over.
 
-1. **Wait for the user's explicit approval.** Do not commit or push before it.
-2. ~~Guide Stage 7 sections~~ — done. The "Improve.md" session can resume its
-   readability pass (it was waiting for this).
-3. On approval: re-run the three commands via `.venv` (Problems §18), `git add -An` to
-   list the exact file set, ask the user whether the guide readability edits and
-   `docs/improve.md` belong in this commit, then commit, push, verify, record the hash.
+> The "Improve.md" session may resume its readability pass over the guide; its further
+> edits belong in their own commit. `docs/improve.md` remains untracked.
 
 > ⚠️ A live LLM call is still a paid call and still needs explicit confirmation at the
 > time. Stage 7 added none: every decision is a deterministic rule.
