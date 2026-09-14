@@ -7,11 +7,11 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-14** · **Stages 1–9 approved.** Stage 9 — Web interface —
-approved 2026-09-14; commit hash and push result in *Git*. **Stage 10 NOT started.**
+Last updated: **2026-09-14, end of session** · **Stages 1–9 approved, committed and pushed.
+Stage 10 — Observability — NOT started.** Working tree clean.
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
-`docs/PROJECT_PLAN.md` — read only the Stage 9 section. This file is state and decisions.
+`docs/PROJECT_PLAN.md` — read only the Stage 10 section. This file is state and decisions.
 
 ---
 
@@ -27,12 +27,21 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 |---|---|
 | Last **approved** stage | **Stage 9 — Web interface** (approved 2026-09-14) |
 | Current stage | **None in progress** — Stage 10 not started |
-| `HEAD` | Stage 9 docs commit on top of `2484b73` (Stage 9), = `origin/main` |
-| Working tree | Clean, apart from git-ignored local files |
-| Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) — re-run after approval |
-| Next | Stage 10 — when the user asks. Read only its section of `docs/PROJECT_PLAN.md` |
+| `HEAD` | this file's end-of-session docs commit, on top of `4c2bc97` = `origin/main` |
+| Working tree | **Clean**, apart from git-ignored local files |
+| Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) |
+| Next | Stage 10 — see *Stage 10 — starting notes* directly below |
 
-### Commits made in the last session (2026-09-14), oldest first
+### Commits made in the last session (2026-09-14, Stage 9 session), oldest first
+
+| Commit | What |
+|---|---|
+| `ca5449c` | Handover: stale Stage 8 status fields corrected |
+| `2484b73` | **Stage 9** — web interface |
+| `4c2bc97` | Handover: Stage 9 hash and push result |
+| *(this commit)* | Handover: end-of-session checkpoint and Stage 10 starting notes |
+
+### Commits made in the session before (2026-09-14, Stage 8 session), oldest first
 
 | Commit | What |
 |---|---|
@@ -43,42 +52,63 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 | `3fe5ea4` | `CLAUDE.md`: readability rule absorbed, `/usage` habit, archived path fixed |
 | `0e04b77` | `.gitignore`: `docs/legacy/` |
 
-### Stage 9 — starting notes (read before planning Stage 9)
+### Stage 10 — starting notes (read before planning Stage 10)
 
-**What Stages 5–8 already expose for the UI** — render these, do not re-derive them:
+`PROJECT_PLAN.md` Stage 10 = **Observability**: structured logging tracking request ID,
+question, retrieval latency, retrieved documents, LLM latency, tool calls, tool latency,
+errors, overall response latency; metrics and tracing where practical; no secrets or
+sensitive data; document in the guide; tests; handover.
 
-| UI requirement (`PROJECT_PLAN.md` Stage 9) | Already on the returned objects |
-|---|---|
-| Answer · sources | `AgentAnswer.text`, `.sources` (document citations), `.tool_results` (`[T1]`…) |
-| RAG was used | `AgentAnswer.retrieval.performed`, `.passes`, `.documents`, `.top_score` |
-| MCP was used | `AgentAnswer.used_live_information`, `.tools` (safe summaries), `.tool_results` |
-| Information insufficient | `AgentAnswer.refused` (fixed `INSUFFICIENT_EVIDENCE` sentence, no model call) |
-| Tool activity / route | `AgentAnswer.decision`, `.decisions` (fixed-sentence `DecisionStep`s) |
-| Conversation display | `ConversationService.turns(session_id)`; `ConversationAnswer.context` (resolution, carried, history sent) |
+**What already exists — build on it, do not duplicate it:**
 
-**Entry points:** `app.conversation.factory.get_conversation_service()` (wraps
-`app.agent.factory.get_agent()`). Today the API has only `GET /health`
-(`app/api/`, `app/main.py`).
+| Requirement | Already there | Gap |
+|---|---|---|
+| Structured logging | `structlog` JSON lines → `logs/app.log`; `merge_contextvars` already in the processor chain (`app/core/logging.py`) | — |
+| Function tracing | `@traced` → `logs/traces.log` (`bka.trace`): function, `duration_ms`, outcome, `error_type`; never arguments (`app/core/tracing.py`) | Not linked to a request |
+| Request ID | Nothing | **Missing** — natural fit: middleware binds it with `structlog.contextvars`, returns it in a response header |
+| Retrieval latency · documents | `rag.retrieved` event (`app/rag/retriever.py`); `RetrievalSummary.documents` on every answer | **No latency field** |
+| LLM latency | `llm.answered` (`app/llm/service.py`); `TokenUsage` on responses ("Stage 10 turns these into metrics") | **No latency field** |
+| Tool calls · latency | `mcp.tool_called` (`app/mcp/registry.py`); `ToolCallSummary` (names only, never values) | **No latency field** |
+| Errors | `api.ask_failed` (type only); `@traced` `error_type` | Not tied to a request id |
+| Overall latency | Nothing per request | **Missing** — request middleware |
+| Metrics | Nothing (no Prometheus / OpenTelemetry installed) | Decide |
 
-**Decisions Stage 9 must make (ask the user; record here and in guide §20 when made):**
-1. **Session-store lifetime** — `get_conversation_service()` builds a new in-memory store
-   per call. The API needs one shared store for the app's life (e.g. on `app.state`).
-2. **Concurrent requests on one session** can read the same earlier turns and record a
-   duplicate turn number (Stage 8 unfinished #3) — serialise per session, or accept.
-3. **Session id transport** — request body vs header vs cookie; an unknown or expired id
-   raises `SessionNotFoundError` and should map to a clear HTTP error, never a new session.
-4. **UI technology** — `prompt.md` says keep it simple; `.gitignore` already reserves
-   `node_modules/`, but a no-build page served by FastAPI may be enough.
+Other events already emitted: `agent.answered`, `conversation.turn` (hashed session
+fingerprint), `conversation.started/ended`, `llm.provider_selected`, `rag.index_*`,
+`embedding.model_loading`, `mcp.server.*`.
+
+**Build method:** `CLAUDE.md` §2 marks Stage 10 ✅ for parallel sub-agents (independent
+instrumentation points) — but the default is still a **single build**. Use sub-agents only
+if the user asks at kickoff, and only after the main session writes and freezes the shared
+contract (request-id context, event names, latency field names, any metrics interface).
+
+**Decisions Stage 10 must make (ask the user; record here and in guide §20 when made):**
+1. **"Question" vs privacy** — the plan says track the question, but every stage so far
+   deliberately **never logs question text** (it can hold customer data; Stage 8 logs a
+   hashed session fingerprint only). Options: log a hash/length only · log redacted text ·
+   log full text behind an off-by-default setting.
+2. **Metrics** — in-process counters/histograms exposed at an endpoint (e.g. `GET /metrics`)
+   · Prometheus client library (new dependency) · OpenTelemetry (heavier; mind the
+   `mcp`/`starlette` pin) · logs only.
+3. **Tracing depth** — request id only, carried through `@traced` events via contextvars ·
+   parent/child span ids · OpenTelemetry spans.
+4. **Request-id source** — always generate · accept an incoming `X-Request-ID` (validate
+   format/length) · both.
 
 **Constraints to carry in:**
-- `@traced` must **not** decorate FastAPI route handlers (Problems §2) — it breaks
-  dependency resolution. Request tracing is Stage 10.
-- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (Stage 6 §6.B).
-- The agent is synchronous and the embedding model loads lazily — the first request is slow.
-- A paid provider is still opt-in (`BKA_LLM_PROVIDER` + `BKA_LLM_API_KEY`); tests and
-  demos stay on `mock`. No live call without the user's explicit confirmation.
-- Guide sections follow `CLAUDE.md` §4 (plain English, `.note`, decisions recorded
-  when made).
+- `@traced` must **not** decorate FastAPI route handlers or dependencies (Problems §2) —
+  request tracing goes in **middleware**. The global rule still requires `@traced` on
+  every new non-route function.
+- Handlers are sync `def` and run in the threadpool: confirm `structlog.contextvars`
+  values reach threadpool code in tests (Starlette copies context to the worker thread).
+- Never log PII, secrets, tokens, raw session ids, tool payload values or answer text.
+- Trace logs go to disk, never through the Headroom proxy (global rule).
+- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (Stage 6 §6.B) — check any new
+  dependency against this before installing.
+- A paid provider is still opt-in; tests and demos stay on `mock`. No live call without
+  the user's explicit confirmation.
+- Guide sections follow `CLAUDE.md` §4 (plain English, `.note`, decisions recorded when
+  made). Guide §13 *Observability* is the section to rewrite.
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -91,26 +121,26 @@ progress. **Stage 10 has not been started** and starts only when the user asks.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -3        # expect docs(handover) end-of-session commit on top of 0e04b77
+git log --oneline -3        # expect docs(handover) end-of-session commit on top of 4c2bc97
 git status                  # expect clean
 
 # 2. If the venv is missing or stale (see "If the venv is missing" below)
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 
 # 3. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 971 passed (~60-95 s)
+./.venv/Scripts/python.exe -m pytest        # expect 1005 passed (~60-95 s)
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect no issues in 58 source files
+./.venv/Scripts/python.exe -m mypy          # expect no issues in 61 source files
 
 # 4. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
 ./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
 
-# 5. See Stages 6-8 working, entirely FREE (mock LLM, local embeddings)
+# 5. See Stages 6-9 working, entirely FREE (mock LLM, local embeddings)
 ./.venv/Scripts/python.exe -m app.agent demo               # routes, RAG + MCP
 ./.venv/Scripts/python.exe -m app.agent conversation-demo  # 7 turns, all follow-up rules
-./.venv/Scripts/python.exe -m app.agent chat               # interactive; blank line ends
+./.venv/Scripts/python.exe -m uvicorn app.main:app         # then open http://127.0.0.1:8000/
 
-# 6. Then read "Next Action" at the bottom of this file.
+# 6. Then read "Stage 10 — starting notes" above and "Next Action" at the bottom.
 ```
 
 > ⚠️ **`mcp` must stay pinned at `1.12.4`.** Upgrading it pulls `starlette>=1.0`, which
