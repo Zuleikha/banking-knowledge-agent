@@ -182,7 +182,7 @@ git status                    # expect clean
 | **Stage name** | Conversation Context |
 | **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash recorded in *Git*, in the follow-up docs commit) |
 | **Last completed step** | 971 tests passing, ruff and mypy clean, `conversation-demo` verified with the real embedding model (all four resolution rules), guide + README + handover updated |
-| **Next step** | STOP. Wait for `APPROVED`. See *Next Action* |
+| **Next step** | Stage 9 — not started; begins when the user asks. See *Next Action* |
 
 | Stage | Name | Status |
 |---|---|---|
@@ -560,7 +560,7 @@ The question was put to the user with three options and answered.
 
 ## Current Work
 
-### Implemented in Stage 8 (awaiting approval — NOT committed)
+### Implemented in Stage 8 (approved, committed `2abbb39`, pushed)
 
 Single cohesive build, no sub-agents (§8.A). Tests written first and run red (collection
 failed on the missing `app.conversation`) before any implementation.
@@ -710,8 +710,8 @@ FastAPI at import and takes the whole suite with it.
 
 ### Currently being worked on
 
-**Stage 7, stopped for approval.** Implementation, tests and all documentation are
-complete. Nothing is committed.
+**Nothing in progress.** Stages 7 and 8 are approved, committed and pushed. Stage 9 has
+not started.
 
 ### What remains deliberately unfinished in Stage 6
 
