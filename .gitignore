@@ -49,3 +49,5 @@ docs/decisions/auto-changes.log
 ai-dev-token-efficiency-workflow.md
 # Archived instruction files, kept local.
 docs/legacy/
+# Personal how-to-run cheat sheet, kept local.
+docs/HOW_TO_RUN.html
