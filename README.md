@@ -16,7 +16,7 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 11 — Testing and Evaluation** implemented, awaiting approval |
+| **Current stage** | **Stage 11 — Testing and Evaluation** complete · Stage 12 next |
 | **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard |
 | **Next** | Docker (12) · guardrails and security (13) · production architecture (14) |
 

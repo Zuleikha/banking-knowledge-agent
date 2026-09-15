@@ -1873,8 +1873,8 @@ hardcoded, never defaulted to a real value.</p>
   per-function timing traces. Stage 10 ties everything that happened during one request together
   with a <em>request id</em>, adds a latency field to each step, and counts the work in
   <em>metrics</em>. How it connects: it instruments the RAG (Stage 3), LLM (Stage 4), MCP (Stage 6)
-  and API (Stage 9) layers without changing what they do; Stage 11 can build evaluation on these
-  numbers, and Stage 13 reviews who may read them.
+  and API (Stage 9) layers without changing what they do; Stage 11's evaluation scorecard reports
+  per-question latency alongside its scores (§14), and Stage 13 reviews who may read them.
 </div>
 
 <h3>Two sinks, deliberately separate</h3>
@@ -2096,8 +2096,8 @@ reason.</p>
   <strong>Why two embedders, and why that is a testing decision as much as a design one.</strong>
   Almost every RAG test runs on the deterministic <code>HashingEmbedder</code>: no
   90 MB download, no warm cache, no machine-dependent floating point, and the fast
-  suite - every test not marked <code>integration</code>, 934 of them - finishes in about
-  30 s (27.5 s measured on 2026-09-14). Those tests assert <em>mechanics</em>. A separate,
+  suite - every test not marked <code>integration</code>, 1042 of them - finishes in about
+  35 s (33.6 s measured on 2026-09-15). Those tests assert <em>mechanics</em>. A separate,
   <code>integration</code>-marked file asserts <em>quality</em> against the real model,
   because mechanics cannot prove that a question finds the right passage.
   A mock would not have done this job: a mock proves the calls happen, not that the
@@ -2821,6 +2821,12 @@ the suite says so.</p>
 questions is a small sample, and they were written by the same person who wrote the
 corpus. The threshold is defensible, not proven. Stage 11's evaluation set is where it
 gets tested properly.</p>
+
+<p><strong>Update, Stage 11.</strong> The 49-question evaluation set tested it: every expected
+document was found (recall@5 1.000), and five general off-topic questions were refused. But two
+banking-adjacent questions that the knowledge base cannot answer - a mortgage rate and opening a
+savings account - cleared the 0.25 floor and were answered from nearby documents. The single floor
+is now a measured weakness, not a theoretical one (§14, §20.42).</p>
 </div>
 
 <!-- ---------------------------------------------------------------- -->
@@ -2946,7 +2952,9 @@ every import in <code>app/llm/</code>.</p>
 
 <p><strong>What it costs.</strong> No end-to-end evidence yet that a real model answers
 these prompts well. Prompt <em>quality</em> is therefore unproven until Stage 5, and
-Stage 11's evaluation set is where it is measured rather than asserted.</p>
+Stage 11's evaluation set is where it is measured rather than asserted. <em>Update, Stage 11:</em>
+the measurement exists as the opt-in <code>python -m app.eval --paid</code> run (§20.39); it has not
+been run, because every question would be a paid call.</p>
 </div>
 
 <!-- ---------------------------------------------------------------- -->

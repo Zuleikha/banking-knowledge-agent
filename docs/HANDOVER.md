@@ -7,37 +7,34 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-15, end of session** · **Stages 1–10 approved, committed and pushed.**
-The Stage 10 follow-up (10.E + 10.F) was **approved 2026-09-15 and committed** (`42788e8`).
-**Stage 11 — Testing and Evaluation — approved 2026-09-15, committed and pushed** (hash in *Git*).
+Last updated: **2026-09-15, end of session** · **Stages 1–11 approved, committed and pushed.**
+Stage 11 — Testing and Evaluation — `7b8c85e`. Stage 10 follow-up (10.E + 10.F) — `42788e8`.
+**Stage 12 — Containerisation — NOT started;** the user will kick it off in a new session.
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
-`docs/PROJECT_PLAN.md` — read only the Stage 11 section. This file is state and decisions.
+`docs/PROJECT_PLAN.md` — read only the Stage 12 section. This file is state and decisions.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 10 — Observability — approved by the user 2026-09-15**, committed
-`c627358` and pushed. After that, the user answered the two open Stage 10 questions:
-**10.E** quieten `httpx` logging to `warning` (implemented, test-first) and **10.F** keep the
-hot-path helpers untraced (documented). That follow-up was **APPROVED** by the user and committed
-as its own `fix(stage-10)` commit. **Stage 11 was kicked off by the user**, decisions 11.A–11.D
-were made and recorded before code, 11.E during implementation; Stage 11 is **implemented and
-tested, uncommitted, awaiting APPROVED**.
+**Session state:** **Stage 11 — Testing and Evaluation — approved by the user 2026-09-15**,
+committed `7b8c85e` and pushed (verified). Earlier the same day the Stage 10 follow-up (10.E/10.F)
+was approved and committed as `42788e8`. **Nothing is in progress. Stage 12 has not been started**
+and starts only when the user asks — they plan to kick it off in a new session.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 10 — Observability** (approved 2026-09-15, `c627358`) |
-| Current stage | **Stage 11 — Testing and Evaluation — APPROVED 2026-09-15, committed and pushed** (hash in *Git*); Stage 12 not started |
-| `HEAD` | `25ebdc9` (handover hash commit on top of the follow-up `42788e8`) = `origin/main` |
-| Working tree | Clean after the Stage 11 commit — 16 files: 11 added (`app/eval/` ×6, `data/eval/questions.yaml`, `tests/test_eval_*.py` ×4), 5 modified (`app/core/config.py`, `.env.example`, `README.md`, `docs/architecture-guide.html`, `docs/HANDOVER.md`). See *Files* |
-| Tests | **1119 passed** (77 integration) · ruff clean · mypy strict clean (70 source files) · scorecard PASS |
-| Next | **Stage 12 — Containerisation** when the user asks. Open for the user: `off-006`/`off-007` refusal gap and whether to run `--paid` (Stage 11 unfinished #1, #3) |
+| Last **approved** stage | **Stage 11 — Testing and Evaluation** (approved 2026-09-15, `7b8c85e`) |
+| Current stage | **None in progress** — Stage 12 not started |
+| `HEAD` | End-of-session handover commit on top of `86c2bd1` (Stage 11 hash record) = `origin/main` |
+| Working tree | Clean, apart from git-ignored local files |
+| Tests | **1119 passed** (77 integration) · ruff clean · mypy strict clean (70 source files) · `python -m app.eval` PASS |
+| Next | **Stage 12 — Containerisation** when the user asks — read *Stage 12 — starting notes*. Open for the user: `off-006`/`off-007` refusal gap and whether to run `--paid` (Stage 11 unfinished #1, #3) |
 
-### Commits made this session (2026-09-15, Stage 10 session), oldest first
+### Commits made this session (2026-09-15, Stage 10–11 session), oldest first
 
 | Commit | What |
 |---|---|
@@ -45,6 +42,11 @@ tested, uncommitted, awaiting APPROVED**.
 | `889585d` | Guide readability pass: §20 intro and Stage 3 decision records |
 | `c627358` | **Stage 10** — observability (16 files) |
 | `b633b15` | Handover: Stage 10 hash and push result |
+| `42788e8` | Stage 10 follow-up — `httpx` logging to `warning` (10.E), untraced helpers recorded (10.F) |
+| `25ebdc9` | Handover: follow-up hash and push result |
+| `7b8c85e` | **Stage 11** — evaluation (16 files) |
+| `86c2bd1` | Handover: Stage 11 hash and push result |
+| *(this commit)* | End of session: handover checkpoint, Stage 12 starting notes, README status, guide counts |
 
 ### Documentation-only changes after Stage 9 (2026-09-14, docs session) — no application code
 
@@ -91,55 +93,51 @@ records were written to the standard when made. Readability-only edits go in the
 | `3fe5ea4` | `CLAUDE.md`: readability rule absorbed, `/usage` habit, archived path fixed |
 | `0e04b77` | `.gitignore`: `docs/legacy/` |
 
-### Stage 11 — starting notes (read before planning Stage 11)
+### Stage 12 — starting notes (read before planning Stage 12)
 
-**First:** settle the uncommitted 10.E/10.F follow-up (checkpoint above). Do not start Stage 11
-on top of uncommitted Stage 10 files — they would be swept into Stage 11's commit.
+`PROJECT_PLAN.md` Stage 12 = **Containerisation**: Dockerfile · Docker Compose where appropriate ·
+environment configuration · health checks · local startup instructions. Must run locally with no
+cloud infrastructure; synthetic data must remain available locally; **test the complete system
+through Docker**; handover.
 
-`PROJECT_PLAN.md` Stage 11 = **Testing and Evaluation**: an evaluation framework testing
-retrieval accuracy, answer grounding, hallucination resistance, tool selection, tool results,
-failure handling, API behaviour and agent behaviour; a small evaluation dataset of realistic
-banking questions with expected evidence; measure retrieval and answer quality where
-practical; document known limitations; handover.
+**What exists today (checked 2026-09-15):**
 
-**What already exists — build on it, do not duplicate it:**
+| Area | State |
+|---|---|
+| Docker on this machine | ✅ Docker **29.6.1**, Docker Compose **v5.2.0** installed |
+| Docker files | None yet — no `Dockerfile`, `compose.yaml`, `.dockerignore` |
+| App entry point | `uvicorn app.main:app` (FastAPI factory `create_app`); settings default `BKA_HOST=127.0.0.1` — a container must bind `0.0.0.0`; check whether uvicorn's `--host` or `BKA_HOST` is what actually applies |
+| Health | `GET /health` (liveness, `app/api/routes/health.py`) and `GET /metrics`. **No `GET /ready`** — see the open question in *Documentation-only changes after Stage 9* (guide §11 lists it for Stage 12; the plan does not) |
+| Heavy dependencies | `torch==2.14.0` (default wheel is large — a CPU-only wheel is a likely image-size decision), `sentence-transformers==5.7.0`, `uvicorn[standard]==0.34.0`; `mcp==1.12.4` and `fastapi==0.115.6` pins must hold (6.B) |
+| Data | `data/knowledge/` (15 docs, in git) · `data/eval/questions.yaml` (in git) · `data/vectorstore/` **git-ignored**, built by `python -m app.rag build` (115 chunks); `get_retriever()` rebuilds a missing/stale index |
+| Embedding model | `sentence-transformers/all-MiniLM-L6-v2`, ~90 MB, downloaded from Hugging Face on first use — needs network once |
+| Logs | `BKA_LOG_DIR=logs`, file logging on by default; `.gitignore` covers `logs/` |
+| Secrets | `BKA_LLM_API_KEY` from the environment only; default provider `mock` needs no key. A `.env` must never be copied into an image |
 
-| Area | Already there | Gap |
-|---|---|---|
-| Unit / API / agent tests | 1042 tests (1040 before the follow-up): agent decisions, MCP tools and registry, conversation, API, observability | Pass/fail checks, not a **scored** evaluation |
-| Retrieval quality, real model | `tests/test_rag_integration.py`, `tests/test_agent_integration.py` (`integration` marker, 71 tests with `tests/test_mcp_server.py`) | No dataset file; no recall/ranking scores reported |
-| Score-floor calibration | `python -m app.rag calibrate` — on-topic and off-topic question lists in `app/rag/__main__.py`; floor 0.25 | 10 on-topic / 5 off-topic, same author as the corpus (*Known limitations*) |
-| Batch retrieval | `Retriever.retrieve_many` — docstring: "Used by the evaluation harness" | No harness exists yet |
-| Answer grounding | Mock provider proves wiring, citation numbering, refusal with no evidence | **Mock is not a language model** — real answer quality is unmeasured |
-| Observability | Stage 10 `latency_ms` fields and `GET /metrics` | Could feed latency into an evaluation report |
+**Build method:** `CLAUDE.md` §2 marks Stage 12 ❌ for sub-agents — **single build**.
 
-*Known limitations (carried into Stage 11)* in *Problems and Decisions* lists what Stage 11 was
-promised: prompt quality unproven, character-based context budget, mock is not a model,
-threshold calibration small and same-author, dense-only retrieval.
-
-**Build method:** `CLAUDE.md` §2 marks Stage 11 ✅ for parallel sub-agents (independent
-evaluation areas) — but the default is still a **single build**. Use sub-agents only if the user
-asks at kickoff; then follow the §2 steps: freeze the shared contract first (dataset format,
-result model, metric names), one sub-agent per unit, no shared files until integration, one
-integration pass, record the split in the guide, one README line.
-
-**Decisions Stage 11 will likely need (ask the user; record here and in guide §20 when made):**
-1. **Dataset** — format and location (e.g. YAML/JSON under `data/`), size, and who writes the
-   expected evidence (document ids, tool names, refusal expected).
-2. **Answer quality without spending** — rule-based grounding checks on mock output only ·
-   an opt-in paid run (LLM-as-judge or real answers) behind explicit confirmation · both.
-3. **Retrieval metrics** — which (e.g. recall@k, MRR) and whether they gate the suite with
-   thresholds or only report.
-4. **How it runs** — inside pytest (marked) · a CLI report (`python -m app.eval …`) · both.
+**Decisions Stage 12 will likely need (ask the user one at a time; record here and in guide §20 when made):**
+1. **Model and index** — baked into the image at build time (offline at runtime, bigger image) ·
+   downloaded/built at container start (smaller image, needs network, slow first start) · a volume.
+2. **Image size** — CPU-only PyTorch wheel vs the default wheel; base image (e.g. `python:3.12-slim`).
+3. **Compose shape** — one `app` service only · plus a one-shot index-build service · volumes for
+   `logs/` and the index.
+4. **Health checks** — Docker `HEALTHCHECK` on `/health` (slim images lack `curl`; a Python one-liner
+   works) · and whether `GET /ready` is added here or left to Stage 13.
+5. **"Test through Docker"** — run pytest inside the image · a smoke test against the running
+   container (`/health`, one question via `/api/sessions`, `/metrics`) · both.
+6. **Run as non-root** in the container (likely yes; confirm).
 
 **Constraints to carry in:**
-- No paid LLM call without the user's explicit confirmation at the time. Default stays `mock`.
-- The real embedding model is local and free; tests needing it carry the `integration` marker.
-- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (6.B) — check any new dependency first.
-- `@traced` on every new non-route function, except hot-path helpers (10.F); never on FastAPI
-  route handlers or dependencies.
+- No paid LLM call without the user's explicit confirmation at the time. Container default stays `mock`.
+- No secrets in the image or in `compose.yaml`; `.dockerignore` must exclude `.env`, `.venv/`, `logs/`,
+  caches, `docs/legacy/`.
+- `@traced` on every new non-route function, except hot-path helpers (10.F).
 - Never log question text, answer text, tool argument values or raw session ids (10.A).
-- Guide: §14 *Testing* is the section to extend; decisions recorded when made (`CLAUDE.md` §4).
+- README: add a short Docker section and update Run/Setup, Configuration, Repository Structure (`CLAUDE.md` §4a).
+- Guide: the "PLANNED - Stage 12" section (containerisation) is the one to fill in; status markers on commit.
+- Still open from Stage 11 (not Stage 12 work unless the user says so): `off-006`/`off-007` refusal gap;
+  whether to run `python -m app.eval --paid`.
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -152,17 +150,17 @@ integration pass, record the split in the guide, one README line.
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -3        # expect b633b15 docs(handover) on top of c627358 feat(stage-10)
-git status --short          # expect the 6 uncommitted follow-up files listed in the checkpoint
-                            # (clean, with a fix(stage-10) commit on top, if already approved)
+git log --oneline -3        # expect docs(handover) end-of-session on top of 86c2bd1, 7b8c85e feat(stage-11)
+git status --short          # expect clean
 
 # 2. If the venv is missing or stale (see "If the venv is missing" below)
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 
 # 3. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 1042 passed (~65 s); 1040 without the follow-up
+./.venv/Scripts/python.exe -m pytest        # expect 1119 passed (~78 s)
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect no issues in 64 source files
+./.venv/Scripts/python.exe -m mypy          # expect no issues in 70 source files
+./.venv/Scripts/python.exe -m app.eval      # expect Result: PASS (free; mock provider)
 
 # 4. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
 ./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
@@ -173,7 +171,7 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 ./.venv/Scripts/python.exe -m uvicorn app.main:app         # then open http://127.0.0.1:8000/
                                                            # and http://127.0.0.1:8000/metrics
 
-# 6. Then read "Stage 11 — starting notes" above and "Next Action" at the bottom.
+# 6. Then read "Stage 12 — starting notes" above and "Next Action" at the bottom.
 ```
 
 > ⚠️ **`mcp` must stay pinned at `1.12.4`.** Upgrading it pulls `starlette>=1.0`, which
