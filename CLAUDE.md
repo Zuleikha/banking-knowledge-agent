@@ -106,6 +106,16 @@ recorded.
 
 Never default into sub-agents without being asked, even for a stage marked ✅.
 
+#### When a stage uses parallel sub-agents
+
+1. Break the stage into independent units before starting any agent.
+2. Each sub-agent owns one unit and does not touch shared files until integration.
+3. After all sub-agents finish, run one integration pass: resolve conflicts, dedupe
+   code, run the full test suite.
+4. Record the sub-agent split in `docs/architecture-guide.html` as a normal
+   architecture decision (what was split, why, how integration went).
+5. Add one line to `README.md` noting the stage used parallel sub-agent development.
+
 ---
 
 ## 3. Handover file — `docs/HANDOVER.md`
