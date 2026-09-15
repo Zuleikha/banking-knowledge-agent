@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 9 - Web Interface &nbsp;·&nbsp; Last updated 2026-09-14</div>
+    <div class="pill">Stage 10 - Observability &nbsp;·&nbsp; Last updated 2026-09-15</div>
   </div>
 </header>
 
@@ -144,6 +144,7 @@ defined interface, so one piece can be changed or tested without touching the re
             ├──▶ RAG Knowledge Retrieval    Stages 2, 3  ✅
             ├──▶ MCP Tools                  Stage 6  ✅
             ├──▶ Conversation Context       Stage 8  ✅
+            ├──▶ Observability              Stage 10 ✅
             └──▶ Guardrails                 Stage 13
             │
             ▼
@@ -164,6 +165,8 @@ defined interface, so one piece can be changed or tested without touching the re
         status or a service's health.</li>
     <li><strong>Conversation context</strong> - remembers earlier questions, so a follow-up
         like "and what about cards?" makes sense.</li>
+    <li><strong>Observability</strong> - records what every step did and how long it took,
+        labelled with one request id, and counts the work at <code>GET /metrics</code> (§13).</li>
     <li><strong>Guardrails</strong> - safety checks around the whole flow.</li>
   </ul>
   Without the middle layers, the model would answer from general knowledge and could
@@ -182,7 +185,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>7</td><td>Agent decision &amp; tool selection - five decision paths, rule-based tool selector</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>8</td><td>Conversation context</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>9</td><td>Web interface</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>10</td><td>Observability</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>10</td><td>Observability - request ids, per-step latency, in-process metrics</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>11</td><td>Testing &amp; evaluation framework</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>12</td><td>Containerisation</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>13</td><td>Security &amp; production readiness</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -208,12 +211,15 @@ defined interface, so one piece can be changed or tested without touching the re
 │   ├── main.py                   FastAPI factory + entry point
 │   ├── api/                      HTTP layer - thin, no business logic
 │   │   ├── dependencies.py       Shared FastAPI dependencies
+│   │   ├── middleware.py         Request id, timing and metrics per request (Stage 10)
 │   │   └── routes/
 │   │       ├── health.py         GET /health
+│   │       ├── metrics.py        GET /metrics (Stage 10)
 │   │       └── conversation.py   POST /api/sessions, /ask, /turns, /end (Stage 9)
 │   ├── core/                     Cross-cutting concerns - used by every layer
 │   │   ├── config.py             Typed settings from the environment
 │   │   ├── logging.py            structlog config + on-disk sinks
+│   │   ├── observability.py      Request ids, fingerprints, metrics (Stage 10)
 │   │   └── tracing.py            @traced / @traced_async
 │   ├── knowledge/                Knowledge base sourcing
 │   │   ├── models.py             DocumentMetadata, KnowledgeDocument
@@ -356,7 +362,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td><strong>FastAPI</strong></td><td>The web framework that exposes the system over HTTP. It is async (can wait on slow work, like a model call, without blocking other requests) and uses typed request/response models. Dependency injection means a route declares what it needs (e.g. settings) and FastAPI supplies it, so tests can swap in fakes. It also generates the OpenAPI documentation - the machine-readable description of every endpoint - from the code itself, so the docs can never fall out of step with what the API really does.</td><td>1</td></tr>
   <tr><td><strong>Pydantic v2</strong></td><td>Checks incoming data at the system boundary - the point where outside data first enters the app. Malformed input is rejected right there with a clear HTTP <code>422</code> ("request understood, but the data is invalid"), instead of travelling into the agent and failing later somewhere harder to diagnose.</td><td>1</td></tr>
   <tr><td><strong>pydantic-settings</strong></td><td>Loads configuration from environment variables into typed fields. A wrong or missing setting stops the app at startup, when someone is watching - not hours later in the middle of a request. Reading from the environment also keeps secrets such as API keys out of the source code.</td><td>1</td></tr>
-  <tr><td><strong>structlog</strong></td><td>Writes logs as structured <em>events with named fields</em> (e.g. <code>llm_ms=412</code>) rather than sentences. Fields can be filtered, summed and graphed; sentences have to be parsed first. Stage 10 needs <code>retrieval_ms</code>, <code>llm_ms</code> and <code>request_id</code> as searchable fields - that only works if logging is structured from day one, because old free-text logs cannot be converted reliably.</td><td>1</td></tr>
+  <tr><td><strong>structlog</strong></td><td>Writes logs as structured <em>events with named fields</em> (e.g. <code>latency_ms=412</code>) rather than sentences. Fields can be filtered, summed and graphed; sentences have to be parsed first. Stage 10 relies on this: <code>request_id</code> and <code>latency_ms</code> are searchable fields on every relevant event - that only works if logging is structured from day one, because old free-text logs cannot be converted reliably.</td><td>1</td></tr>
   <tr><td><strong>uvicorn</strong></td><td>The server process that actually runs the FastAPI app and listens for requests. It speaks ASGI (Asynchronous Server Gateway Interface), the standard that lets Python web apps handle many requests concurrently.</td><td>1</td></tr>
   <tr><td><strong>pytest</strong></td><td>Runs the test suite, including API tests that send real HTTP requests to the app in memory via <code>httpx</code> + <code>TestClient</code> - no running server needed.</td><td>1</td></tr>
   <tr><td><strong>ruff</strong></td><td>Formatter (fixes code layout) and linter (flags likely bugs and bad patterns) in one fast tool.</td><td>1</td></tr>
@@ -430,6 +436,30 @@ defined interface, so one piece can be changed or tested without touching the re
         answering?" Returns status, service name, version and environment. It touches no
         downstream system (index, model, tools), so a slow or broken dependency cannot make
         a running app look dead.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/middleware.py</code><br><span class="muted">RequestContextMiddleware</span></td>
+    <td>Stage 10. Wraps every HTTP request: gives it a request id, attaches that id to every
+        log line written while the request runs, returns it in the <code>X-Request-ID</code>
+        header, and logs one <code>http.request</code> event with status and
+        <code>latency_ms</code>. Written as plain ASGI middleware (ASGI is the low-level
+        interface between a Python web server and an app), so nothing extra runs between the
+        request and its route. Without it, the log lines of one request could not be pulled
+        out together (§13).</td>
+  </tr>
+  <tr>
+    <td><code>app/api/routes/metrics.py</code></td>
+    <td><code>GET /metrics</code> - the in-process counters and latency histograms as JSON.
+        Names and numbers only; they reset when the process restarts.</td>
+  </tr>
+  <tr>
+    <td><code>app/core/observability.py</code><br><span class="muted">resolve_request_id, fingerprint, Metrics</span></td>
+    <td>Stage 10's shared pieces, in one place so every layer names and measures things the
+        same way. <code>resolve_request_id</code> accepts an incoming id only if it is 1-64
+        letters, digits or dashes. <code>fingerprint</code> is a 12-character SHA-256 hash, so
+        a question or session id can be matched across log lines without being stored.
+        <code>Metrics</code> holds thread-safe counters and latency histograms, and the metric
+        names are constants here so an event and its metric cannot drift apart.</td>
   </tr>
   <tr>
     <td><code>app/knowledge/models.py</code><br><span class="muted">DocumentMetadata, KnowledgeDocument</span></td>
@@ -788,7 +818,7 @@ Web UI ──▶ POST /api/sessions/ask ──▶ Guardrails (input validation, 
   question to the agent now exist (Stage 9, <code>POST /api/sessions/ask</code>). Still to come:
   guardrails in front of the agent - checks that reject malformed input and attempts to smuggle
   in instructions (Stage 13). Each request
-  will also be logged with an id and timings (Stage 10), so one slow or failed request can be
+  is also logged with an id and timings (Stage 10, §13), so one slow or failed request can be
   traced end to end.
 </div>
 
@@ -1317,7 +1347,7 @@ python -m app.agent conversation-demo   # seven turns exercising every rule</pre
   <tr><td><strong>Tool selection</strong></td><td>Stage 6 introduced MCP; Stage 7 introduced choosing between knowledge and tools - now built, see <em>Stage 7 - choosing a path</em> above.</td></tr>
   <tr><td><strong>Conversation history</strong></td><td>Now built, in Stage 8 - see <em>Stage 8 - conversation context</em> above. Stage 5 expected history to arrive as extra messages in the request; Stage 8 chose a separate fenced block of earlier <em>questions</em> instead, so earlier answers never look like evidence (§20.23).</td></tr>
   <tr><td><strong>Retry / fallback on a provider failure</strong></td><td>Errors already carry a <code>retryable</code> flag (Stage 4) saying whether trying again could help. Choosing how many retries, and how long to wait between them, needs a real provider's failure behaviour to measure - picking those numbers now would be guesswork.</td></tr>
-  <tr><td><strong>Latency in the answer</strong></td><td>Latency means how long a request took. Stage 10 decides what a full request record should contain, timings included. Until then, <code>@traced</code> already records how long each function call took, in <code>logs/traces.log</code>.</td></tr>
+  <tr><td><strong>Latency in the answer</strong></td><td>Latency means how long a request took. Stage 10 records it in the logs and in <code>GET /metrics</code> - retrieval, LLM call, each tool call and the whole request (§13) - not in the answer returned to the user, which carries no timings.</td></tr>
 </table>
 </section>
 
@@ -1698,6 +1728,7 @@ new class with the same methods, and nothing above it changes.</p>
   <tr><td><code>POST /api/sessions/turns</code></td><td>Body <code>{session_id}</code>; the session's turns, oldest first</td><td><span class="tag t-done">Stage 9</span></td></tr>
   <tr><td><code>POST /api/sessions/end</code></td><td>Body <code>{session_id}</code>; the id stops working (204)</td><td><span class="tag t-done">Stage 9</span></td></tr>
   <tr><td><code>GET /</code></td><td>The web page (<code>app/web/static/</code>)</td><td><span class="tag t-done">Stage 9</span></td></tr>
+  <tr><td><code>GET /metrics</code></td><td>In-process counters and latency histograms, as JSON (§13)</td><td><span class="tag t-done">Stage 10</span></td></tr>
   <tr><td><code>GET /ready</code></td><td>Readiness - vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
 </table>
 
@@ -1730,9 +1761,9 @@ underneath changed: the page shows the execution record the agent already return
 <div class="note">Without the per-application service (§20.28), every request would get an empty
 session store and every follow-up would fail with 404. Without the per-session lock (§20.29), a
 double-click could record two turns with the same number. How it connects: Stage 8 built the
-conversation service this layer calls; Stage 10 adds request-level tracing as <em>middleware</em> -
+conversation service this layer calls; Stage 10 added request-level tracing as <em>middleware</em> -
 code that runs around every request, before and after its route handler, so one place can time and
-label all requests. That is why the route handlers here are not <code>@traced</code>: the decorator
+label all requests. Every response now carries an <code>X-Request-ID</code> header (§13). That is why the route handlers here are not <code>@traced</code>: the decorator
 must not be applied to FastAPI route handlers (see <em>Known constraint: tracing and FastAPI</em>,
 §13), so request tracing belongs in middleware instead.</div>
 </section>
@@ -1832,15 +1863,18 @@ hardcoded, never defaulted to a real value.</p>
 <!-- ================================================================== -->
 <section id="observability">
 <h2>13. Observability</h2>
-<span class="tag t-done">BUILT (foundation) · <span class="tag t-todo">request tracking Stage 10</span></span>
+<span class="tag t-done">BUILT (Stage 1 foundation · Stage 10 request tracking and metrics)</span>
 
 <div class="note">
   <strong>In plain English.</strong> Observability means being able to see what the running
   system did - which steps ran, how long they took, what failed - without attaching a debugger
   or adding print statements after something has already gone wrong. Without it, a slow or
-  wrong answer can only be guessed at. Today the foundation exists: structured logs and
-  per-function timing traces. What is still missing is tying everything that happened during
-  one request together, which is Stage 10's job.
+  wrong answer can only be guessed at. Stage 1 built the foundation: structured logs and
+  per-function timing traces. Stage 10 ties everything that happened during one request together
+  with a <em>request id</em>, adds a latency field to each step, and counts the work in
+  <em>metrics</em>. How it connects: it instruments the RAG (Stage 3), LLM (Stage 4), MCP (Stage 6)
+  and API (Stage 9) layers without changing what they do; Stage 11 can build evaluation on these
+  numbers, and Stage 13 reviews who may read them.
 </div>
 
 <h3>Two sinks, deliberately separate</h3>
@@ -1848,7 +1882,7 @@ hardcoded, never defaulted to a real value.</p>
 high-volume timing traces never bury the application events you usually want to read.</p>
 <table>
   <tr><th style="width:180px">Sink</th><th>Contents</th></tr>
-  <tr><td><code>logs/app.log</code></td><td>Application events - startup and shutdown, and one event per retrieval, answer, conversation turn and API failure. One JSON object per line; size-rotated (a new file is started once the current one reaches a size limit, and the oldest are deleted). Per-request events arrive in Stage 10.</td></tr>
+  <tr><td><code>logs/app.log</code></td><td>Application events - startup and shutdown, one <code>http.request</code> per HTTP request, and one event per retrieval, answer, tool call, conversation turn and failure. One JSON object per line; size-rotated (a new file is started once the current one reaches a size limit, and the oldest are deleted).</td></tr>
   <tr><td><code>logs/traces.log</code></td><td><code>@traced</code> function traces via the <code>bka.trace</code> logger, which has <code>propagate = False</code> so traces never leak into the application stream.</td></tr>
 </table>
 
@@ -1872,14 +1906,92 @@ the kind of exception).</p>
   which could itself contain one of those values.
 </div>
 
-<h3>Planned for Stage 10</h3>
-<p>A <strong>request ID</strong> - a unique label given to each incoming request - attached
-automatically to every log line written while that request is handled, using
-<code>structlog.contextvars</code> (a way to carry a value through all the code a request passes
-through, without passing it as an argument). With it, every event from one question can be pulled
-out together. Planned fields: question, retrieval latency, retrieved documents, LLM latency, tool
-calls, tool latency, errors and overall response latency - each as a separate named field, so they
-can be filtered, summed and graphed rather than read line by line.</p>
+<h3>Stage 10 - one request id on every line</h3>
+<p><strong>What it does.</strong> <code>RequestContextMiddleware</code>
+(<code>app/api/middleware.py</code>) runs around every HTTP request. <em>Middleware</em> is code
+that wraps the whole application, so it sees each request before any route handler and each
+response after. It:</p>
+<ol>
+  <li>takes a <strong>request id</strong> - a label for one request - from the incoming
+  <code>X-Request-ID</code> header if it is 1-64 letters, digits or dashes, and otherwise generates
+  a new one (§20.35);</li>
+  <li>binds it with <code>structlog.contextvars</code>. A <em>context variable</em> is a Python value
+  that belongs to the current request rather than the whole program; <code>structlog</code> adds it
+  to every log event, including <code>@traced</code> timings and code running on FastAPI's worker
+  threads, which copy the context (a test proves this end to end);</li>
+  <li>returns the id in the <code>X-Request-ID</code> response header;</li>
+  <li>logs one <code>http.request</code> event with method, path, status and
+  <code>latency_ms</code>, and updates the request metrics.</li>
+</ol>
+
+<pre>{"method": "GET", "path": "/health", "status": 200, "latency_ms": 0.923,
+ "event": "http.request", "request_id": "0718761051434a89973b32b076da0349",
+ "level": "info", "logger": "app.api.middleware",
+ "timestamp": "2026-09-15T08:15:36.179697Z"}</pre>
+
+<p><strong>Why it exists.</strong> Before Stage 10, each layer logged its own events but nothing
+linked them. With several questions in flight, there was no way to tell which retrieval belonged
+to which slow answer. Now, searching the log for one <code>request_id</code> returns everything that
+request did.</p>
+
+<h3>What the plan asked for, and where it is</h3>
+<table>
+  <tr><th style="width:180px">Tracked</th><th>Field and event</th></tr>
+  <tr><td>Request ID</td><td><code>request_id</code> on every app and trace line written during a request</td></tr>
+  <tr><td>Question</td><td><code>question_hash</code> + <code>question_length</code> on <code>agent.answered</code>; <code>query_hash</code> + <code>query_length</code> on <code>rag.retrieved</code>. Never the text (§20.32)</td></tr>
+  <tr><td>Retrieval latency</td><td><code>latency_ms</code> on <code>rag.retrieved</code> (embedding the query and searching)</td></tr>
+  <tr><td>Retrieved documents</td><td><code>documents</code> on <code>rag.retrieved</code> and <code>agent.answered</code> (document ids)</td></tr>
+  <tr><td>LLM latency</td><td><code>latency_ms</code> on <code>llm.answered</code> or <code>llm.failed</code> (provider call plus validation)</td></tr>
+  <tr><td>Tool calls</td><td><code>mcp.tool_called</code>: tool name, <code>ok</code>, argument <em>names</em></td></tr>
+  <tr><td>Tool latency</td><td><code>latency_ms</code> on <code>mcp.tool_called</code> or <code>mcp.tool_failed</code></td></tr>
+  <tr><td>Errors</td><td><code>http.request_failed</code>, <code>llm.failed</code>, <code>mcp.tool_failed</code>, <code>api.ask_failed</code> - each with <code>error_type</code> only - and <code>error_type</code> on trace lines</td></tr>
+  <tr><td>Overall latency</td><td><code>latency_ms</code> on <code>http.request</code></td></tr>
+</table>
+
+<div class="warn">
+  <strong>Still never logged:</strong> question or answer text, the URL query string (only the path
+  is logged), tool argument values, and exception messages (they can quote a provider, a host or a
+  tool payload). The question is a <em>fingerprint</em>: a 12-character SHA-256 hash, the same
+  function Stage 8 uses for session ids, so two lines can be matched as the same question without
+  storing it.
+</div>
+
+<h3>Stage 10 - metrics at <code>GET /metrics</code></h3>
+<p><strong>What it does.</strong> <em>Metrics</em> are numbers collected across many requests; a log
+line describes one event. <code>app/core/observability.py</code> keeps two kinds in memory, behind
+one lock because route handlers run on several threads: <em>counters</em> (how often something
+happened) and <em>histograms</em> (how long it took, grouped into ranges called <em>buckets</em>:
+at or below 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000 and 10000 ms, plus everything). Bucket
+counts are <em>cumulative</em>: <code>le_50</code> counts every value at or below 50 ms, as
+Prometheus does. <code>GET /metrics</code> returns them as JSON.</p>
+
+<table>
+  <tr><th style="width:180px">Kind</th><th>Names</th></tr>
+  <tr><td>Counters</td><td><code>http_requests_total</code> <code>http_errors_total</code> (status 500 or above) <code>rag_retrievals_total</code> <code>llm_calls_total</code> <code>llm_errors_total</code> <code>llm_input_tokens_total</code> <code>llm_output_tokens_total</code> <code>tool_calls_total</code> <code>tool_errors_total</code></td></tr>
+  <tr><td>Histograms</td><td><code>http_request_duration_ms</code> <code>rag_retrieval_duration_ms</code> <code>llm_call_duration_ms</code> <code>tool_call_duration_ms</code> - each with <code>count</code>, <code>sum_ms</code>, <code>max_ms</code>, <code>buckets</code></td></tr>
+</table>
+
+<p><strong>Why it exists.</strong> A log answers "what happened to this request?"; a metric answers
+"how is the service doing overall?" - error rate, typical and worst latency, tokens spent. It adds
+no dependency (§20.33).</p>
+
+<div class="note">
+  <strong>Limits, on purpose.</strong> The numbers reset when the process restarts and are
+  per-process: two server processes would each report their own. The format is JSON, not the
+  Prometheus text format. The endpoint is unauthenticated, like <code>/health</code>; it holds
+  names and numbers only, and who may read it in a deployment is a Stage 13 question.
+  <code>Metrics.increment</code>, <code>Metrics.observe</code>, <code>elapsed_ms</code> and the
+  middleware's response wrapper are deliberately not <code>@traced</code>: they run inside the
+  measurements, several times per request, and would add a trace line per counter update.
+</div>
+
+<div class="note">
+  <strong>Known gap, flagged not changed.</strong> The <code>httpx</code> library logs each outgoing
+  HTTP request, with its full URL, at <code>info</code> level into <code>app.log</code>. In tests that
+  is the test client's own request; in a deployment it would be the LLM vendor SDKs' calls to their
+  API. Those URLs hold no question text or keys (keys travel in headers), but whether to quieten
+  <code>httpx</code> is an open decision.
+</div>
 
 <h3>Known constraint: tracing and FastAPI</h3>
 <p><code>@traced</code> must <strong>not</strong> decorate FastAPI route handlers. The route
@@ -1890,8 +2002,10 @@ module where the handler function was defined - through the function's
 defined in <code>app/core/tracing.py</code>, so FastAPI would look the names up <em>there</em>
 instead, fail to recognise the dependency types, and silently treat those arguments as ordinary
 query parameters - and every request would fail with <code>422</code>. The test suite caught this
-in Stage 1. Stage 10 will time requests in <em>middleware</em> instead: one piece of code that runs
-around every request, which is the right layer for it anyway.</p>
+in Stage 1. Stage 10 therefore times requests in <em>middleware</em>
+(<code>app/api/middleware.py</code>): one piece of code that runs around every request, which is the
+right layer for it anyway. The <code>/metrics</code> route is not <code>@traced</code> for the same
+reason.</p>
 </section>
 
 <!-- ================================================================== -->
@@ -1917,6 +2031,7 @@ around every request, which is the right layer for it anyway.</p>
   <tr><td><code>tests/test_health.py</code></td><td>Health response and schema, OpenAPI generation, 404 handling, settings wiring.</td></tr>
   <tr><td><code>tests/test_api_conversation.py</code></td><td>Stage 9: the conversation API end to end (sessions, RAG/MCP/insufficient flags, follow-ups, 404/422/502 without leaked detail) and static checks on the web page.</td></tr>
   <tr><td><code>tests/test_conversation_concurrency.py</code></td><td>Stage 9: the per-session lock - concurrent asks get distinct turns, sessions do not block each other.</td></tr>
+  <tr><td><code>tests/test_observability.py</code></td><td>Stage 10 (35 tests): request-id validation, the fingerprint, metrics (cumulative buckets, no lost updates across threads), the middleware (header, <code>http.request</code>, no query string, no id leaking past the request, an unhandled error logged and counted), the same request id on every app and trace line of one answer, the question never logged as text, latency fields, <code>GET /metrics</code>, and LLM and tool failure events.</td></tr>
   <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
   <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud - missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
   <tr><td><code>tests/test_chunker.py</code></td><td>Heading splitting, H1 dropping, code fences not mistaken for headings, metadata carried onto every chunk, <code>content</code> vs <code>embedding_text</code>, oversized sections split, tables split row-wise with the header repeated and no row lost, and the invariant that <em>no chunk exceeds the budget</em>.</td></tr>
@@ -2175,7 +2290,8 @@ omit. A test caught that; see decision record 6.4 and section 21.</p>
   two paid adapters, which refuse to construct without it.)</span> The LLM layer logs
   request <em>shape</em> and cost - passage count, token counts, stop reason, prompt
   version - and never the prompt or the answer text, both of which embed document
-  content. What a request record should contain is decided deliberately in Stage 10.
+  content. Stage 10 added a request id, latencies and a question fingerprint - still never the
+  question text (§20.32).
 </div>
 
 <div class="note">
@@ -2336,6 +2452,14 @@ as it was made at the time; where a later stage changed it, the row says so.</p>
       <td>A session id is the key to a conversation, and URLs end up in browser history and server access logs. See §20.30.</td></tr>
   <tr><td><strong>A no-build static page</strong></td>
       <td>One HTML, one JavaScript and one CSS file served by FastAPI - no Node.js, no build step - because Stage 9 exists to show the backend, not a front end. All text is inserted as text, never as HTML, because answer and tool text is untrusted. See §20.31.</td></tr>
+  <tr><td><strong>The question is logged as a hash and a length</strong>, never as text</td>
+      <td>A support question can hold customer data, and log files are copied and kept. A hash still shows that two lines are about the same question. See §20.32.</td></tr>
+  <tr><td><strong>In-process metrics at <code>GET /metrics</code></strong>, no new library</td>
+      <td>Meets "metrics where practical" without risking the pinned <code>mcp</code>/<code>fastapi</code> versions. See §20.33.</td></tr>
+  <tr><td><strong>Tracing is one request id</strong>, carried by context variables</td>
+      <td>Enough to follow one request through a single-process app, with no tracing system to run. See §20.34.</td></tr>
+  <tr><td><strong>An incoming <code>X-Request-ID</code> is validated</strong> before use</td>
+      <td>Joins up with a caller's id without letting header text forge or bloat log lines. See §20.35.</td></tr>
 </table>
 
 <p class="muted">The full reasoning behind each Stage 3 to 9 decision - including
@@ -3888,6 +4012,82 @@ on worker threads, so one slow answer does not freeze the server.</p>
 </table>
 </div>
 
+<h3>20.32 Stage 10.1 - The question is logged as a hash and a length, never as text</h3>
+<div class="card">
+<p><strong>What.</strong> The plan asks Stage 10 to track the question. Logs record a
+<em>hash</em> of it and its character count. A hash is a short fingerprint made from the text by a
+one-way function: the same question always gives the same fingerprint, but the fingerprint cannot
+be turned back into the question. It is the same approach Stage 8 uses for session ids.</p>
+
+<p><strong>Why.</strong> A support question can contain customer data: names, account numbers,
+card details. Anything written to a log file is copied, kept and read by more people than the
+application itself. A hash still lets an engineer see that two requests asked the same thing, and
+the length helps spot unusual input, without the text ever being stored.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Redacted text</strong></td><td>Masking works by pattern-matching, and patterns miss things. One miss puts customer data in a log file.</td></tr>
+  <tr><td><strong>Full text behind an off-by-default setting</strong></td><td>One wrong setting in a deployed environment would log every customer's question.</td></tr>
+</table>
+</div>
+
+<h3>20.33 Stage 10.2 - Metrics are kept in-process and served at <code>GET /metrics</code></h3>
+<div class="card">
+<p><strong>What.</strong> <em>Metrics</em> are numbers collected over many requests, as opposed to
+logs, which describe one event each. The application keeps two kinds in memory: <em>counters</em>
+(how many times something happened, such as requests or errors) and <em>histograms</em> (how
+long something took, grouped into ranges so averages and slow outliers are visible). An
+endpoint, <code>GET /metrics</code>, returns the current values.</p>
+
+<p><strong>Why.</strong> It meets the plan's "metrics where practical" requirement with no new
+dependency. That matters here because the <code>mcp</code> library is pinned to 1.12.4 to stay
+compatible with <code>fastapi==0.115.6</code> (§20.11); every new package is a chance to break that.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong><code>prometheus_client</code></strong></td><td>The industry-standard format, but a new dependency to check against the pins, for a local demo.</td></tr>
+  <tr><td><strong>OpenTelemetry</strong></td><td>The heaviest option: many packages, and a real risk to the <code>starlette</code>/<code>mcp</code> pins.</td></tr>
+  <tr><td><strong>Logs only</strong></td><td>Leaves the "metrics" requirement unmet when a small endpoint is cheap.</td></tr>
+</table>
+</div>
+
+<h3>20.34 Stage 10.3 - Tracing means one request id on every log line</h3>
+<div class="card">
+<p><strong>What.</strong> <em>Tracing</em> means being able to follow one request through the
+system. Each HTTP request gets a <em>request id</em>. Middleware (code that runs around every
+request) stores it in a <em>context variable</em>, a Python value that belongs to the current
+request rather than the whole program. The logging library, <code>structlog</code>, adds it to
+every log event, including the <code>@traced</code> function timings. There are no span ids.</p>
+
+<p><strong>Why.</strong> Searching the logs for one request id shows everything that request did:
+retrieval, tools, the LLM call and any error. For a single-process application, that answers the
+real debugging question without building a full tracing system.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Parent/child span ids</strong></td><td>A hand-built version of spans (which record what called what); more code for little gain in one process.</td></tr>
+  <tr><td><strong>OpenTelemetry spans</strong></td><td>Only sensible alongside OpenTelemetry metrics, which §20.33 rejected.</td></tr>
+</table>
+</div>
+
+<h3>20.35 Stage 10.4 - An incoming request id is accepted only if it is short and safe</h3>
+<div class="card">
+<p><strong>What.</strong> If a request arrives with an <code>X-Request-ID</code> header containing
+only letters, digits and dashes, at most 64 characters, that id is used. Otherwise a new one is
+generated. The id is always sent back in the <code>X-Request-ID</code> response header.</p>
+
+<p><strong>Why.</strong> Accepting an incoming id lets this service's logs join up with a proxy or
+caller in front of it. Checking the format first matters because the header is untrusted input
+that goes straight into log files. Without the check, a caller could write fake log lines or
+very long values (<em>log injection</em>).</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Always generate</strong></td><td>Safe, but cannot connect to an upstream caller's id.</td></tr>
+  <tr><td><strong>Accept any incoming value</strong></td><td>Puts untrusted header text straight into the logs.</td></tr>
+</table>
+</div>
+
 </section>
 <!-- ================================================================== -->
 <section id="subagents">
@@ -4101,7 +4301,7 @@ work out, do it yourself.</p>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 9 (Web Interface) · Last updated 2026-09-14<br>
+  Stage 10 (Observability) · Last updated 2026-09-15<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

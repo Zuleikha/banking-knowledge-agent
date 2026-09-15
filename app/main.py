@@ -2,7 +2,8 @@
 
 Stage 1 wired the foundation: configuration, structured logging, tracing and a
 health endpoint. Stage 9 adds the conversation API (``/api/sessions``) and the
-static web page at ``/``.
+static web page at ``/``. Stage 10 adds request middleware (a request id, a
+timing record and metrics per request) and ``GET /metrics``.
 
 Run locally with::
 
@@ -77,9 +78,12 @@ def create_app(
     app.state.conversation = conversation_service
     app.state.conversation_lock = threading.Lock()
 
-    from app.api.routes import conversation, health
+    from app.api.middleware import RequestContextMiddleware
+    from app.api.routes import conversation, health, metrics
 
+    app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(conversation.router)
     # Mounted last: API routes and /docs always win over a same-named file.
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")

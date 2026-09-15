@@ -118,7 +118,7 @@ class ToolParameter(BaseModel):
 
     Every parameter is a string (see :meth:`ToolSpec.input_schema` for why), so
     this carries no type field. What it does carry is an ``example``, because the
-    spec is shown to a model in Stage 7 and a worked example is worth more than a
+    spec is what an MCP client is shown, and a worked example is worth more than a
     type name for getting the format of a transaction reference right.
     """
 

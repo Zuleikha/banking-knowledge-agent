@@ -16,9 +16,9 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | Stage 9 — Web interface ✅ approved · **Stage 10 — Observability** next |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page |
-| **Next** | Observability (10) · evaluation (11) · Docker (12) · guardrails and security (13) · production architecture (14) |
+| **Current stage** | **Stage 10 — Observability** implemented, awaiting approval |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics |
+| **Next** | Evaluation (11) · Docker (12) · guardrails and security (13) · production architecture (14) |
 
 Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md).
 
@@ -108,6 +108,7 @@ cp .env.example .env                               # optional — every setting 
 |---|---|
 | <http://127.0.0.1:8000/> | Web page — ask questions, see sources, tool activity and the route taken |
 | <http://127.0.0.1:8000/health> | Liveness check |
+| <http://127.0.0.1:8000/metrics> | In-process counters and latency histograms (JSON) |
 | <http://127.0.0.1:8000/docs> | Interactive API documentation |
 | <http://127.0.0.1:8000/openapi.json> | OpenAPI schema |
 
@@ -122,7 +123,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1005 tests**, none of which call a paid API; 71 are marked `integration` and load the real embedding model.
+**1040 tests**, none of which call a paid API; 71 are marked `integration` and load the real embedding model.
 
 ---
 
@@ -213,6 +214,20 @@ KnowledgeAgent ──▶ ToolRegistry (in-process) ◀── MCP server (stdio J
 - They can disagree — e.g. a documented limit of 500.00 vs a live account override of 250.00 — and the answer must report both.
 - `AgentAnswer.used_live_information` says whether any part of an answer came from a tool.
 
+## Observability
+
+```
+request ──▶ middleware: X-Request-ID ──▶ rag · tools · llm (latency_ms each) ──▶ http.request (latency_ms)
+                              │                                                        │
+                              └──── request_id on every app + trace log line ──────────┴──▶ GET /metrics
+```
+
+- One `request_id` per HTTP request, on every log and trace line; returned in `X-Request-ID`.
+- An incoming `X-Request-ID` is used only if it is 1–64 letters, digits or dashes; otherwise one is generated.
+- `latency_ms` on retrieval, each LLM call, each tool call and the whole request; failures logged by error type only.
+- The question is logged as a 12-character hash and a length — never the text; the query string is never logged.
+- `GET /metrics`: in-memory counters and latency histograms as JSON; no new dependency; resets on restart.
+
 ---
 
 ## Configuration
@@ -237,9 +252,9 @@ defaults: [`.env.example`](.env.example). Secrets come from the environment only
 banking-knowledge-agent/
 ├── app/
 │   ├── agent/           Knowledge agent: decisions, tool selection, answering
-│   ├── api/             FastAPI dependencies and routes (health, conversation)
+│   ├── api/             FastAPI dependencies, request middleware, routes (health, metrics, conversation)
 │   ├── conversation/    Sessions, follow-up rules, conversation service
-│   ├── core/            Settings, logging, tracing
+│   ├── core/            Settings, logging, tracing, observability (request ids, metrics)
 │   ├── knowledge/       Document models and the strict loader
 │   ├── llm/             Provider protocol, prompts, mock and vendor adapters
 │   ├── mcp/             Tool contract, registry, MCP server, six tools
@@ -267,10 +282,11 @@ banking-knowledge-agent/
 - **Deterministic, testable decisions** — routing, tool choice and follow-ups are rules, not model calls.
 - **Swappable boundaries** — protocols for embedders, vector stores, LLM providers, tools and session stores.
 - **Vendor neutrality, proven** — two real adapters behind one interface; switching is one setting.
-- **Security by default** — prompt-injection fencing, secrets only from the environment, tool argument values and session ids kept out of logs.
+- **Security by default** — prompt-injection fencing, secrets only from the environment, questions, tool argument values and session ids kept out of logs.
+- **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1005 offline tests, strict mypy, ruff; retrieval quality measured with the real model.
+- **Quality gates** — 1040 offline tests, strict mypy, ruff; retrieval quality measured with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---

@@ -129,7 +129,8 @@ def _example(registry: ToolRegistry, tool: str, parameter: str) -> str:
 class TestEverySpecExampleActuallyWorks:
     """A documented example that does not resolve is worse than no example.
 
-    Stage 7 puts these examples in front of a model as the format to imitate.
+    The examples are published in every spec an MCP client lists, as the format
+    to imitate.
     """
 
     def test_calling_each_tool_with_its_own_examples_succeeds(

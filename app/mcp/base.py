@@ -61,11 +61,11 @@ class ToolNotFoundError(ToolError):
     """No tool is registered under the requested name.
 
     Never retryable: the registry's contents do not change between two calls
-    within a process. In Stage 6 this can only be a programming error, because
-    the agent picks names from a closed literal. In Stage 7 it becomes the
-    guard against a model inventing a plausible-sounding tool that does not
-    exist — which is exactly the failure mode that must be loud rather than
-    quietly swallowed into a refusal.
+    within a process. Stage 7 chose a rule-based selector built from the
+    registry's own specs, so the agent cannot request an unregistered tool. The
+    error therefore catches a caller bug, or an MCP client naming a tool that
+    does not exist — a failure that must be loud rather than quietly swallowed
+    into a refusal.
     """
 
 

@@ -36,9 +36,17 @@ declares and no test can see.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Mapping
 
 from app.core.logging import get_logger
+from app.core.observability import (
+    TOOL_CALL_DURATION_MS,
+    TOOL_CALLS_TOTAL,
+    TOOL_ERRORS_TOTAL,
+    elapsed_ms,
+    get_metrics,
+)
 from app.core.tracing import traced
 from app.mcp.base import Tool, ToolError, ToolExecutionError, ToolNotFoundError
 from app.mcp.models import ToolInvocation, ToolResult, ToolSpec
@@ -162,14 +170,35 @@ class ToolRegistry:
         """
         tool = self.get(name)
         supplied = dict(arguments or {})
+        metrics = get_metrics()
+        metrics.increment(TOOL_CALLS_TOTAL)
+        started = time.perf_counter()
         try:
             result = tool.invoke(supplied)
-        except ToolError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - re-raised as a typed error
-            raise ToolExecutionError(
-                f"Tool '{name}' raised an unhandled {type(exc).__name__}: {exc}"
-            ) from exc
+        except Exception as exc:  # noqa: BLE001 - logged, re-raised as a typed error
+            error = (
+                exc
+                if isinstance(exc, ToolError)
+                else ToolExecutionError(
+                    f"Tool '{name}' raised an unhandled {type(exc).__name__}: {exc}"
+                )
+            )
+            latency = elapsed_ms(started)
+            metrics.increment(TOOL_ERRORS_TOTAL)
+            metrics.observe(TOOL_CALL_DURATION_MS, latency)
+            logger.warning(
+                "mcp.tool_failed",
+                # Type and argument names only, as for a successful call below.
+                tool=name,
+                arguments=sorted(supplied),
+                error_type=type(error).__name__,
+                latency_ms=latency,
+            )
+            if error is exc:
+                raise
+            raise error from exc
+        latency = elapsed_ms(started)
+        metrics.observe(TOOL_CALL_DURATION_MS, latency)
 
         logger.info(
             "mcp.tool_called",
@@ -180,6 +209,7 @@ class ToolRegistry:
             # else in this codebase.
             tool=name,
             ok=result.ok,
+            latency_ms=latency,
             arguments=sorted(supplied),
             error_code=result.error_code,
             fields=len(result.data),

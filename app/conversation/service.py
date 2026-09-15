@@ -21,7 +21,6 @@ the handle to it. Never the question, the carried identifiers or the answer.
 
 from __future__ import annotations
 
-import hashlib
 import threading
 import weakref
 
@@ -31,18 +30,19 @@ from app.conversation.models import ConversationAnswer, ConversationTurn
 from app.conversation.store import InMemorySessionStore, SessionStore
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.core.observability import fingerprint
 from app.core.tracing import traced
 
 logger = get_logger(__name__)
 
-FINGERPRINT_LENGTH = 12
-"""Hex characters of the SHA-256 session fingerprint written to logs."""
-
 
 @traced
 def session_fingerprint(session_id: str) -> str:
-    """A short, one-way identifier for a session, safe to write to a log."""
-    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:FINGERPRINT_LENGTH]
+    """A short, one-way identifier for a session, safe to write to a log.
+
+    The same fingerprint Stage 10 uses for questions (guide §20.32).
+    """
+    return fingerprint(session_id)
 
 
 class ConversationService:

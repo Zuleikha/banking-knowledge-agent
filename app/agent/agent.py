@@ -64,6 +64,7 @@ from app.agent.policy import (
 from app.agent.tool_policy import RuleToolSelector, ToolSelector
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.core.observability import fingerprint
 from app.core.tracing import traced
 from app.llm.service import LLMService
 from app.mcp.models import ToolResult
@@ -218,11 +219,14 @@ class KnowledgeAgent:
         logger.info(
             "agent.answered",
             # The question, the passages, the tool payloads, the answer text and
-            # every explanation sentence are withheld here. The question is
-            # already recorded once by the retriever (Stage 3, flagged for Stage
-            # 13); the rest is content. Route and shape only -- step names and
+            # every explanation sentence are withheld here. The question appears
+            # only as a fingerprint and a length (guide §20.32), so a tool-only
+            # answer -- which never reaches the retriever -- is still traceable;
+            # the rest is content. Route and shape only -- step names and
             # outcomes, tool NAMES and argument NAMES are shape; argument VALUES
             # and payloads are not.
+            question_hash=fingerprint(question),
+            question_length=len(question),
             plan=plan.reason,
             decision=decision.reason,
             route=[f"{step.step}:{step.outcome}" for step in steps],

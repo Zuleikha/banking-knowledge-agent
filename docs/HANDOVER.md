@@ -7,8 +7,8 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-14, end of session** · **Stages 1–9 approved, committed and pushed.
-Stage 10 — Observability — NOT started.** Working tree clean.
+Last updated: **2026-09-15** · **Stages 1–10 approved, committed and pushed.
+Stage 11 — Testing and Evaluation — NOT started.**
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
 `docs/PROJECT_PLAN.md` — read only the Stage 10 section. This file is state and decisions.
@@ -17,20 +17,21 @@ Stage 10 — Observability — NOT started.** Working tree clean.
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 9 — Web interface — approved by the user 2026-09-14** (after
-checking the page in a real browser). Committed and pushed; hash in *Git*. Nothing in
-progress. **Stage 10 has not been started** and starts only when the user asks.
+**Session state:** **Stage 10 — Observability — approved by the user 2026-09-15.** Committed
+and pushed; hash in *Git*. Decisions in *Stage 10 decisions*; what was built in *Current Work*.
+**Stage 11 has not been started** and starts only when the user asks. Two Stage 10 questions
+are still open (unfinished #3 and #5).
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 9 — Web interface** (approved 2026-09-14) |
-| Current stage | **None in progress** — Stage 10 not started |
-| `HEAD` | docs-only commits on top of `4c2bc97` (handover checkpoint `7d640ac`, `CLAUDE.md` sub-agents `f544100`, resume-check fix) = `origin/main` |
+| Last **approved** stage | **Stage 10 — Observability** (approved 2026-09-15) |
+| Current stage | **None in progress** — Stage 11 not started |
+| `HEAD` | `889585d` = `origin/main` (docs-only commits on top of Stage 9 `2484b73`, incl. `26592b6` `CLAUDE.md` sub-agent steps) |
 | Working tree | **Clean**, apart from git-ignored local files |
-| Tests | **1005 passed** · ruff clean · mypy strict clean (61 source files) |
-| Next | Stage 10 — see *Stage 10 — starting notes* directly below |
+| Tests | **1040 passed** (71 integration) · ruff clean · mypy strict clean (64 source files) |
+| Next | Stage 11 when the user asks. See *Next Action* |
 
 ### Documentation-only changes after Stage 9 (2026-09-14, docs session) — no application code
 
@@ -236,14 +237,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 9 |
-| **Stage name** | Web Interface |
-| **Status** | ✅ **APPROVED BY THE USER 2026-09-14 — committed and pushed** (hash in *Git*) |
-| **Last completed step** | Re-verified after approval: 1005 passed, ruff and mypy clean, `git add -An` = 12 files, no secrets, no nested directory. User checked the page in a real browser |
-| **Next step** | Stage 10 — not started; begins when the user asks. See *Next Action* |
+| **Stage number** | 10 |
+| **Stage name** | Observability |
+| **Status** | ✅ **APPROVED BY THE USER 2026-09-15 — committed and pushed** (hash in *Git*) |
+| **Last completed step** | Re-verified after approval: 1040 passed, ruff and mypy clean, `git add -An` = 16 files, no secrets, no nested directory. Guide status markers updated (pill, footer, §1 table, §1 diagram + note) |
+| **Next step** | Stage 11 — not started; begins when the user asks. See *Next Action* |
 
 | Stage | Name | Status |
 |---|---|---|
+| 9 | Web Interface | ✅ Approved 2026-09-14, committed `2484b73`, pushed |
 | 8 | Conversation Context | ✅ Approved 2026-09-14, committed `2abbb39`, pushed |
 | 7 | Agent Decision and Tool Selection | ✅ Approved 2026-09-14, committed `a3728d9`, pushed |
 
@@ -668,7 +670,88 @@ were chosen. Written here before any Stage 9 code existed.
 
 ---
 
+## Stage 10 decisions — recorded BEFORE implementation began
+
+**Decided by the user, 2026-09-15**, answering the four questions listed in *Stage 10 —
+starting notes*. Each was put with options and a recommendation; all four recommendations
+were chosen. Written here before any Stage 10 code existed. **Build method: single build,
+no sub-agents** (user's choice, 2026-09-15 — the project default; the change is small and
+touches the same event contract everywhere).
+
+### 10.A — "Question" tracking: HASH + LENGTH ONLY
+
+| | |
+|---|---|
+| **Chosen** | Log a short one-way hash of the question and its character count — never the text. Same stance as Stage 8's hashed session fingerprint (`app/conversation/service.py`). Lets two log lines be matched as "the same question" without storing what was asked |
+| **Rejected — redacted text** | Pattern-based masking can miss customer data; one miss puts PII in a log file |
+| **Rejected — full text behind an off-by-default setting** | One wrong setting in a deployed environment logs every customer question |
+
+### 10.B — Metrics: IN-PROCESS COUNTERS/HISTOGRAMS + `GET /metrics`
+
+| | |
+|---|---|
+| **Chosen** | Small in-process counters and latency histograms, served at `GET /metrics`. **No new dependency** — the `mcp==1.12.4` / `fastapi==0.115.6` pins (6.B) are untouched |
+| **Rejected — `prometheus_client`** | Standard format, but a new dependency to check against the pins for a local demo |
+| **Rejected — OpenTelemetry** | Heaviest: many packages, and a real risk to the `starlette`/`mcp` pins |
+| **Rejected — logs only** | The plan asks for metrics "where practical"; an endpoint is cheap |
+
+### 10.C — Tracing depth: REQUEST ID ONLY
+
+| | |
+|---|---|
+| **Chosen** | One `request_id` bound with `structlog.contextvars` in request middleware, so it appears on every log event and every `@traced` line for that request. No span ids |
+| **Rejected — parent/child span ids** | A hand-built version of spans; more code for little gain in a single-process app |
+| **Rejected — OpenTelemetry spans** | Only sensible with OpenTelemetry metrics, which 10.B rejected |
+
+### 10.D — Request-id source: ACCEPT INCOMING IF VALID, ELSE GENERATE
+
+| | |
+|---|---|
+| **Chosen** | Accept an incoming `X-Request-ID` only if it is short and safe (letters, digits and dashes, at most 64 characters); otherwise generate a new one. Always returned in the `X-Request-ID` response header |
+| **Rejected — always generate** | Cannot join up with an upstream proxy's id |
+| **Rejected — accept any incoming value** | Untrusted header text would be written into logs (log injection) |
+
+---
+
 ## Current Work
+
+### Implemented in Stage 10 (approved, committed, pushed — hash in *Git*)
+
+Single build by the main session (user's choice). Decisions 10.A–10.D asked and recorded
+before code. Tests written first and run red (collection failed: no `app.core.observability`).
+
+| File | What changed |
+|---|---|
+| `app/core/observability.py` — **new** | `resolve_request_id` (incoming `X-Request-ID` kept only if `[A-Za-z0-9-]{1,64}`, else `uuid4().hex`) · `fingerprint` (SHA-256, 12 hex chars) · `Metrics` (thread-safe counters + histograms; cumulative buckets 5…10000 ms + `le_inf`; negative latency raises) · `get_metrics` / `reset_metrics` · metric-name constants · `elapsed_ms` |
+| `app/api/middleware.py` — **new** | Plain ASGI `RequestContextMiddleware`: resolves the id, `bound_contextvars(request_id=…)`, sets the response header, logs `http.request` (method, **path only**, status, `latency_ms`); unhandled exception → `http.request_failed` (type only), re-raised; request metrics |
+| `app/api/routes/metrics.py` — **new** | `GET /metrics` → `Metrics.snapshot()` JSON. Not `@traced` (route handler) |
+| `app/main.py` | Adds the middleware and the metrics router |
+| `app/rag/retriever.py` | `rag.retrieved`: **`query` text removed** → `query_hash`, `query_length`, `latency_ms`; retrieval counter + histogram |
+| `app/llm/service.py` | Provider call + validation timed: `llm.answered` gains `latency_ms`; new `llm.failed` (provider, `error_type`, `retryable`, `latency_ms`); call/error/token counters + histogram |
+| `app/mcp/registry.py` | `mcp.tool_called` gains `latency_ms`; new `mcp.tool_failed` (tool, argument names, `error_type`, `latency_ms`); call/error counters + histogram. Typed/untyped error behaviour unchanged |
+| `app/agent/agent.py` | `agent.answered` gains `question_hash`, `question_length` (so tool-only answers are traceable) |
+| `app/conversation/service.py` | `session_fingerprint` now delegates to the shared `fingerprint` (same output) |
+| `app/mcp/base.py` · `app/mcp/models.py` · `tests/test_mcp_tools.py` | The three stale "Stage 7 shows this to a model" docstrings fixed (the handover's carried note) |
+| `tests/test_observability.py` — **new** (35) | See *Testing* |
+
+### Stage 10 — what remains deliberately unfinished
+
+1. **`GET /metrics` is unauthenticated** (like `/health`); holds names and numbers only. Stage 13.
+2. **Metrics are per-process and reset on restart**; JSON, not Prometheus text. Stage 14.
+3. **`httpx` logs every outgoing request's full URL at `info` into `app.log`** (found by a test:
+   the test client's own request). In a deployment that is the vendor SDKs' API URLs — no
+   question text or keys. **Open decision** whether to raise the `httpx` logger to `warning`.
+4. **A 500 from an unhandled exception has no `X-Request-ID` header** — Starlette builds it
+   outside the middleware. The `http.request_failed` log line does carry the id.
+5. **Not `@traced`, deliberately** (exception to the global rule, flagged to the user):
+   `Metrics` and `_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics`, and the
+   middleware's inner response wrapper — they run inside the measurements, several times per
+   request. `resolve_request_id`, `fingerprint` and the middleware `__call__` are traced.
+6. **Other stale "Stage 7 … a model" wording** remains in `app/mcp/models.py` (`ToolSpec`,
+   `input_schema`, `ToolInvocation` docstrings) and `app/mcp/base.py` (module docstring,
+   `ToolInputError`). Not in the carried list of three; left for a docs-only fix.
+7. **No live `uvicorn` smoke test this session** — end to end is covered through
+   `TestClient` (real agent, real tools, mock provider).
 
 ### Implemented in Stage 9 (approved, committed, pushed — hash in *Git*)
 
@@ -693,7 +776,7 @@ written first and run red (every API test errored on `create_app()` lacking
 4. **No browser-automation test** of the page — the page is checked statically (required
    markers, no HTML sinks, no network assets) and the API end to end; JS behaviour was not
    exercised in a real browser this session.
-5. **No request tracing** on routes — Stage 10 middleware.
+5. ~~**No request tracing** on routes — Stage 10 middleware.~~ Done in Stage 10.
 
 ### Implemented in Stage 8 (approved, committed `2abbb39`, pushed)
 
@@ -1275,6 +1358,18 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
+### Added in Stage 10 (4 files, committed)
+
+`app/core/observability.py` · `app/api/middleware.py` · `app/api/routes/metrics.py` ·
+`tests/test_observability.py` (35).
+
+### Modified in Stage 10 (12 files, committed)
+
+`app/main.py` · `app/rag/retriever.py` · `app/llm/service.py` · `app/mcp/registry.py` ·
+`app/mcp/base.py` · `app/mcp/models.py` · `app/agent/agent.py` · `app/conversation/service.py` ·
+`tests/test_mcp_tools.py` · `README.md` · `docs/architecture-guide.html` (§13 rewritten; §2, §3,
+§4, §5, §9, §11, §14, §16, §19 rows; §20.32–§20.35) · `docs/HANDOVER.md`.
+
 ### Added in Stage 9 (6 files, committed)
 
 `app/api/routes/conversation.py` · `app/web/static/index.html` · `app/web/static/app.js` ·
@@ -1520,6 +1615,27 @@ mentions) · `docs/HANDOVER.md`.
 ---
 
 ## Testing
+
+### Result (Stage 10)
+
+**1040 passed** (1005 → 1040, +35) in ~65 s · 71 `integration` · `ruff check .` clean · `mypy`
+strict clean, 64 source files. Commands: `./.venv/Scripts/python.exe -m pytest` /
+`-m pytest -m integration --collect-only` / `-m ruff check .` / `-m mypy`.
+
+First full run: 1039 passed, 1 failed — `test_the_query_string_is_not_logged` found the query
+string in `app.log`, written by the **test client's `httpx` logger**, not by the app. The test
+was narrowed to `app.*` loggers and the `httpx` behaviour recorded as unfinished #3.
+
+| Required (`PROJECT_PLAN.md` Stage 10) | Evidence (`tests/test_observability.py`) |
+|---|---|
+| Request ID | `TestResolveRequestId` (kept / 8 unsafe forms replaced / unique); middleware header generated + echoed + unsafe replaced and never logged; same id on `rag.retrieved`, `llm.answered`, `agent.answered` and the `KnowledgeAgent.ask` trace line; id does not leak past the request |
+| Question | `agent.answered` `question_hash == fingerprint(q)`, `question_length`; `rag.retrieved` has no `query`; question text absent from `app.log` and `traces.log` |
+| Retrieval / LLM / tool latency | `latency_ms >= 0` on `rag.retrieved`, `llm.answered`, `mcp.tool_called` |
+| Retrieved documents · tool calls | Existing `documents` / `mcp.tool_called` fields, unchanged |
+| Errors | `http.request_failed` (500, type only, counted); `llm.failed` (type, no provider text, counted); `mcp.tool_failed` (type, no argument values, counted) |
+| Overall latency | `http.request` `latency_ms`, method, path, status |
+| Metrics | `TestMetrics` (counters, cumulative buckets, copy, negative rejected, 8 threads × 2000 not lost, reset); `GET /metrics` counters + 4 histograms after real questions; no question, identifier or answer text in it |
+| No secrets / sensitive data | Query string, question, tool argument values and exception messages asserted absent |
 
 ### Result (Stage 9)
 
@@ -2351,6 +2467,7 @@ source for reassessment in Stage 13.
 | **Stage 9 push** | ✅ `ca5449c..2484b73` pushed; verified `origin/main == local HEAD == 2484b73` |
 | **Push status** | ✅ Pushed to `origin/main` (`6c930f5..a3728d9`); verified `origin/main == local HEAD == a3728d9` |
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
+| **Stage 10 commit** | `feat(stage-10): observability - request ids, latency logging and in-process metrics` — 16 files (4 added, 12 modified); hash recorded in the follow-up handover commit |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 6** | 34 files: 20 added, 14 modified — 9,132 insertions, 215 deletions |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
@@ -2457,7 +2574,14 @@ edit.
 
 ## Next Action
 
-**Stage 9 — Web interface — is approved, committed and pushed** (hash in *Git*). **The
+**Stage 10 — Observability — is approved, committed and pushed** (hash in *Git*). **The
+next action is Stage 11 — Testing and Evaluation — when the user asks for it.** Read only its
+section of `docs/PROJECT_PLAN.md`; `CLAUDE.md` §2 marks it ✅ for sub-agents, but only if the
+user asks at kickoff. Still open for the user: *Stage 10 — what remains deliberately
+unfinished* #3 (`httpx` logging) and #5 (untraced helpers). Try it free:
+`./.venv/Scripts/python.exe -m uvicorn app.main:app` → `http://127.0.0.1:8000/metrics`.
+
+*Superseded:* **Stage 9 — Web interface — is approved, committed and pushed** (hash in *Git*). **The
 next action is Stage 10 when the user asks for it.** Read only its section of
 `docs/PROJECT_PLAN.md`. Try the page free:
 `./.venv/Scripts/python.exe -m uvicorn app.main:app` → open `http://127.0.0.1:8000/`.

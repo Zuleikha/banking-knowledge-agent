@@ -19,8 +19,17 @@ be re-measured if either the corpus or the model changes.
 
 from __future__ import annotations
 
+import time
+
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.core.observability import (
+    RAG_RETRIEVAL_DURATION_MS,
+    RAG_RETRIEVALS_TOTAL,
+    elapsed_ms,
+    fingerprint,
+    get_metrics,
+)
 from app.core.tracing import traced
 from app.rag.embeddings import Embedder
 from app.rag.models import RetrievalResult, ScoredChunk
@@ -101,6 +110,7 @@ class Retriever:
         top_k = k if k is not None else self._default_k
         floor = min_score if min_score is not None else self._default_min_score
 
+        started = time.perf_counter()
         query_vector = self._embedder.embed_query(query)
         matches = self._store.search(query_vector, k=top_k, filters=filters)
         kept: tuple[ScoredChunk, ...] = tuple(
@@ -113,13 +123,19 @@ class Retriever:
             candidates_considered=self._store.count(filters),
             min_score=floor,
         )
+        latency = elapsed_ms(started)
+        metrics = get_metrics()
+        metrics.increment(RAG_RETRIEVALS_TOTAL)
+        metrics.observe(RAG_RETRIEVAL_DURATION_MS, latency)
 
         logger.info(
             "rag.retrieved",
-            # The question itself is logged: it is a technical support query
-            # about a synthetic platform, not customer data. Revisit in Stage 13
-            # if the deployment context ever changes.
-            query=query,
+            # The query is logged as a fingerprint and a length, never as text
+            # (guide §20.32): a support question can hold customer data. The
+            # fingerprint still lets two lines be matched as the same query.
+            query_hash=fingerprint(query),
+            query_length=len(query),
+            latency_ms=latency,
             returned=len(kept),
             scored=len(matches),
             candidates=result.candidates_considered,

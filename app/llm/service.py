@@ -45,10 +45,20 @@ error: it looks complete.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.core.observability import (
+    LLM_CALL_DURATION_MS,
+    LLM_CALLS_TOTAL,
+    LLM_ERRORS_TOTAL,
+    LLM_INPUT_TOKENS_TOTAL,
+    LLM_OUTPUT_TOKENS_TOTAL,
+    elapsed_ms,
+    get_metrics,
+)
 from app.core.tracing import traced
 from app.llm.base import (
     LLMError,
@@ -142,8 +152,33 @@ class LLMService:
         request = build_request(
             question, selected, self._settings, tool_results, tuple(history)
         )
-        response = self._complete(request)
-        self._validate(response)
+        # Latency covers the provider call and validation: an unusable generation
+        # is a failed LLM call, counted and logged as one.
+        metrics = get_metrics()
+        metrics.increment(LLM_CALLS_TOTAL)
+        started = time.perf_counter()
+        try:
+            response = self._complete(request)
+            self._validate(response)
+        except LLMError as exc:
+            latency = elapsed_ms(started)
+            metrics.increment(LLM_ERRORS_TOTAL)
+            metrics.observe(LLM_CALL_DURATION_MS, latency)
+            logger.warning(
+                "llm.failed",
+                # Type only: the message may quote the provider's own wording.
+                provider=getattr(self._provider, "provider_id", "unknown"),
+                error_type=type(exc).__name__,
+                retryable=exc.retryable,
+                latency_ms=latency,
+            )
+            raise
+        latency = elapsed_ms(started)
+        metrics.observe(LLM_CALL_DURATION_MS, latency)
+        if response.usage.input_tokens:
+            metrics.increment(LLM_INPUT_TOKENS_TOTAL, response.usage.input_tokens)
+        if response.usage.output_tokens:
+            metrics.increment(LLM_OUTPUT_TOKENS_TOTAL, response.usage.output_tokens)
 
         # Document citations only. A tool is not a "source" in the sense this
         # field means -- it is not something a reader can open and check -- and
@@ -171,6 +206,7 @@ class LLMService:
             # safe here; their payloads are not, and are not logged.
             provider=response.provider_id,
             model=response.model_id,
+            latency_ms=latency,
             prompt_version=SYSTEM_PROMPT_VERSION,
             chunks_used=answer.chunks_used,
             chunks_available=answer.chunks_available,
