@@ -2513,6 +2513,8 @@ source for reassessment in Stage 13.
 | **Committed in Stage 7** | 16 files: 1 added, 15 modified — 3,208 insertions, 620 deletions. The guide was committed whole, including the separate improve.md readability edits (user's choice, 2026-09-14). `docs/improve.md` deliberately **not** committed |
 | **Stage 10 commit** | `c627358` — `feat(stage-10): observability - request ids, latency logging and in-process metrics` — 16 files (4 added, 12 modified), 1,285 insertions, 79 deletions |
 | **Stage 10 push** | ✅ `889585d..c627358` pushed; verified `origin/main == local HEAD == c627358` |
+| **Stage 10 follow-up commit** | `42788e8` — `fix(stage-10): quieten httpx logging to warning; record untraced helpers` — 6 files, 200 insertions, 96 deletions |
+| **Stage 10 follow-up push** | ✅ `b633b15..42788e8` pushed; verified `origin/main == local HEAD == 42788e8` |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 6** | 34 files: 20 added, 14 modified — 9,132 insertions, 215 deletions |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
