@@ -8,8 +8,8 @@ update HANDOVER.md immediately, not at stage completion.
 > Never assume a previous session completed work unless the repository confirms it.
 
 Last updated: **2026-09-15, end of session** · **Stages 1–10 approved, committed and pushed.**
-The Stage 10 follow-up (10.E + 10.F) was **approved 2026-09-15 and committed** (hash in *Git*).
-Stage 11 — Testing and Evaluation — kicked off by the user; decisions not yet made.
+The Stage 10 follow-up (10.E + 10.F) was **approved 2026-09-15 and committed** (`42788e8`).
+**Stage 11 — Testing and Evaluation — approved 2026-09-15, committed and pushed** (hash in *Git*).
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
 `docs/PROJECT_PLAN.md` — read only the Stage 11 section. This file is state and decisions.
@@ -22,19 +22,20 @@ Stage 11 — Testing and Evaluation — kicked off by the user; decisions not ye
 `c627358` and pushed. After that, the user answered the two open Stage 10 questions:
 **10.E** quieten `httpx` logging to `warning` (implemented, test-first) and **10.F** keep the
 hot-path helpers untraced (documented). That follow-up was **APPROVED** by the user and committed
-as its own `fix(stage-10)` commit. **Stage 11 was kicked off by the user**; its design decisions
-(see *Stage 11 — starting notes*) are asked before any implementation.
+as its own `fix(stage-10)` commit. **Stage 11 was kicked off by the user**, decisions 11.A–11.D
+were made and recorded before code, 11.E during implementation; Stage 11 is **implemented and
+tested, uncommitted, awaiting APPROVED**.
 
 ### State at checkpoint
 
 | | |
 |---|---|
 | Last **approved** stage | **Stage 10 — Observability** (approved 2026-09-15, `c627358`) |
-| Current stage | **Stage 11 — Testing and Evaluation — kicked off, planning** (decisions 1–4 in the starting notes not yet made) |
-| `HEAD` | the `fix(stage-10)` follow-up commit (hash in *Git*) = `origin/main` |
-| Working tree | Clean after the follow-up commit (6 files: `app/core/logging.py`, `tests/test_logging.py`, `tests/test_observability.py`, `docs/architecture-guide.html`, `README.md`, `docs/HANDOVER.md`) |
-| Tests | **1042 passed** (71 integration) · ruff clean · mypy strict clean (64 source files) — re-run 2026-09-15 before commit |
-| Next | Ask the user the Stage 11 decisions, one at a time; record each here and in guide §20 when made; then implement |
+| Current stage | **Stage 11 — Testing and Evaluation — APPROVED 2026-09-15, committed and pushed** (hash in *Git*); Stage 12 not started |
+| `HEAD` | `25ebdc9` (handover hash commit on top of the follow-up `42788e8`) = `origin/main` |
+| Working tree | Clean after the Stage 11 commit — 16 files: 11 added (`app/eval/` ×6, `data/eval/questions.yaml`, `tests/test_eval_*.py` ×4), 5 modified (`app/core/config.py`, `.env.example`, `README.md`, `docs/architecture-guide.html`, `docs/HANDOVER.md`). See *Files* |
+| Tests | **1119 passed** (77 integration) · ruff clean · mypy strict clean (70 source files) · scorecard PASS |
+| Next | **Stage 12 — Containerisation** when the user asks. Open for the user: `off-006`/`off-007` refusal gap and whether to run `--paid` (Stage 11 unfinished #1, #3) |
 
 ### Commits made this session (2026-09-15, Stage 10 session), oldest first
 
@@ -240,14 +241,15 @@ git status                    # expect clean
 
 | | |
 |---|---|
-| **Stage number** | 10 |
-| **Stage name** | Observability |
+| **Stage number** | 11 |
+| **Stage name** | Testing and Evaluation |
 | **Status** | ✅ **APPROVED BY THE USER 2026-09-15 — committed and pushed** (hash in *Git*) |
-| **Last completed step** | Re-verified after approval: 1040 passed, ruff and mypy clean, `git add -An` = 16 files, no secrets, no nested directory. Guide status markers updated (pill, footer, §1 table, §1 diagram + note) |
-| **Next step** | Stage 11 — not started; begins when the user asks. See *Next Action* |
+| **Last completed step** | Re-verified after approval: 1119 passed, ruff and mypy clean, `git add -An` = 16 files, no secrets, no nested directory, `.env` untracked. Guide status markers updated (pill, footer, §1 table; §1 diagram unchanged — evaluation is not on the request path) |
+| **Next step** | Stage 12 — Containerisation — begins when the user asks. See *Next Action* |
 
 | Stage | Name | Status |
 |---|---|---|
+| 10 | Observability | ✅ Approved 2026-09-15, committed `c627358` (+ follow-up `42788e8`), pushed |
 | 9 | Web Interface | ✅ Approved 2026-09-14, committed `2484b73`, pushed |
 | 8 | Conversation Context | ✅ Approved 2026-09-14, committed `2abbb39`, pushed |
 | 7 | Agent Decision and Tool Selection | ✅ Approved 2026-09-14, committed `a3728d9`, pushed |
@@ -737,7 +739,108 @@ change was made.
 
 ---
 
+## Stage 11 decisions — recorded BEFORE implementation began
+
+**Stage 11 kicked off by the user, 2026-09-15**, after the 10.E/10.F follow-up was approved and
+committed (`42788e8`). The four questions in *Stage 11 — starting notes* are put one at a time,
+each with options and a recommendation, and recorded here as they are answered. **Build method:
+single build, no sub-agents** (project default; the user did not ask for sub-agents at kickoff).
+
+### 11.A — Dataset: YAML IN `data/eval/`
+
+**Decided by the user, 2026-09-15** (recommendation chosen).
+
+| | |
+|---|---|
+| **Chosen** | One hand-reviewed file, `data/eval/questions.yaml`, about 40 realistic banking questions. Each entry has an `id`, the `question`, the expected decision path (knowledge answer, tool call or refusal — names to match the agent's real paths), the expected source documents (paths under `data/knowledge/`), the expected tool where one applies, and short facts the answer must mention. Claude drafts it; the user reviews it. **No new dependency** — `PyYAML==6.0.2` and `types-PyYAML` are already pinned |
+| **Rejected — JSON in `data/eval/`** | Same content, but no comments and harder to read and edit by hand |
+| **Rejected — Python module in `tests/`** | Mixes data with code; a CLI report could not reuse it cleanly |
+
+### 11.B — Answer quality: FREE RULE CHECKS BY DEFAULT + OPT-IN PAID RUN
+
+**Decided by the user, 2026-09-15** (recommendation chosen).
+
+| | |
+|---|---|
+| **Chosen** | **Default, free:** rule-based checks on every run using the `mock` provider — cites the expected documents, refuses when there is no evidence, no citation numbers that point at nothing. **Opt-in, paid:** real-model answers only when a provider and `BKA_LLM_API_KEY` are set **and** an explicit `--paid` flag is passed; it prints the question count first. Claude never runs the paid mode without the user's confirmation at the time |
+| **Rejected — free only** | Real answer quality stays unmeasured, with no way to measure it later without new code |
+| **Rejected — paid LLM-as-judge** | Costs money on every run, and the judge's scores vary between runs |
+
+### 11.C — Retrieval metrics: RECALL@K + MRR, GATED BY A SOFT FLOOR
+
+**Decided by the user, 2026-09-15** (recommendation chosen).
+
+| | |
+|---|---|
+| **Chosen** | **recall@k** (share of questions with at least one expected document in the top k, k = the retriever's default `retrieval_top_k`) and **MRR** (mean reciprocal rank of the first expected document). Both reported, with the ids of missed questions. An `integration`-marked pytest fails only if a score drops below a floor set **a little under the value measured in Stage 11** — floors come from a real run, not from the example numbers shown at decision time. Real local embedding model, free |
+| **Rejected — report only** | A retrieval regression could slip through unnoticed |
+| **Rejected — add precision@k and nDCG** | With 1–2 expected documents per question they add little over recall and MRR, and more gated numbers means a more fragile suite |
+
+### 11.D — How it runs: ONE ENGINE, BOTH PYTEST AND A CLI SCORECARD
+
+**Decided by the user, 2026-09-15** (recommendation chosen). All four Stage 11 decisions made.
+
+| | |
+|---|---|
+| **Chosen** | One shared engine in a new `app/eval/` package (dataset loading and validation, metrics and rule checks, a runner over the agent), used by both: **pytest** (free mock checks on every run; retrieval floors under the existing `integration` marker) and **`python -m app.eval`** (a readable scorecard; `--paid` is the opt-in real-model mode from 11.B). No evaluation logic duplicated between the two |
+| **Rejected — pytest only** | Scores only visible in test output; the paid mode has no natural home |
+| **Rejected — CLI only** | Nothing fails automatically; regressions depend on someone remembering to run it |
+
+### 11.E — Refused-when-expected is a SCORE; honest refusal and citations are INVARIANTS (decided during implementation)
+
+**Decided by Claude during implementation, 2026-09-15** — a correction to Claude's own
+contract, not a user decision; flagged in the stage report. The first real-model run showed two
+banking-adjacent off-topic questions (`off-006` mortgage rate, `off-007` savings account) clearing
+the retrieval floor and being answered.
+
+| | |
+|---|---|
+| **Chosen** | Split the refusal check. `refusal` (refused exactly when expected) is reported and counts through **path accuracy** and its soft floor. `refusal_honest` (a refusal used no model and says the fixed sentence) and `citations` (no citation to unsupplied evidence) are **invariants**: any failure fails the run whatever the floors say |
+| **Why** | Whether a question is refused depends on retrieval scores, which vary with the model and corpus; how a refusal behaves does not |
+| **Test changed** | `test_a_broken_invariant_fails_even_with_zero_floors` (gated a wrong refusal as an invariant) replaced by `test_an_invented_citation_fails_even_with_zero_floors` + `test_a_wrong_refusal_is_a_score_not_an_invariant` — the design was wrong, not the code |
+| **Rejected — keep refusal as an invariant** | A known retrieval finding would keep the suite red and hide every other regression |
+| **Rejected — drop `off-006`/`off-007`** | Fits the dataset to the system; they are the best hallucination-resistance cases |
+
+---
+
 ## Current Work
+
+### Implemented in Stage 11 (approved, committed, pushed — hash in *Git*)
+
+Single build, no sub-agents. Test-first: the four test files ran red (`No module named
+'app.eval'`) before any `app/eval/` code existed.
+
+| Part | What it does |
+|---|---|
+| `data/eval/questions.yaml` | 49 cases (decision asked ~40): knowledge 20 · paraphrase 6 · tool 6 · hybrid 5 · failure 4 · off_topic 7 · injection 1. Every tool and every fixed route expected at least once. Floors 0.90 / 0.85 / 0.90 with the measured values in a comment |
+| `app/eval/dataset.py` | `EvalCase` / `Thresholds` / `EvalDataset`; impossible expectations refused at load; `load_dataset` → `DatasetError` naming the file; `check_references` against the corpus and registry |
+| `app/eval/metrics.py` | `ranked_documents`, `reciprocal_rank`, `hit_at_k`, `recall_at_k`, `mean_reciprocal_rank`, `invalid_citations`, `path_matches` (a refined search = a knowledge answer), `missing_mentions`, `check_answer` (7 checks) |
+| `app/eval/runner.py` | `run_evaluation` / `run_case` / `score`; `EvalReport.failed_floors()` (floors + invariants 11.E); `eval.case` log line — ids, routes, numbers, never text (10.A) |
+| `app/eval/report.py` | Plain-ASCII scorecard: scores vs floors, check tallies, latency, one line per case |
+| `app/eval/__main__.py` | `python -m app.eval [--dataset] [-k] [--paid]`; free mode always mock; `--paid` refused (exit 2) without a paid provider or key, prints the question count before building a provider; exit 1 on a failed gate |
+| `app/core/config.py` · `.env.example` | `BKA_EVAL_DATASET_PATH` |
+
+**Measured 2026-09-15** (real `all-MiniLM-L6-v2`, mock provider, k=5, free): recall@5 **1.000**
+(33 retrieval cases) · MRR **0.927** · path accuracy **0.959** (47/49) · tools 13/13 · documents
+33/33 · refusal 47/49 · refusal_honest 49/49 · citations 49/49 · mentions 29/30 · median 12.9 ms
+per question.
+
+### Stage 11 — what remains deliberately unfinished
+
+1. **`off-006`, `off-007` answered instead of refused** — banking-adjacent questions clear the
+   0.25 floor (top scores ~0.28–0.37 after refinement). A real hallucination-resistance gap in
+   retrieval, not fixed here (out of scope): candidates are a higher floor for refined searches,
+   hybrid search, or a reranker. Needs a user decision in a later stage.
+2. **`know-018` evidence lacks `TransactionSwitch`** — the top-5 chunks for "runtime components"
+   miss the components table's first row. Reported, not gated (mentions are not floored).
+3. **Paid mode never run.** `--paid` is implemented and its guards tested; no real-model answer
+   has been scored. Running it needs the user's explicit confirmation at the time.
+4. **Mentions in free mode are checked against retrieved evidence**, not answer wording — the
+   mock cannot phrase facts. Answer wording is measured only by `--paid`.
+5. **Same author** wrote the corpus, the routing rules and the dataset; expectations were written
+   from the documents and rules, not fitted — but an independent reviewer would strengthen it.
+6. **API behaviour** is covered by the existing Stage 9/10 API tests, not re-scored by the
+   evaluation (the evaluation drives the agent directly).
 
 ### Implemented in Stage 10 (approved, committed, pushed — hash in *Git*)
 
@@ -1397,6 +1500,20 @@ Summary only — the **full reasoning, with rejected alternatives, is in
 
 ## Files
 
+### Added in Stage 11 (11 files, committed)
+
+`app/eval/__init__.py` · `app/eval/dataset.py` · `app/eval/metrics.py` · `app/eval/runner.py` ·
+`app/eval/report.py` · `app/eval/__main__.py` · `data/eval/questions.yaml` ·
+`tests/test_eval_dataset.py` (23) · `tests/test_eval_metrics.py` (29) · `tests/test_eval_runner.py`
+(19) · `tests/test_eval_integration.py` (6, `integration`).
+
+### Modified in Stage 11 (5 files, committed)
+
+`app/core/config.py` (`eval_dataset_path`) · `.env.example` (`BKA_EVAL_DATASET_PATH`) ·
+`README.md` (Status, Run, Test count, new Evaluation section, Configuration, Structure, Engineering
+Focus) · `docs/architecture-guide.html` (§14 rows + evaluation note + counts; §20.38–§20.42) ·
+`docs/HANDOVER.md`.
+
 ### Added in Stage 10 (4 files, committed)
 
 `app/core/observability.py` · `app/api/middleware.py` · `app/api/routes/metrics.py` ·
@@ -1655,7 +1772,15 @@ mentions) · `docs/HANDOVER.md`.
 
 ## Testing
 
-### Result (Stage 10 follow-up, uncommitted)
+### Result (Stage 11)
+
+**1119 passed** (1042 → 1119, +77) in ~79 s · **77 `integration`** (71 + 6) · `ruff check .` clean
+· `mypy` strict clean, 70 source files · `python -m app.eval` exit 0, Result PASS. Red first:
+4 collection errors before `app/eval/` existed. Commands: `./.venv/Scripts/python.exe -m pytest`
+/ `-m ruff check .` / `-m mypy` / `-m app.eval` (free). `ruff format` applied to the new files only
+(repo-wide format still disagrees — problem 17).
+
+### Result (Stage 10 follow-up, committed `42788e8`)
 
 **1042 passed** (1040 → 1042, +2) in ~67 s · 71 `integration` · ruff clean · mypy strict clean,
 64 source files. Red first: 2 failed as intended before `app/core/logging.py` changed.
@@ -2344,12 +2469,17 @@ and the entry that was added to `.gitignore` defensively is now load-bearing.
 The process lesson recorded then still stands and applied again this stage:
 **always list the exact file set `git add` would stage before committing.**
 
-### Known limitations (carried into Stage 11)
+### Known limitations (updated by Stage 11)
 
+- **Stage 11 measured what was promised here** — recall@5 1.000, MRR 0.927, path accuracy
+  0.959 on 49 reviewed questions (*Current Work*). It also found **two off-topic questions
+  answered instead of refused** (`off-006`, `off-007`), which makes the single 0.25 floor's
+  weakness concrete rather than theoretical. See *Stage 11 — what remains deliberately
+  unfinished*.
 - **Prompt quality is unproven.** The Stage 4 tests assert prompt *structure* — what is
   sent, what is not, what is escaped, what is refused. They cannot assert that a real
-  model answers well from these instructions, because no real model has run. That is
-  Stage 11's evaluation set, and it is the honest cost of shipping no adapter (§20.4.1).
+  model answers well from these instructions, because no real model has run. Stage 11 built
+  the opt-in `--paid` evaluation for this; it has not been run (§20.4.1, §20.39).
 - **The context budget is in characters, not tokens.** A deliberate over-approximation:
   owning a tokenizer for a provider not yet chosen is not possible, and every provider
   tokenizes differently. Revisit when the first adapter lands (§20.4.7).
@@ -2621,7 +2751,13 @@ edit.
 
 ## Next Action
 
-**Stage 10 — Observability — is approved, committed and pushed** (hash in *Git*). **The
+**Stage 11 — Testing and Evaluation — is approved, committed and pushed** (hash in *Git*). **The
+next action is Stage 12 — Containerisation — when the user asks for it.** Read only its section
+of `docs/PROJECT_PLAN.md`; `CLAUDE.md` §2 marks it ❌ for sub-agents. Open for
+the user: `off-006`/`off-007` refusal gap (Stage 11 unfinished #1) and whether to run `--paid`
+(#3). Try it free: `./.venv/Scripts/python.exe -m app.eval`.
+
+*Superseded:* **Stage 10 — Observability — is approved, committed and pushed** (hash in *Git*). **The
 next action is Stage 11 — Testing and Evaluation — when the user asks for it.** Read only its
 section of `docs/PROJECT_PLAN.md`; `CLAUDE.md` §2 marks it ✅ for sub-agents, but only if the
 user asks at kickoff. Still open for the user: *Stage 10 — what remains deliberately

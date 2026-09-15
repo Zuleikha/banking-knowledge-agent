@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     conversation_max_sessions: int = Field(default=1000, ge=1)
     conversation_ttl_seconds: float = Field(default=1800.0, gt=0.0)
 
+    # --- Evaluation (Stage 11) -------------------------------------------
+    # The question set `python -m app.eval` and the evaluation tests score
+    # against. Its score floors live in the file, beside the questions they
+    # apply to, so changing one never means editing code.
+    eval_dataset_path: Path = PROJECT_ROOT / "data" / "eval" / "questions.yaml"
+
     # --- LLM abstraction (Stages 4 and 5) --------------------------------
     # mock | anthropic | openai. The default stays "mock" -- deterministic,
     # in-process and free -- so nothing calls a paid API unless someone

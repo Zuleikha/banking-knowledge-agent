@@ -16,9 +16,9 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 10 — Observability** implemented, awaiting approval |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics |
-| **Next** | Evaluation (11) · Docker (12) · guardrails and security (13) · production architecture (14) |
+| **Current stage** | **Stage 11 — Testing and Evaluation** implemented, awaiting approval |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard |
+| **Next** | Docker (12) · guardrails and security (13) · production architecture (14) |
 
 Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md).
 
@@ -102,6 +102,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m app.agent demo               # decision paths, end to end
 .venv/Scripts/python.exe -m app.agent conversation-demo  # follow-up rules, end to end
 .venv/Scripts/python.exe -m app.mcp demo                 # one call of each tool
+.venv/Scripts/python.exe -m app.eval                     # evaluation scorecard (free)
 ```
 
 | URL | What it is |
@@ -123,7 +124,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1042 tests**, none of which call a paid API; 71 are marked `integration` and load the real embedding model.
+**1119 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model.
 
 ---
 
@@ -228,6 +229,20 @@ request ──▶ middleware: X-Request-ID ──▶ rag · tools · llm (latenc
 - The question is logged as a 12-character hash and a length — never the text; the query string is never logged.
 - `GET /metrics`: in-memory counters and latency histograms as JSON; no new dependency; resets on restart.
 
+## Evaluation
+
+```
+data/eval/questions.yaml ──▶ app/eval runner ──▶ retrieval ranks + agent answer + rule checks
+     49 questions                                        │
+                                   pytest gates ◀── EvalReport ──▶ python -m app.eval scorecard
+```
+
+- 49 reviewed questions across knowledge, paraphrase, tool, hybrid, failure, off-topic and injection; each names its expected route, documents, tools and facts.
+- Retrieval: recall@5 and MRR. Answers: route, tools, documents, refusal, honest refusal, citation validity, required facts.
+- Measured (real embedding model, mock provider): recall@5 **1.000** · MRR **0.927** · path accuracy **0.959**.
+- Soft floors in the dataset file (0.90 · 0.85 · 0.90) gate the `integration` tests; invented citations and dishonest refusals gate at 100%.
+- Free by default, whatever `BKA_LLM_PROVIDER` says; `--paid` runs the real model only with a paid provider **and** a key set.
+
 ---
 
 ## Configuration
@@ -242,6 +257,7 @@ defaults: [`.env.example`](.env.example). Secrets come from the environment only
 | Agent | `BKA_AGENT_CONFIDENT_SCORE` |
 | Conversation | `BKA_CONVERSATION_MAX_HISTORY_TURNS` `BKA_CONVERSATION_MAX_HISTORY_CHARS` `BKA_CONVERSATION_MAX_TURNS` `BKA_CONVERSATION_MAX_SESSIONS` `BKA_CONVERSATION_TTL_SECONDS` |
 | LLM | `BKA_LLM_PROVIDER` `BKA_LLM_MODEL` `BKA_LLM_MAX_TOKENS` `BKA_LLM_TIMEOUT_SECONDS` `BKA_LLM_MAX_RETRIES` `BKA_LLM_CONTEXT_MAX_CHUNKS` `BKA_LLM_CONTEXT_MAX_CHARS` `BKA_LLM_API_KEY` |
+| Evaluation | `BKA_EVAL_DATASET_PATH` |
 | Logging | `BKA_LOG_LEVEL` `BKA_LOG_FORMAT` `BKA_LOG_DIR` `BKA_LOG_TO_FILE` |
 
 ---
@@ -255,12 +271,14 @@ banking-knowledge-agent/
 │   ├── api/             FastAPI dependencies, request middleware, routes (health, metrics, conversation)
 │   ├── conversation/    Sessions, follow-up rules, conversation service
 │   ├── core/            Settings, logging, tracing, observability (request ids, metrics)
+│   ├── eval/            Evaluation: dataset, metrics, runner, scorecard CLI
 │   ├── knowledge/       Document models and the strict loader
 │   ├── llm/             Provider protocol, prompts, mock and vendor adapters
 │   ├── mcp/             Tool contract, registry, MCP server, six tools
 │   ├── rag/             Chunking, embeddings, vector store, retrieval
 │   └── web/static/      The no-build web page
 ├── data/
+│   ├── eval/            Evaluation questions, expectations and score floors
 │   ├── knowledge/       15 synthetic banking documents, by domain
 │   └── vectorstore/     Built search index (git-ignored)
 ├── docs/
@@ -286,7 +304,7 @@ banking-knowledge-agent/
 - **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1042 offline tests, strict mypy, ruff; retrieval quality measured with the real model.
+- **Quality gates** — 1119 offline tests, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---
