@@ -51,3 +51,5 @@ ai-dev-token-efficiency-workflow.md
 docs/legacy/
 # Personal how-to-run cheat sheet, kept local.
 docs/HOW_TO_RUN.html
+# Claude Code local settings, per machine.
+.claude/

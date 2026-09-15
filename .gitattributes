@@ -1,0 +1,7 @@
+# Force LF line endings in the repository and the working tree, regardless of
+# each machine's core.autocrlf setting.
+*.py   text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.yaml text eol=lf
+*.txt  text eol=lf
