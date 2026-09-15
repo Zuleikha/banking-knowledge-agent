@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -95,6 +96,22 @@ def test_traced_preserves_function_metadata():
 
     assert documented.__name__ == "documented"
     assert documented.__doc__ == "Docstring survives."
+
+
+def test_httpx_is_quietened_to_warning(configured):
+    """Its info lines carry full request URLs; warnings still get through."""
+    httpx_logger = logging.getLogger("httpx")
+    httpx_logger.info("HTTP Request: GET http://testserver/health?account=12345678")
+    httpx_logger.warning("httpx.warning.kept")
+
+    app_log = (configured.log_dir / APP_LOG_FILENAME).read_text(encoding="utf-8")
+    assert "12345678" not in app_log
+    assert "httpx.warning.kept" in app_log
+
+
+def test_reset_logging_restores_the_httpx_level(configured):
+    reset_logging()
+    assert logging.getLogger("httpx").level == logging.NOTSET
 
 
 def test_configure_logging_is_idempotent(configured):

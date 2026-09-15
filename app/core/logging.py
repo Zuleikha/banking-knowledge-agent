@@ -24,6 +24,13 @@ APP_LOG_FILENAME = "app.log"
 TRACE_LOG_FILENAME = "traces.log"
 TRACE_LOGGER_NAME = "bka.trace"
 
+QUIETENED_LOGGERS = ("httpx",)
+"""Third-party loggers held at WARNING (guide §20.36).
+
+``httpx`` -- used by the test client and the LLM vendor SDKs -- logs every
+outgoing request with its full URL at INFO. A URL can carry a query string.
+"""
+
 _MAX_LOG_BYTES = 5 * 1024 * 1024
 _LOG_BACKUP_COUNT = 3
 
@@ -100,6 +107,8 @@ def configure_logging(settings: Settings | None = None) -> None:
     root.handlers.clear()
     root.addHandler(stream_handler)
     root.setLevel(level)
+    for name in QUIETENED_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
     trace_logger.handlers.clear()
@@ -124,6 +133,8 @@ def reset_logging() -> None:
     structlog.reset_defaults()
     logging.getLogger().handlers.clear()
     logging.getLogger(TRACE_LOGGER_NAME).handlers.clear()
+    for name in QUIETENED_LOGGERS:
+        logging.getLogger(name).setLevel(logging.NOTSET)
     _configured = False
 
 

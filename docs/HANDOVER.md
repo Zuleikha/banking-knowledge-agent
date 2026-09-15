@@ -7,31 +7,43 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-15** · **Stages 1–10 approved, committed and pushed.
-Stage 11 — Testing and Evaluation — NOT started.**
+Last updated: **2026-09-15, end of session** · **Stages 1–10 approved, committed and pushed.**
+The Stage 10 follow-up (10.E + 10.F) was **approved 2026-09-15 and committed** (hash in *Git*).
+Stage 11 — Testing and Evaluation — kicked off by the user; decisions not yet made.
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
-`docs/PROJECT_PLAN.md` — read only the Stage 10 section. This file is state and decisions.
+`docs/PROJECT_PLAN.md` — read only the Stage 11 section. This file is state and decisions.
 
 ---
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 10 — Observability — approved by the user 2026-09-15.** Committed
-and pushed; hash in *Git*. Decisions in *Stage 10 decisions*; what was built in *Current Work*.
-**Stage 11 has not been started** and starts only when the user asks. Two Stage 10 questions
-are still open (unfinished #3 and #5).
+**Session state:** **Stage 10 — Observability — approved by the user 2026-09-15**, committed
+`c627358` and pushed. After that, the user answered the two open Stage 10 questions:
+**10.E** quieten `httpx` logging to `warning` (implemented, test-first) and **10.F** keep the
+hot-path helpers untraced (documented). That follow-up was **APPROVED** by the user and committed
+as its own `fix(stage-10)` commit. **Stage 11 was kicked off by the user**; its design decisions
+(see *Stage 11 — starting notes*) are asked before any implementation.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 10 — Observability** (approved 2026-09-15) |
-| Current stage | **None in progress** — Stage 11 not started |
-| `HEAD` | Stage 10 `c627358`, plus the handover commit recording its hash = `origin/main` |
-| Working tree | **Clean**, apart from git-ignored local files |
-| Tests | **1040 passed** (71 integration) · ruff clean · mypy strict clean (64 source files) |
-| Next | Stage 11 when the user asks. See *Next Action* |
+| Last **approved** stage | **Stage 10 — Observability** (approved 2026-09-15, `c627358`) |
+| Current stage | **Stage 11 — Testing and Evaluation — kicked off, planning** (decisions 1–4 in the starting notes not yet made) |
+| `HEAD` | the `fix(stage-10)` follow-up commit (hash in *Git*) = `origin/main` |
+| Working tree | Clean after the follow-up commit (6 files: `app/core/logging.py`, `tests/test_logging.py`, `tests/test_observability.py`, `docs/architecture-guide.html`, `README.md`, `docs/HANDOVER.md`) |
+| Tests | **1042 passed** (71 integration) · ruff clean · mypy strict clean (64 source files) — re-run 2026-09-15 before commit |
+| Next | Ask the user the Stage 11 decisions, one at a time; record each here and in guide §20 when made; then implement |
+
+### Commits made this session (2026-09-15, Stage 10 session), oldest first
+
+| Commit | What |
+|---|---|
+| `26592b6` | `CLAUDE.md` §2: steps for when a stage uses parallel sub-agents |
+| `889585d` | Guide readability pass: §20 intro and Stage 3 decision records |
+| `c627358` | **Stage 10** — observability (16 files) |
+| `b633b15` | Handover: Stage 10 hash and push result |
 
 ### Documentation-only changes after Stage 9 (2026-09-14, docs session) — no application code
 
@@ -40,21 +52,18 @@ are still open (unfinished #3 and #5).
 | `85c849c` | Guide: Stage 8/9 status markers (header, footer, §1 ticks and table), stale claims corrected against the code, four terms explained. `CLAUDE.md` §4 gains three guide rules: accuracy against the code, status markers on stage commit, one editor at a time |
 | *(this commit)* | **`README.md` restructured** to a fixed, concise shape (Status · Architecture · Stack · Requirements · Setup · Run · Test · one short section per subsystem · Configuration · Structure · Engineering Focus · Licence); stale content dropped (old stage diagram, "mock is the only constructible value", prompt v1.0.0, "six typed errors"). **New `CLAUDE.md` §4a README rule:** keep that structure; at the end of each stage update only the changed sections (Status, the relevant subsystem, Configuration, Repository Structure, test count); never grow it into a changelog |
 
-**For Stage 10 onward:** at stage end, update `README.md` per `CLAUDE.md` §4a — Status, a short
-*Observability* subsystem section, any new `BKA_*` variables under Configuration, and the test count.
+**Every stage end:** update `README.md` per `CLAUDE.md` §4a — Status, the relevant subsystem
+section, any new `BKA_*` variables under Configuration, Repository Structure, and the test count.
 
-**Known stale comment (not fixed — docs sessions do not touch application code):** the
-`ToolNotFoundError` docstring in `app/mcp/base.py` says that in Stage 7 it "becomes the guard
-against a model inventing a plausible-sounding tool". Stage 7 chose a **rule-based** selector
-built from the registry's own specs, so the agent cannot request an unregistered tool; the error
-now catches a caller bug or an MCP client naming a tool that does not exist (guide §8.4 already
-says this). Fix the docstring in the next stage that touches `app/mcp/`. Behaviour is unaffected.
-The same stale "shown to a model in Stage 7" wording also appears in the `ToolParameter` docstring
-in `app/mcp/models.py` and in `TestEverySpecExampleActuallyWorks` in `tests/test_mcp_tools.py` —
-fix all three together.
+**Stale "Stage 7 … a model" docstrings:** the three carried ones were **fixed in Stage 10**
+(`c627358`). Similar wording remains in `app/mcp/models.py` (`ToolSpec`, `input_schema`,
+`ToolInvocation`) and `app/mcp/base.py` (module docstring, `ToolInputError`) — Stage 10
+unfinished #6; fix in the next stage that touches `app/mcp/`, or a docs-only change.
 
-**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§19 done (§19 gained the nine missing Stage 8–9 summary rows). Continues with the
-§20 Stage 1–6 decision records, then §21.
+**Guide readability pass (plain English, `CLAUDE.md` §4):** §1–§19 done; §20 intro and Stage 3
+records done (`889585d`). Continues with the §20 Stage 4–6 decision records, then §21. Stage 7–10
+records were written to the standard when made. Readability-only edits go in their own
+`docs(guide)` commit, and never while another stage's guide edits are uncommitted.
 
 **Open question (not a wording fix — needs a decision):** guide §11 lists `GET /ready`
 (readiness: vector store and LLM reachable) as planned for **Stage 12**, but neither
@@ -81,63 +90,55 @@ fix all three together.
 | `3fe5ea4` | `CLAUDE.md`: readability rule absorbed, `/usage` habit, archived path fixed |
 | `0e04b77` | `.gitignore`: `docs/legacy/` |
 
-### Stage 10 — starting notes (read before planning Stage 10)
+### Stage 11 — starting notes (read before planning Stage 11)
 
-`PROJECT_PLAN.md` Stage 10 = **Observability**: structured logging tracking request ID,
-question, retrieval latency, retrieved documents, LLM latency, tool calls, tool latency,
-errors, overall response latency; metrics and tracing where practical; no secrets or
-sensitive data; document in the guide; tests; handover.
+**First:** settle the uncommitted 10.E/10.F follow-up (checkpoint above). Do not start Stage 11
+on top of uncommitted Stage 10 files — they would be swept into Stage 11's commit.
+
+`PROJECT_PLAN.md` Stage 11 = **Testing and Evaluation**: an evaluation framework testing
+retrieval accuracy, answer grounding, hallucination resistance, tool selection, tool results,
+failure handling, API behaviour and agent behaviour; a small evaluation dataset of realistic
+banking questions with expected evidence; measure retrieval and answer quality where
+practical; document known limitations; handover.
 
 **What already exists — build on it, do not duplicate it:**
 
-| Requirement | Already there | Gap |
+| Area | Already there | Gap |
 |---|---|---|
-| Structured logging | `structlog` JSON lines → `logs/app.log`; `merge_contextvars` already in the processor chain (`app/core/logging.py`) | — |
-| Function tracing | `@traced` → `logs/traces.log` (`bka.trace`): function, `duration_ms`, outcome, `error_type`; never arguments (`app/core/tracing.py`) | Not linked to a request |
-| Request ID | Nothing | **Missing** — natural fit: middleware binds it with `structlog.contextvars`, returns it in a response header |
-| Retrieval latency · documents | `rag.retrieved` event (`app/rag/retriever.py`); `RetrievalSummary.documents` on every answer | **No latency field** |
-| LLM latency | `llm.answered` (`app/llm/service.py`); `TokenUsage` on responses ("Stage 10 turns these into metrics") | **No latency field** |
-| Tool calls · latency | `mcp.tool_called` (`app/mcp/registry.py`); `ToolCallSummary` (names only, never values) | **No latency field** |
-| Errors | `api.ask_failed` (type only); `@traced` `error_type` | Not tied to a request id |
-| Overall latency | Nothing per request | **Missing** — request middleware |
-| Metrics | Nothing (no Prometheus / OpenTelemetry installed) | Decide |
+| Unit / API / agent tests | 1042 tests (1040 before the follow-up): agent decisions, MCP tools and registry, conversation, API, observability | Pass/fail checks, not a **scored** evaluation |
+| Retrieval quality, real model | `tests/test_rag_integration.py`, `tests/test_agent_integration.py` (`integration` marker, 71 tests with `tests/test_mcp_server.py`) | No dataset file; no recall/ranking scores reported |
+| Score-floor calibration | `python -m app.rag calibrate` — on-topic and off-topic question lists in `app/rag/__main__.py`; floor 0.25 | 10 on-topic / 5 off-topic, same author as the corpus (*Known limitations*) |
+| Batch retrieval | `Retriever.retrieve_many` — docstring: "Used by the evaluation harness" | No harness exists yet |
+| Answer grounding | Mock provider proves wiring, citation numbering, refusal with no evidence | **Mock is not a language model** — real answer quality is unmeasured |
+| Observability | Stage 10 `latency_ms` fields and `GET /metrics` | Could feed latency into an evaluation report |
 
-Other events already emitted: `agent.answered`, `conversation.turn` (hashed session
-fingerprint), `conversation.started/ended`, `llm.provider_selected`, `rag.index_*`,
-`embedding.model_loading`, `mcp.server.*`.
+*Known limitations (carried into Stage 11)* in *Problems and Decisions* lists what Stage 11 was
+promised: prompt quality unproven, character-based context budget, mock is not a model,
+threshold calibration small and same-author, dense-only retrieval.
 
-**Build method:** `CLAUDE.md` §2 marks Stage 10 ✅ for parallel sub-agents (independent
-instrumentation points) — but the default is still a **single build**. Use sub-agents only
-if the user asks at kickoff, and only after the main session writes and freezes the shared
-contract (request-id context, event names, latency field names, any metrics interface).
+**Build method:** `CLAUDE.md` §2 marks Stage 11 ✅ for parallel sub-agents (independent
+evaluation areas) — but the default is still a **single build**. Use sub-agents only if the user
+asks at kickoff; then follow the §2 steps: freeze the shared contract first (dataset format,
+result model, metric names), one sub-agent per unit, no shared files until integration, one
+integration pass, record the split in the guide, one README line.
 
-**Decisions Stage 10 must make (ask the user; record here and in guide §20 when made):**
-1. **"Question" vs privacy** — the plan says track the question, but every stage so far
-   deliberately **never logs question text** (it can hold customer data; Stage 8 logs a
-   hashed session fingerprint only). Options: log a hash/length only · log redacted text ·
-   log full text behind an off-by-default setting.
-2. **Metrics** — in-process counters/histograms exposed at an endpoint (e.g. `GET /metrics`)
-   · Prometheus client library (new dependency) · OpenTelemetry (heavier; mind the
-   `mcp`/`starlette` pin) · logs only.
-3. **Tracing depth** — request id only, carried through `@traced` events via contextvars ·
-   parent/child span ids · OpenTelemetry spans.
-4. **Request-id source** — always generate · accept an incoming `X-Request-ID` (validate
-   format/length) · both.
+**Decisions Stage 11 will likely need (ask the user; record here and in guide §20 when made):**
+1. **Dataset** — format and location (e.g. YAML/JSON under `data/`), size, and who writes the
+   expected evidence (document ids, tool names, refusal expected).
+2. **Answer quality without spending** — rule-based grounding checks on mock output only ·
+   an opt-in paid run (LLM-as-judge or real answers) behind explicit confirmation · both.
+3. **Retrieval metrics** — which (e.g. recall@k, MRR) and whether they gate the suite with
+   thresholds or only report.
+4. **How it runs** — inside pytest (marked) · a CLI report (`python -m app.eval …`) · both.
 
 **Constraints to carry in:**
-- `@traced` must **not** decorate FastAPI route handlers or dependencies (Problems §2) —
-  request tracing goes in **middleware**. The global rule still requires `@traced` on
-  every new non-route function.
-- Handlers are sync `def` and run in the threadpool: confirm `structlog.contextvars`
-  values reach threadpool code in tests (Starlette copies context to the worker thread).
-- Never log PII, secrets, tokens, raw session ids, tool payload values or answer text.
-- Trace logs go to disk, never through the Headroom proxy (global rule).
-- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (Stage 6 §6.B) — check any new
-  dependency against this before installing.
-- A paid provider is still opt-in; tests and demos stay on `mock`. No live call without
-  the user's explicit confirmation.
-- Guide sections follow `CLAUDE.md` §4 (plain English, `.note`, decisions recorded when
-  made). Guide §13 *Observability* is the section to rewrite.
+- No paid LLM call without the user's explicit confirmation at the time. Default stays `mock`.
+- The real embedding model is local and free; tests needing it carry the `integration` marker.
+- `mcp` stays pinned at `1.12.4`; `fastapi==0.115.6` (6.B) — check any new dependency first.
+- `@traced` on every new non-route function, except hot-path helpers (10.F); never on FastAPI
+  route handlers or dependencies.
+- Never log question text, answer text, tool argument values or raw session ids (10.A).
+- Guide: §14 *Testing* is the section to extend; decisions recorded when made (`CLAUDE.md` §4).
 
 > 💸 **Spending is now possible and is guarded in four places.** `BKA_LLM_PROVIDER`
 > defaults to `mock` (free). Setting it to `anthropic` or `openai` **and** setting
@@ -150,16 +151,17 @@ contract (request-id context, event names, latency field names, any metrics inte
 cd D:/PROJECTS/banking-knowledge-agent
 
 # 1. Confirm the repository matches this file
-git log --oneline -5        # expect only docs(...) commits above 4c2bc97 (Stage 9 docs)
-git status                  # expect clean; `git status -sb` shows main...origin/main in sync
+git log --oneline -3        # expect b633b15 docs(handover) on top of c627358 feat(stage-10)
+git status --short          # expect the 6 uncommitted follow-up files listed in the checkpoint
+                            # (clean, with a fix(stage-10) commit on top, if already approved)
 
 # 2. If the venv is missing or stale (see "If the venv is missing" below)
 uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 
 # 3. Re-establish the baseline
-./.venv/Scripts/python.exe -m pytest        # expect 1005 passed (~60-95 s)
+./.venv/Scripts/python.exe -m pytest        # expect 1042 passed (~65 s); 1040 without the follow-up
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect no issues in 61 source files
+./.venv/Scripts/python.exe -m mypy          # expect no issues in 64 source files
 
 # 4. Rebuild the vector index if data/vectorstore/ is missing (it is git-ignored)
 ./.venv/Scripts/python.exe -m app.rag build     # expect: Indexed 115 chunks
@@ -168,8 +170,9 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt
 ./.venv/Scripts/python.exe -m app.agent demo               # routes, RAG + MCP
 ./.venv/Scripts/python.exe -m app.agent conversation-demo  # 7 turns, all follow-up rules
 ./.venv/Scripts/python.exe -m uvicorn app.main:app         # then open http://127.0.0.1:8000/
+                                                           # and http://127.0.0.1:8000/metrics
 
-# 6. Then read "Stage 10 — starting notes" above and "Next Action" at the bottom.
+# 6. Then read "Stage 11 — starting notes" above and "Next Action" at the bottom.
 ```
 
 > ⚠️ **`mcp` must stay pinned at `1.12.4`.** Upgrading it pulls `starlette>=1.0`, which
@@ -711,6 +714,27 @@ touches the same event contract everywhere).
 | **Rejected — always generate** | Cannot join up with an upstream proxy's id |
 | **Rejected — accept any incoming value** | Untrusted header text would be written into logs (log injection) |
 
+### 10.E — `httpx` logging: QUIETENED TO WARNING (decided after Stage 10 was committed)
+
+**Decided by the user, 2026-09-15**, answering Stage 10 unfinished #3. Recorded before the
+change was made.
+
+| | |
+|---|---|
+| **Chosen** | `configure_logging` sets the `httpx` logger to `WARNING`; `reset_logging` restores it. Its `info` line per request (full URL) no longer reaches `app.log`; its warnings and errors still do. The server side is already covered by `http.request` (path only) |
+| **Rejected — leave at `info`** | Full URLs, query strings included, in `app.log`; one noise line per LLM vendor call |
+| **Rejected — redact the URL** | A processor tied to one library's message format; breaks silently if the wording changes |
+
+### 10.F — Hot-path helpers stay UNTRACED (decided after Stage 10 was committed)
+
+**Decided by the user, 2026-09-15**, answering Stage 10 unfinished #5.
+
+| | |
+|---|---|
+| **Chosen** | A deliberate, documented exception to the global `@traced` rule: `Metrics` and `_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics` and the middleware's inner response wrapper are not traced |
+| **Why** | They run inside the measurements, several times per request; tracing them writes a trace line per counter update and adds to the latency being measured |
+| **Rejected — trace them all** | Trace-log noise and inflated timings, for functions with no branching worth a trace |
+
 ---
 
 ## Current Work
@@ -734,19 +758,34 @@ before code. Tests written first and run red (collection failed: no `app.core.ob
 | `app/mcp/base.py` · `app/mcp/models.py` · `tests/test_mcp_tools.py` | The three stale "Stage 7 shows this to a model" docstrings fixed (the handover's carried note) |
 | `tests/test_observability.py` — **new** (35) | See *Testing* |
 
+### Stage 10 follow-up — 10.E and 10.F (approved 2026-09-15, committed, pushed — hash in *Git*)
+
+Decided by the user after the Stage 10 commit. Test-first: the two new/tightened tests ran red
+(2 failed — the `httpx` line and the query string both reached `app.log`), then green.
+
+| File | What changed |
+|---|---|
+| `app/core/logging.py` | `QUIETENED_LOGGERS = ("httpx",)`: `configure_logging` sets each to `WARNING`; `reset_logging` restores `NOTSET` |
+| `tests/test_logging.py` | +2: an `httpx` info line with a query string stays out of `app.log` while a warning gets in; reset restores the level |
+| `tests/test_observability.py` | `test_the_query_string_is_not_logged` checks the **whole** `app.log` again (the Stage 10 narrowing to `app.*` loggers is undone) |
+| `docs/architecture-guide.html` | §13 "known gap" note replaced; §14 `test_logging.py` row; §20.36 (`httpx`) and §20.37 (untraced helpers) decision records |
+| `README.md` | Test count 1040 → 1042 |
+| `docs/HANDOVER.md` | 10.E, 10.F; this section; checkpoint |
+
 ### Stage 10 — what remains deliberately unfinished
 
 1. **`GET /metrics` is unauthenticated** (like `/health`); holds names and numbers only. Stage 13.
 2. **Metrics are per-process and reset on restart**; JSON, not Prometheus text. Stage 14.
 3. **`httpx` logs every outgoing request's full URL at `info` into `app.log`** (found by a test:
    the test client's own request). In a deployment that is the vendor SDKs' API URLs — no
-   question text or keys. **Open decision** whether to raise the `httpx` logger to `warning`.
+   question text or keys. **Decided 2026-09-15 (10.E): raised to `warning`.**
 4. **A 500 from an unhandled exception has no `X-Request-ID` header** — Starlette builds it
    outside the middleware. The `http.request_failed` log line does carry the id.
 5. **Not `@traced`, deliberately** (exception to the global rule, flagged to the user):
    `Metrics` and `_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics`, and the
    middleware's inner response wrapper — they run inside the measurements, several times per
    request. `resolve_request_id`, `fingerprint` and the middleware `__call__` are traced.
+   **Decided 2026-09-15 (10.F): kept untraced.**
 6. **Other stale "Stage 7 … a model" wording** remains in `app/mcp/models.py` (`ToolSpec`,
    `input_schema`, `ToolInvocation` docstrings) and `app/mcp/base.py` (module docstring,
    `ToolInputError`). Not in the carried list of three; left for a docs-only fix.
@@ -1615,6 +1654,11 @@ mentions) · `docs/HANDOVER.md`.
 ---
 
 ## Testing
+
+### Result (Stage 10 follow-up, uncommitted)
+
+**1042 passed** (1040 → 1042, +2) in ~67 s · 71 `integration` · ruff clean · mypy strict clean,
+64 source files. Red first: 2 failed as intended before `app/core/logging.py` changed.
 
 ### Result (Stage 10)
 

@@ -123,7 +123,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1040 tests**, none of which call a paid API; 71 are marked `integration` and load the real embedding model.
+**1042 tests**, none of which call a paid API; 71 are marked `integration` and load the real embedding model.
 
 ---
 
@@ -286,7 +286,7 @@ banking-knowledge-agent/
 - **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1040 offline tests, strict mypy, ruff; retrieval quality measured with the real model.
+- **Quality gates** — 1042 offline tests, strict mypy, ruff; retrieval quality measured with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---

@@ -286,11 +286,8 @@ class TestRequestMiddleware:
 
     def test_the_query_string_is_not_logged(self, api: TestClient, app_log: Path):
         api.get("/health?account=12345678")
-        # Only the application's own loggers: the test client's httpx logger
-        # records the URL it requested, and is not part of the server.
-        app_lines = [r for r in records(app_log) if r["logger"].startswith("app.")]
-        assert app_lines
-        assert "12345678" not in json.dumps(app_lines)
+        # The whole file: the httpx client logger is quietened too (§20.36).
+        assert "12345678" not in app_log.read_text("utf-8")
 
     def test_the_request_id_does_not_leak_past_the_request(
         self, api: TestClient, app_log: Path

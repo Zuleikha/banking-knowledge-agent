@@ -1982,15 +1982,14 @@ no dependency (§20.33).</p>
   names and numbers only, and who may read it in a deployment is a Stage 13 question.
   <code>Metrics.increment</code>, <code>Metrics.observe</code>, <code>elapsed_ms</code> and the
   middleware's response wrapper are deliberately not <code>@traced</code>: they run inside the
-  measurements, several times per request, and would add a trace line per counter update.
+  measurements, several times per request, and would add a trace line per counter update (§20.37).
 </div>
 
 <div class="note">
-  <strong>Known gap, flagged not changed.</strong> The <code>httpx</code> library logs each outgoing
-  HTTP request, with its full URL, at <code>info</code> level into <code>app.log</code>. In tests that
-  is the test client's own request; in a deployment it would be the LLM vendor SDKs' calls to their
-  API. Those URLs hold no question text or keys (keys travel in headers), but whether to quieten
-  <code>httpx</code> is an open decision.
+  <strong>Third-party request lines are quietened.</strong> The <code>httpx</code> library - used by
+  the test client and by the LLM vendor SDKs - logs each outgoing request with its full URL at
+  <code>info</code> level. <code>configure_logging</code> sets its logger to <code>warning</code>, so
+  those lines stay out of <code>app.log</code> while its warnings and errors still arrive (§20.36).
 </div>
 
 <h3>Known constraint: tracing and FastAPI</h3>
@@ -2032,7 +2031,7 @@ reason.</p>
   <tr><td><code>tests/test_api_conversation.py</code></td><td>Stage 9: the conversation API end to end (sessions, RAG/MCP/insufficient flags, follow-ups, 404/422/502 without leaked detail) and static checks on the web page.</td></tr>
   <tr><td><code>tests/test_conversation_concurrency.py</code></td><td>Stage 9: the per-session lock - concurrent asks get distinct turns, sessions do not block each other.</td></tr>
   <tr><td><code>tests/test_observability.py</code></td><td>Stage 10 (35 tests): request-id validation, the fingerprint, metrics (cumulative buckets, no lost updates across threads), the middleware (header, <code>http.request</code>, no query string, no id leaking past the request, an unhandled error logged and counted), the same request id on every app and trace line of one answer, the question never logged as text, latency fields, <code>GET /metrics</code>, and LLM and tool failure events.</td></tr>
-  <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent.</td></tr>
+  <tr><td><code>tests/test_logging.py</code></td><td>Logs reach disk; traces reach the <em>separate</em> sink; errors traced and re-raised; arguments never logged; metadata preserved; configuration idempotent; <code>httpx</code> request lines held back at <code>warning</code> (§20.36).</td></tr>
   <tr><td><code>tests/test_loader.py</code></td><td>Two things at once. <strong>The loader:</strong> valid parsing, and every malformed input failing loud - missing, unterminated and invalid front matter, missing or unknown metadata fields, unrecognised keys, id/filename mismatch, empty body, duplicate ids, missing and empty directories. <strong>The corpus:</strong> every shipped document valid, all eight domains covered, evidence present for the agent's seed questions, and no secret-shaped or card-number-shaped content.</td></tr>
   <tr><td><code>tests/test_chunker.py</code></td><td>Heading splitting, H1 dropping, code fences not mistaken for headings, metadata carried onto every chunk, <code>content</code> vs <code>embedding_text</code>, oversized sections split, tables split row-wise with the header repeated and no row lost, and the invariant that <em>no chunk exceeds the budget</em>.</td></tr>
   <tr><td><code>tests/test_embeddings.py</code></td><td>The <code>Embedder</code> protocol contract: fixed width, unit length, float32, determinism across calls and processes, token counting in the same units as <code>max_tokens</code>, and that constructing the real embedder does <em>not</em> load the model.</td></tr>
@@ -4085,6 +4084,42 @@ very long values (<em>log injection</em>).</p>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Always generate</strong></td><td>Safe, but cannot connect to an upstream caller's id.</td></tr>
   <tr><td><strong>Accept any incoming value</strong></td><td>Puts untrusted header text straight into the logs.</td></tr>
+</table>
+</div>
+
+<h3>20.36 Stage 10.5 - The <code>httpx</code> library logs only warnings and errors</h3>
+<div class="card">
+<p><strong>What.</strong> <code>httpx</code> is the HTTP client library used by the test client and by
+the Anthropic and OpenAI SDKs. At <code>info</code> level it writes one line per outgoing request,
+including the full URL. <code>configure_logging</code> now sets its logger to <code>warning</code>, so
+those lines no longer reach <code>app.log</code>; its warnings and errors still do.</p>
+
+<p><strong>Why.</strong> A URL can carry a query string, and a query string can hold anything. A
+Stage 10 test found one in <code>app.log</code>. The lines also add nothing the application does not
+already record: the server side of every request is logged by <code>http.request</code>, path only.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Leave it at <code>info</code></strong></td><td>Full URLs in the log, plus one noise line per LLM vendor call.</td></tr>
+  <tr><td><strong>Redact the URL in the log line</strong></td><td>Depends on one library's exact message wording, and would break silently if that changed.</td></tr>
+</table>
+</div>
+
+<h3>20.37 Stage 10.6 - Helpers inside the measurements are not <code>@traced</code></h3>
+<div class="card">
+<p><strong>What.</strong> The project rule is that every new function carries <code>@traced</code>.
+A few Stage 10 functions are a deliberate exception: the <code>Metrics</code> methods, the histogram's
+methods, <code>elapsed_ms</code>, <code>get_metrics</code>, <code>reset_metrics</code> and the
+middleware's inner response wrapper.</p>
+
+<p><strong>Why.</strong> They run inside the measurements themselves, several times per request.
+Tracing them would write a trace line for every counter update and add its own cost to the
+latency being measured. The functions around them - <code>resolve_request_id</code>,
+<code>fingerprint</code> and the middleware itself - are traced.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Trace every one</strong></td><td>A noisier trace log and inflated timings, for small functions with nothing worth tracing.</td></tr>
 </table>
 </div>
 
