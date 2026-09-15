@@ -2352,6 +2352,12 @@ the alternatives that were rejected and why - is in §20.</p>
   what was <em>rejected</em> and why, and what the choice <em>costs</em>. Where a number
   appears it was measured on this corpus with this model, not taken from a blog post -
   the measurement commands are given so any of it can be re-derived.
+  <br><br>
+  <strong>How to read a record.</strong> Each has the same parts: <em>Chosen</em> (what was
+  decided), <em>Why</em>, a <em>Rejected</em> table of the alternatives and why each lost, and
+  sometimes <em>What it costs</em>. Stages 3-5 number their records 3.1, 4.1, 5.1 and so on
+  (referred to elsewhere as §20.3.1, §20.4.1…); from Stage 6 onward records are numbered
+  20.10, 20.11 and up. You do not need to read them in order - follow a link from §19.
 </div>
 
 <h3 style="margin-top:32px">Stage 3 - RAG pipeline</h3>
@@ -2364,11 +2370,14 @@ the alternatives that were rejected and why - is in §20.</p>
 <code>all-MiniLM-L6-v2</code> on the local CPU. 384 dimensions, 256-token window,
 ~90 MB, no API key, no per-query cost, no network after the first download.</p>
 
-<p><strong>Why.</strong> The whole reason to embed rather than keyword-match is
-paraphrase. A support engineer types <em>"customer says money left the account but no
-cash came out"</em>; the document that answers it is titled <em>"Troubleshooting a
-Failed Cash Withdrawal"</em> and shares almost none of those words. Only a semantic
-model bridges that. It is now a passing test, not a claim.</p>
+<p><strong>Why.</strong> <em>Embedding</em> turns text into numbers that capture its
+meaning, so search can match a question to a document by what it <em>means</em> - unlike
+keyword matching, which needs the same words to appear in both. That matters because real
+support questions are <em>paraphrases</em>. A support engineer types <em>"customer says money
+left the account but no cash came out"</em>; the document that answers it is titled
+<em>"Troubleshooting a Failed Cash Withdrawal"</em> and shares almost none of those words.
+Only a semantic (meaning-based) model bridges that gap. It is now a passing test, not a
+claim.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
@@ -2381,28 +2390,31 @@ model bridges that. It is now a passing test, not a claim.</p>
         the free local option was good enough that the spend was not justified.</td>
   </tr>
   <tr>
-    <td><strong>Lexical retrieval</strong><br><span class="muted">TF-IDF / BM25, zero new dependencies</span></td>
+    <td><strong>Lexical retrieval</strong><br><span class="muted">TF-IDF / BM25 - keyword scoring, zero new dependencies</span></td>
     <td>Genuinely tempting, and stronger on this corpus than the usual dismissal
         suggests: the text is dense with distinctive identifiers
         (<code>TransactionSwitch</code>, <code>ATM-4021</code>,
-        <code>LimitService</code>) that lexical matching nails. It would have added
+        <code>LimitService</code>) that keyword matching finds exactly. It would have added
         <em>no</em> dependencies and kept the image tiny. Rejected because it cannot do
         the paraphrase case above, which is the realistic support query. Worth noting
         as the one rejected option that would likely <em>improve</em> results if added
-        <em>alongside</em> the embedder - hybrid search is the natural next step.</td>
+        <em>alongside</em> the embedder - hybrid search, combining keyword and meaning scores, is the
+        natural next step (§18).</td>
   </tr>
   <tr>
     <td><strong>A larger local model</strong><br><span class="muted">e.g. all-mpnet-base-v2, bge-large</span></td>
     <td>Better retrieval, but 3–5× the size and latency for a 15-document corpus where
-        MiniLM already separates on-topic from off-topic by 0.27 cosine. Buying quality
-        that is not currently the bottleneck.</td>
+        MiniLM already keeps a clear gap - 0.27 in cosine similarity - between the scores of
+        on-topic and off-topic questions. That would be buying quality where quality is not
+        the current bottleneck.</td>
   </tr>
 </table>
 
 <p><strong>What it costs.</strong> ~250 MB of PyTorch in the dependency tree and a
 ~90 MB model download on first run - by far the largest thing in this project. That is
-a real Docker-image and cold-start cost to account for in Stage 12, and it is the price
-paid for the paraphrase capability above.</p>
+a real cost to account for in Stage 12: a bigger Docker image, and a slower cold start (the
+first request after starting has to load the model). It is the price paid for the
+paraphrase capability above.</p>
 </div>
 
 <!-- ---------------------------------------------------------------- -->
@@ -2421,7 +2433,7 @@ chunk-sized.</p>
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr>
-    <td><strong>Fixed-size sliding window</strong><br><span class="muted">the default recipe: ~512 chars, 50 overlap</span></td>
+    <td><strong>Fixed-size sliding window</strong><br><span class="muted">the default recipe: chunks of ~512 characters, each overlapping the previous by 50</span></td>
     <td>It would cut through the middle of numbered troubleshooting procedures and
         Markdown tables - and this corpus is <em>mostly</em> procedures and tables.
         "Step 4 of 6" severed from steps 1–3 is not a useful retrieval result.
@@ -2430,8 +2442,8 @@ chunk-sized.</p>
   <tr>
     <td><strong>One chunk per document</strong></td>
     <td>Documents run 457–670 words, which is 700–1,100 tokens - 3–4× the model's
-        window. Every document would be truncated to its first quarter. Also the wrong
-        retrieval granularity: the answer to "why does it fail after authentication" is
+        window. Every document would be truncated to its first quarter. It is also the wrong
+        size of result: the answer to "why does it fail after authentication" is
         one section, and returning the whole document buries it.</td>
   </tr>
   <tr>
@@ -2455,38 +2467,41 @@ chunk-sized.</p>
 (<code>max_tokens</code>) and the length of any text (<code>count_tokens</code>). No
 word counts, no character counts, no hardcoded 256.</p>
 
-<p><strong>Why - and this started as a mistake.</strong> The first plan was a word
-budget, converted with the usual "~0.75 words per token" rule of thumb. Measuring the
-actual ratio on this corpus killed it:</p>
+<p><strong>Why - and this started as a mistake.</strong> The model's limit is 256
+<em>tokens</em>, not words. The first plan was a word budget, converted with the common rule of
+thumb that a token is about three-quarters of a word. Measuring the real ratio on this corpus
+disproved it:</p>
 
 <pre class="plain">tokens per word, across 108 sections
    min 1.13   mean 1.61   p90 2.07   max 2.82
 
 worst offender:  146 words  →  411 tokens</pre>
 
-<p>The cause is the domain. Identifiers like <code>SWX-7001</code> and
-<code>switch.downstream_timeout_ms</code> shatter into many word-pieces, so the
-<em>densest</em> sections are the ones a word budget underestimates most - and those
-are exactly the config-key and error-code tables engineers search for.</p>
+<p>(<em>p90</em> means 90% of sections are at or below that ratio.) The cause is the domain.
+The model reads text as <em>word-pieces</em> from its own vocabulary: an ordinary word is one
+piece, but identifiers like <code>SWX-7001</code> and <code>switch.downstream_timeout_ms</code>
+break into many. So the <em>densest</em> sections are the ones a word budget underestimates most -
+and those are exactly the config-key and error-code tables engineers search for.</p>
 
 <div class="warn">
   <strong>Why this matters more than it looks.</strong> <code>all-MiniLM-L6-v2</code>
   does not raise when input exceeds 256 tokens. It <strong>truncates and returns a
   perfectly normal-looking vector.</strong> A too-long chunk is therefore a passage that
   has quietly stopped being findable, with nothing anywhere to indicate it. A word-based
-  budget would have silently amputated the six densest sections in the corpus and the
+  budget would have silently cut the end off the six densest sections in the corpus and the
   system would have looked like it was working.
 </div>
 
-<p>So the invariant - <em>no chunk exceeds the model's window</em> - is asserted as a
-test against the real model, not just trusted. Current worst case: <strong>251 of
+<p>So the rule <em>no chunk exceeds the model's window</em> is treated as an
+<em>invariant</em> - something that must always be true - and checked by a test against the
+real model, not just trusted. Current worst case: <strong>251 of
 256</strong>.</p>
 
 <table>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Word or character budget</strong></td><td>Measured above: off by up to 2.8× on the exact content that matters most.</td></tr>
   <tr><td><strong>Hardcoding 256</strong></td><td>Correct today, silently wrong the moment the model changes - and failing as bad results rather than an error. The number is read off the loaded model instead.</td></tr>
-  <tr><td><strong>Using <code>tiktoken</code></strong></td><td>It tokenises for OpenAI models. MiniLM is a BERT word-piece model with a different vocabulary, so the counts would be confidently wrong. The right tokenizer is the one attached to the model doing the embedding.</td></tr>
+  <tr><td><strong>Using <code>tiktoken</code></strong></td><td>It tokenises for OpenAI models. MiniLM is a BERT-style model with its own, different word-piece vocabulary, so the counts would be confidently wrong. The right tokenizer is the one attached to the model doing the embedding.</td></tr>
 </table>
 </div>
 
@@ -2495,7 +2510,7 @@ test against the real model, not just trusted. Current worst case: <strong>251 o
 <h3 style="margin-top:0">3.4 &nbsp; Oversized tables split row-wise, header repeated</h3>
 
 <p><strong>Chosen.</strong> When a section over the budget is a Markdown table, split it
-between rows and re-carry the header and separator rows into every part.</p>
+between rows and repeat the header and separator rows at the top of every part.</p>
 
 <p><strong>Why.</strong> Of the six sections that exceed the window, most are tables -
 <em>Timeout and retry keys</em> (366 tokens), <em>POST /v1/payments/authorise</em>
@@ -2515,7 +2530,7 @@ whole corpus. And a table fragment without its header is unreadable:</p>
   <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
   <tr><td><strong>Treat tables as plain text</strong></td><td>Loses the column names on every part but the first - see above.</td></tr>
   <tr><td><strong>Skip tables entirely</strong></td><td>They are the best content in the corpus, not an inconvenience.</td></tr>
-  <tr><td><strong>Convert tables to prose before embedding</strong></td><td>Would embed better, but needs an LLM pass over the corpus at index time: paid, non-deterministic, and it puts generated text into the citation path. Not worth it for six sections.</td></tr>
+  <tr><td><strong>Convert tables to prose before embedding</strong></td><td>Would embed better, but needs an LLM pass over the corpus at index time: paid, non-deterministic, and it would put model-written text into what gets cited as the source document. Not worth it for six sections.</td></tr>
 </table>
 </div>
 
@@ -2527,7 +2542,8 @@ whole corpus. And a table fragment without its header is unreadable:</p>
 <code>"{document title} - {section heading}\n\n{content}"</code>. What gets stored,
 shown and cited is <code>content</code> alone.</p>
 
-<p><strong>Why.</strong> Chunking orphans text. This is a real chunk from the corpus:</p>
+<p><strong>Why.</strong> Chunking orphans text: a passage cut out of its document loses the
+surrounding context that said what it is about. This is a real chunk from the corpus:</p>
 
 <pre class="plain">"Reversals are retried up to `switch.reversal_retry_count` times.
  Reversals are idempotent: the same transaction reference may be sent again safely."</pre>
