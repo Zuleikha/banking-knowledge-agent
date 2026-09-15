@@ -7,7 +7,7 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-15, end of session** · **Stages 1–11 approved, committed and pushed.**
+Last updated: **2026-09-15, end of session (refreshed after `cecaf60`)** · **Stages 1–11 approved, committed and pushed.**
 Stage 11 — Testing and Evaluation — `7b8c85e`. Stage 10 follow-up (10.E + 10.F) — `42788e8`.
 **Stage 12 — Containerisation — NOT started;** the user will kick it off in a new session.
 
@@ -29,7 +29,7 @@ and starts only when the user asks — they plan to kick it off in a new session
 |---|---|
 | Last **approved** stage | **Stage 11 — Testing and Evaluation** (approved 2026-09-15, `7b8c85e`) |
 | Current stage | **None in progress** — Stage 12 not started |
-| `HEAD` | End-of-session handover commit on top of `86c2bd1` (Stage 11 hash record) = `origin/main` |
+| `HEAD` | This handover-refresh commit, on top of `cecaf60` (gitignore) → `a99f5f7` (end-of-session handover) = `origin/main` |
 | Working tree | Clean, apart from git-ignored local files |
 | Tests | **1119 passed** (77 integration) · ruff clean · mypy strict clean (70 source files) · `python -m app.eval` PASS |
 | Next | **Stage 12 — Containerisation** when the user asks — read *Stage 12 — starting notes*. Open for the user: `off-006`/`off-007` refusal gap and whether to run `--paid` (Stage 11 unfinished #1, #3) |
@@ -46,7 +46,9 @@ and starts only when the user asks — they plan to kick it off in a new session
 | `25ebdc9` | Handover: follow-up hash and push result |
 | `7b8c85e` | **Stage 11** — evaluation (16 files) |
 | `86c2bd1` | Handover: Stage 11 hash and push result |
-| *(this commit)* | End of session: handover checkpoint, Stage 12 starting notes, README status, guide counts |
+| `a99f5f7` | End of session: handover checkpoint, Stage 12 starting notes, README status, guide counts |
+| `cecaf60` | `chore(gitignore)`: ignore local `docs/HOW_TO_RUN.html` (not stage work) |
+| *(this commit)* | Handover refresh before Stage 12: `HEAD`, commit list, local files |
 
 ### Documentation-only changes after Stage 9 (2026-09-14, docs session) — no application code
 
@@ -231,7 +233,9 @@ git status                    # expect clean
 
 `docs/legacy/prompt.md` · `docs/legacy/ccp.txt` · `prompt1.md` ·
 `ai-dev-token-efficiency-workflow.md` · `docs/decisions/auto-changes.log` · `.venv/` · `logs/` ·
-`data/vectorstore/` · caches.
+`data/vectorstore/` · caches · `docs/HOW_TO_RUN.html` (the user's personal run-and-click-through
+cheat sheet; not stage work — do not edit it as part of a stage). Verified 2026-09-15: none of these
+has ever been committed.
 
 ---
 
@@ -2645,6 +2649,7 @@ source for reassessment in Stage 13.
 | **Stage 10 follow-up push** | ✅ `b633b15..42788e8` pushed; verified `origin/main == local HEAD == 42788e8` |
 | **Stage 11 commit** | `7b8c85e` — `feat(stage-11): evaluation - dataset, retrieval and answer metrics, scorecard` — 16 files (11 added, 5 modified), 2,385 insertions, 30 deletions |
 | **Stage 11 push** | ✅ `25ebdc9..7b8c85e` pushed; verified `origin/main == local HEAD == 7b8c85e` |
+| **Gitignore commit (not stage work)** | `cecaf60` — `chore(gitignore): ignore local how-to-run sheet` — pushed `a99f5f7..cecaf60`; verified `origin/main == local HEAD` |
 | **Working tree** | Clean, apart from git-ignored local files |
 | **Committed in Stage 6** | 34 files: 20 added, 14 modified — 9,132 insertions, 215 deletions |
 | **Committed in Checkpoint A** | 12 files: 8 added, 4 modified — 2,199 insertions, 159 deletions |
