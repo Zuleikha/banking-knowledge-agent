@@ -183,9 +183,7 @@ class AnthropicProvider:
         block, and reading it positionally would put reasoning where the answer
         belongs.
         """
-        text = "".join(
-            block.text for block in message.content if block.type == "text"
-        )
+        text = "".join(block.text for block in message.content if block.type == "text")
         usage = getattr(message, "usage", None)
         return LLMResponse(
             text=text,

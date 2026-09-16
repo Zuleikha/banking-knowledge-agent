@@ -144,8 +144,7 @@ def _list(registry: ToolRegistry) -> int:
         for parameter in spec.parameters:
             requirement = "required" if parameter.required else "optional"
             print(
-                f"    {parameter.name:24} {requirement:8} "
-                f"e.g. {parameter.example}"
+                f"    {parameter.name:24} {requirement:8} " f"e.g. {parameter.example}"
             )
         if not spec.parameters:
             print("    (no arguments)")

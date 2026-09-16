@@ -448,9 +448,7 @@ class TestTheSeamStaysVendorFree:
 
 
 class TestNoPaidCallByDefault:
-    def test_mock_is_the_default_provider_when_the_env_var_is_unset(
-        self, monkeypatch
-    ):
+    def test_mock_is_the_default_provider_when_the_env_var_is_unset(self, monkeypatch):
         """The property the whole no-spend guarantee rests on."""
         monkeypatch.delenv("BKA_LLM_PROVIDER", raising=False)
         assert Settings().llm_provider == MOCK_PROVIDER_ID

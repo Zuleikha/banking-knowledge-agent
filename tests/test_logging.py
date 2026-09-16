@@ -75,7 +75,7 @@ def test_traces_are_not_mixed_into_the_application_log(configured):
     noop()
 
     app_log = (configured.log_dir / APP_LOG_FILENAME).read_text(encoding="utf-8")
-    assert "\"event\": \"trace\"" not in app_log
+    assert '"event": "trace"' not in app_log
 
 
 def test_traced_arguments_are_never_logged(configured):

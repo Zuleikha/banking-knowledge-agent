@@ -156,7 +156,9 @@ EXPLAIN_A_CODE = "What does error code LIM-4001 mean?"
 
 class TestPathAnswerFromKnowledge:
     def test_a_confident_search_is_answered_from_documentation_alone(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         retriever = ScriptedRetriever(scored(retrieval, (0.82, 0.71)))
@@ -449,7 +451,9 @@ class TestPathCallATool:
         ],
     )
     def test_other_pure_readings_take_the_same_path(
-        self, question: str, decision_settings: Settings,
+        self,
+        question: str,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, _ = make_agent(ScriptedRetriever(), decision_settings, tool_registry)
@@ -458,7 +462,9 @@ class TestPathCallATool:
         assert answer.tool_results
 
     def test_a_reading_that_finds_nothing_pulls_in_documentation(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         """The costly direction of a form-classifier mistake is guarded.
@@ -486,7 +492,9 @@ class TestPathCallATool:
 
 class TestPathUseBoth:
     def test_explaining_a_live_identifier_uses_both(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         retriever = ScriptedRetriever(scored(retrieval, (0.8, 0.7)))
@@ -494,9 +502,7 @@ class TestPathUseBoth:
         answer = agent.ask(EXPLAIN_A_CODE)
         assert answer.decision.reason == "knowledge_and_live_status_required"
         assert answer.decision.retrieve is True
-        assert [result.tool for result in answer.tool_results] == [
-            "look_up_error_code"
-        ]
+        assert [result.tool for result in answer.tool_results] == ["look_up_error_code"]
         assert answer.retrieval.passes == 1
         assert route(answer) == [
             ("plan", "knowledge_and_live_status_required"),
@@ -505,7 +511,9 @@ class TestPathUseBoth:
         ]
 
     def test_both_kinds_of_evidence_reach_the_prompt_in_separate_fences(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, provider = make_agent(
@@ -518,7 +526,9 @@ class TestPathUseBoth:
         assert sent.index(CONTEXT_OPEN) < sent.index(TOOL_CONTEXT_OPEN)
 
     def test_a_weak_search_is_refined_with_the_component_the_tool_reported(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         retriever = ScriptedRetriever(
@@ -538,8 +548,11 @@ class TestPathUseBoth:
         ],
     )
     def test_other_explanations_of_live_state_take_the_same_path(
-        self, question: str, retrieval: RetrievalResult,
-        decision_settings: Settings, tool_registry: ToolRegistry,
+        self,
+        question: str,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
+        tool_registry: ToolRegistry,
     ):
         agent, _ = make_agent(
             ScriptedRetriever(scored(retrieval, (0.8,))),
@@ -556,7 +569,9 @@ class TestPathUseBoth:
 
 class TestPathRefuse:
     def test_a_search_that_finds_nothing_is_refused(
-        self, empty_retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        empty_retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, provider = make_agent(
@@ -571,7 +586,9 @@ class TestPathRefuse:
         assert provider.call_count == 0
 
     def test_the_record_shows_why_it_was_refused(
-        self, empty_retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        empty_retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, _ = make_agent(
@@ -609,7 +626,9 @@ class TestPathRefuse:
         )
 
     def test_a_tool_reading_is_evidence_so_documents_are_not_required(
-        self, empty_retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        empty_retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, provider = make_agent(
@@ -665,8 +684,12 @@ class TestThePlan:
         ],
     )
     def test_each_question_gets_the_planned_route(
-        self, selector: RuleToolSelector, question: str, reason: str,
-        retrieve: bool, tools: set[str],
+        self,
+        selector: RuleToolSelector,
+        question: str,
+        reason: str,
+        retrieve: bool,
+        tools: set[str],
     ):
         plan = decide(question, selector)
         assert plan.reason == reason
@@ -765,7 +788,10 @@ class TestRuleToolSelector:
         ],
     )
     def test_arguments_come_from_the_parameters_each_spec_declares(
-        self, selector: RuleToolSelector, question: str, tool: str,
+        self,
+        selector: RuleToolSelector,
+        question: str,
+        tool: str,
         arguments: dict[str, str],
     ):
         chosen = {
@@ -774,9 +800,7 @@ class TestRuleToolSelector:
         }
         assert chosen[tool] == arguments
 
-    def test_only_registered_tools_can_be_selected(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_only_registered_tools_can_be_selected(self, tool_registry: ToolRegistry):
         only_codes = RuleToolSelector((tool_registry.get("look_up_error_code").spec,))
         chosen = only_codes.select("Why did TXN-20260911-004473 fail with LIM-4001?")
         assert [invocation.tool for invocation in chosen] == ["look_up_error_code"]
@@ -854,9 +878,7 @@ class TestRuleToolSelector:
         question = "Is CoreBankingAdapter healthy, and what does COR-5015 mean?"
         assert selector.select(question) == selector.select(question)
 
-    def test_the_component_vocabulary_is_injectable(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_the_component_vocabulary_is_injectable(self, tool_registry: ToolRegistry):
         narrow = RuleToolSelector(tool_registry.specs(), components=("LimitService",))
         assert narrow.select("Is CoreBankingAdapter healthy?") == ()
         assert narrow.select("Is LimitService healthy?")
@@ -909,7 +931,9 @@ class TestTheDecisionRecord:
         assert "TXN-20260911-004473" not in answer.decision.explanation
 
     def test_the_answer_exposes_everything_section_15_lists(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         agent, _ = make_agent(
@@ -931,8 +955,11 @@ class TestTheDecisionRecord:
         assert len(answer.decision.tools) == len(answer.tool_results)
 
     def test_the_log_line_records_the_route_but_no_argument_value(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
-        tool_registry: ToolRegistry, tmp_path: Path,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
+        tool_registry: ToolRegistry,
+        tmp_path: Path,
     ):
         """Step names and outcomes are shape; identifiers and sentences are not."""
         log_settings = decision_settings.model_copy(
@@ -951,9 +978,11 @@ class TestTheDecisionRecord:
                 tool_registry,
             )
             answer = agent.ask("Why did TXN-20260911-004473 fail?")
-            lines = (log_settings.log_dir / APP_LOG_FILENAME).read_text(
-                encoding="utf-8"
-            ).splitlines()
+            lines = (
+                (log_settings.log_dir / APP_LOG_FILENAME)
+                .read_text(encoding="utf-8")
+                .splitlines()
+            )
         finally:
             reset_logging()
 
@@ -1000,8 +1029,11 @@ class TestConstruction:
         assert answer.decisions[0].outcome == "knowledge_required"
 
     def test_a_selector_without_a_registry_is_rejected(
-        self, retriever: Retriever, llm_service: LLMService,
-        llm_settings: Settings, tool_registry: ToolRegistry,
+        self,
+        retriever: Retriever,
+        llm_service: LLMService,
+        llm_settings: Settings,
+        tool_registry: ToolRegistry,
     ):
         with pytest.raises(ValueError, match="registry"):
             KnowledgeAgent(
@@ -1012,7 +1044,9 @@ class TestConstruction:
             )
 
     def test_an_injected_selector_is_the_one_used(
-        self, retrieval: RetrievalResult, decision_settings: Settings,
+        self,
+        retrieval: RetrievalResult,
+        decision_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         class AlwaysWrapperCode:

@@ -61,6 +61,7 @@ def real_agent(real_retriever, real_settings_module: Settings) -> KnowledgeAgent
         real_settings_module,
     )
 
+
 SEED_EXPECTATIONS = (
     (
         "Why would an ATM transaction fail after card authentication?",
@@ -106,9 +107,9 @@ class TestSeedQuestions:
         self, real_agent: KnowledgeAgent, question, document_id
     ):
         answer = real_agent.ask(question)
-        assert any(document_id in source for source in answer.sources), (
-            f"{question!r} cited {answer.sources}, expected {document_id}"
-        )
+        assert any(
+            document_id in source for source in answer.sources
+        ), f"{question!r} cited {answer.sources}, expected {document_id}"
 
     @pytest.mark.parametrize(("question", "_document_id"), SEED_EXPECTATIONS)
     def test_each_seed_question_clears_the_floor_comfortably(

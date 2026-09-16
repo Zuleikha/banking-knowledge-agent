@@ -124,8 +124,7 @@ whether a claim came from the manual or from the running system.
 """
 
 INSUFFICIENT_EVIDENCE = (
-    "The knowledge base does not contain enough information to answer this "
-    "question."
+    "The knowledge base does not contain enough information to answer this " "question."
 )
 """The exact sentence used when there is no evidence.
 

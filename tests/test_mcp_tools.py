@@ -50,10 +50,14 @@ class TestEveryToolObeysTheContract:
     def test_every_tool_is_pure(self, tool_registry: ToolRegistry):
         """Same arguments, same result -- the basis of the whole offline suite."""
         calls = (
-            ("get_system_configuration", {"component": "LimitService",
-                                          "key": "limits.currency"}),
-            ("check_transaction_status",
-             {"transaction_reference": "TXN-20260911-004182"}),
+            (
+                "get_system_configuration",
+                {"component": "LimitService", "key": "limits.currency"},
+            ),
+            (
+                "check_transaction_status",
+                {"transaction_reference": "TXN-20260911-004182"},
+            ),
             ("get_component_status", {"component": "LimitService"}),
             ("look_up_error_code", {"error_code": "LIM-4001"}),
             ("retrieve_system_version", {}),
@@ -78,9 +82,7 @@ class TestEveryToolObeysTheContract:
             with pytest.raises(ToolInputError):
                 tool_registry.call(spec.name, {})
 
-    def test_a_blank_required_argument_is_rejected(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_a_blank_required_argument_is_rejected(self, tool_registry: ToolRegistry):
         for spec in tool_registry.specs():
             if not spec.required_parameters:
                 continue
@@ -99,9 +101,7 @@ class TestEveryToolObeysTheContract:
         for name in optional:
             assert tool_registry.call(name, {}).ok
 
-    def test_a_blank_optional_argument_means_omitted(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_a_blank_optional_argument_means_omitted(self, tool_registry: ToolRegistry):
         for name in ("retrieve_system_version", "check_service_health"):
             assert tool_registry.call(name, {"component": "   "}).ok
 
@@ -248,9 +248,7 @@ class TestErrorCodeLookup:
     def test_a_limit_code_maps_to_the_documented_configuration_key(
         self, tool_registry: ToolRegistry
     ):
-        data = tool_registry.call(
-            "look_up_error_code", {"error_code": "LIM-4001"}
-        ).data
+        data = tool_registry.call("look_up_error_code", {"error_code": "LIM-4001"}).data
         assert data["component"] == "LimitService"
         assert data["breached_configuration_key"] == (
             "limits.atm.daily_withdrawal_amount"
@@ -267,9 +265,7 @@ class TestErrorCodeLookup:
     def test_the_reversal_code_is_not_described_as_triggering_one(
         self, tool_registry: ToolRegistry
     ):
-        data = tool_registry.call(
-            "look_up_error_code", {"error_code": "SWX-7004"}
-        ).data
+        data = tool_registry.call("look_up_error_code", {"error_code": "SWX-7004"}).data
         assert data["triggers_reversal"] is False
         assert data["reversal_role"] == "is_reversal"
 
@@ -319,9 +315,7 @@ class TestTransactionStatus:
         ).data
         assert data["card_authentication"] == "PASSED"
 
-    def test_an_unacknowledged_reversal_is_visible(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_an_unacknowledged_reversal_is_visible(self, tool_registry: ToolRegistry):
         data = tool_registry.call(
             "check_transaction_status",
             {"transaction_reference": "TXN-20260911-004473"},
@@ -513,8 +507,6 @@ class TestSystemVersion:
         assert data["up_to_date"] is True
         assert data["drift"] is None
 
-    def test_the_fleet_view_flags_that_drift_exists(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_the_fleet_view_flags_that_drift_exists(self, tool_registry: ToolRegistry):
         data = tool_registry.call("retrieve_system_version", {}).data
         assert data["drift_detected"] is True

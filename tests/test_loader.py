@@ -427,9 +427,9 @@ PAN_PATTERN = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
 def test_corpus_contains_no_secret_like_values(corpus):
     for document in corpus:
         for pattern in SECRET_PATTERNS:
-            assert not pattern.search(document.content), (
-                f"{document.source_path} matched {pattern.pattern}"
-            )
+            assert not pattern.search(
+                document.content
+            ), f"{document.source_path} matched {pattern.pattern}"
 
 
 def test_corpus_contains_no_card_number_like_digits(corpus):

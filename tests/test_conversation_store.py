@@ -99,9 +99,7 @@ class TestLifecycle:
             else:
                 getattr(store, operation)("no-such-session")
 
-    def test_the_error_does_not_echo_the_session_id(
-        self, store: InMemorySessionStore
-    ):
+    def test_the_error_does_not_echo_the_session_id(self, store: InMemorySessionStore):
         with pytest.raises(SessionNotFoundError) as caught:
             store.turns("secret-looking-session-id")
         assert "secret-looking-session-id" not in str(caught.value)

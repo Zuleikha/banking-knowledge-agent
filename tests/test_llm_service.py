@@ -121,7 +121,7 @@ class TestWhatIsSent:
     ):
         answer = llm_service.answer(retrieval.query, retrieval)
         sent = mock_provider.calls[0].user_text
-        assert sent.count('<passage id=') == answer.chunks_used
+        assert sent.count("<passage id=") == answer.chunks_used
         assert answer.chunks_used <= llm_settings.llm_context_max_chunks
 
     def test_the_knowledge_base_is_not_sent(

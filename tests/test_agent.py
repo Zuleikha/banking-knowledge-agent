@@ -305,9 +305,7 @@ class TestRefusalAfterSearching:
 
 class TestRefusalWithoutSearching:
     @pytest.mark.parametrize("question", NOTHING_TO_SEARCH)
-    def test_an_unsearchable_question_is_refused(
-        self, agent: KnowledgeAgent, question
-    ):
+    def test_an_unsearchable_question_is_refused(self, agent: KnowledgeAgent, question):
         answer = agent.ask(question)
         assert answer.refused is True
         assert answer.text == INSUFFICIENT_EVIDENCE

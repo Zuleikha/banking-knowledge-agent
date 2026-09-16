@@ -195,9 +195,7 @@ def load_knowledge_base(root: Path | None = None) -> tuple[KnowledgeDocument, ..
     root = (root or get_settings().knowledge_dir).resolve()
 
     if not root.is_dir():
-        raise KnowledgeBaseNotFoundError(
-            f"Knowledge directory does not exist: {root}"
-        )
+        raise KnowledgeBaseNotFoundError(f"Knowledge directory does not exist: {root}")
 
     paths = sorted(root.rglob(f"*{DOCUMENT_SUFFIX}"))
     if not paths:

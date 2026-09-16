@@ -513,7 +513,7 @@ class TestErrorTranslation:
     def test_an_absent_retry_after_stays_none_rather_than_zero(
         self, llm_settings: Settings, cls, client_cls, sdk
     ):
-        """"No advice given" must not read as "retry immediately"."""
+        """ "No advice given" must not read as "retry immediately"."""
         import importlib
 
         module = importlib.import_module(sdk)
@@ -549,8 +549,20 @@ class TestErrorTranslation:
     @pytest.mark.parametrize(
         ("cls", "client_cls", "sdk", "error", "code"),
         [
-            (AnthropicProvider, FakeAnthropicClient, "anthropic", "AuthenticationError", 401),  # noqa: E501
-            (AnthropicProvider, FakeAnthropicClient, "anthropic", "PermissionDeniedError", 403),  # noqa: E501
+            (
+                AnthropicProvider,
+                FakeAnthropicClient,
+                "anthropic",
+                "AuthenticationError",
+                401,
+            ),  # noqa: E501
+            (
+                AnthropicProvider,
+                FakeAnthropicClient,
+                "anthropic",
+                "PermissionDeniedError",
+                403,
+            ),  # noqa: E501
             (AnthropicProvider, FakeAnthropicClient, "anthropic", "NotFoundError", 404),
             (OpenAIProvider, FakeOpenAIClient, "openai", "AuthenticationError", 401),
             (OpenAIProvider, FakeOpenAIClient, "openai", "PermissionDeniedError", 403),

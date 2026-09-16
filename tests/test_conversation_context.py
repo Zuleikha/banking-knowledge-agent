@@ -98,9 +98,7 @@ class TestStandalone:
         )
         assert context.resolution == "standalone"
 
-    def test_a_zero_turn_window_disables_conversation_context(
-        self, settings: Settings
-    ):
+    def test_a_zero_turn_window_disables_conversation_context(self, settings: Settings):
         disabled = settings.model_copy(update={"conversation_max_history_turns": 0})
         context = resolve_follow_up(
             "What does it mean?", (turn(LIM_QUESTION),), disabled

@@ -180,6 +180,4 @@ def tool_agent(
     registry, so Stage 5's tests continue to assert Stage 5's behaviour rather
     than quietly acquiring a live dependency.
     """
-    return KnowledgeAgent(
-        retriever, llm_service, llm_settings, tools=tool_registry
-    )
+    return KnowledgeAgent(retriever, llm_service, llm_settings, tools=tool_registry)

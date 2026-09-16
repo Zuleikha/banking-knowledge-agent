@@ -39,9 +39,7 @@ SPEC = ToolSpec(
     summary="A stub.",
     description="A stub tool used to test the seam.",
     parameters=(
-        ToolParameter(
-            name="error_code", description="A code.", example="LIM-4001"
-        ),
+        ToolParameter(name="error_code", description="A code.", example="LIM-4001"),
     ),
 )
 

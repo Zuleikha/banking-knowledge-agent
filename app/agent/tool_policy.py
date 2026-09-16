@@ -67,9 +67,7 @@ itself accepts either case; this pattern decides only whether to call it.
 TRANSACTION_REFERENCE_PATTERN = re.compile(r"\bTXN-\d{8}-\d{6}\b", re.IGNORECASE)
 """The documented transaction reference form, ``TXN-YYYYMMDD-NNNNNN``."""
 
-CONFIGURATION_KEY_PATTERN = re.compile(
-    r"\b([a-z][a-z_]*(?:\.[a-z][a-z_]*){1,3})\b"
-)
+CONFIGURATION_KEY_PATTERN = re.compile(r"\b([a-z][a-z_]*(?:\.[a-z][a-z_]*){1,3})\b")
 """A dotted lower-case configuration key, e.g. ``limits.atm.per_transaction_amount``.
 
 Requires at least one dot and allows at most three, which is the shape every key
@@ -201,8 +199,7 @@ def component_extractor(components: Sequence[str]) -> ArgumentExtractor:
 
     def extract(question: str) -> tuple[str, ...]:
         return _unique(
-            canonical[match.group(1).casefold()]
-            for match in pattern.finditer(question)
+            canonical[match.group(1).casefold()] for match in pattern.finditer(question)
         )
 
     return extract

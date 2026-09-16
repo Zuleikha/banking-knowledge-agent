@@ -93,9 +93,7 @@ class TestTheRoutingDecision:
         assert decision.reason == "knowledge_required"
         assert decision.tools == ()
 
-    def test_an_unsearchable_question_calls_nothing(
-        self, selector: RuleToolSelector
-    ):
+    def test_an_unsearchable_question_calls_nothing(self, selector: RuleToolSelector):
         decision = decide("!!! ???", selector)
         assert decision.reason == "no_searchable_content"
         assert decision.retrieve is False
@@ -109,15 +107,11 @@ class TestTheRoutingDecision:
         self, selector: RuleToolSelector
     ):
         invocation = selector.select("Why did TXN-20260911-004473 fail?")[0]
-        assert invocation.arguments == {
-            "transaction_reference": "TXN-20260911-004473"
-        }
+        assert invocation.arguments == {"transaction_reference": "TXN-20260911-004473"}
 
     def test_a_lowercase_reference_is_normalised(self, selector: RuleToolSelector):
         invocation = selector.select("check txn-20260911-004473 please")[0]
-        assert invocation.arguments["transaction_reference"] == (
-            "TXN-20260911-004473"
-        )
+        assert invocation.arguments["transaction_reference"] == ("TXN-20260911-004473")
 
     def test_every_invocation_carries_a_displayable_reason(
         self, selector: RuleToolSelector
@@ -141,9 +135,7 @@ class TestTheRoutingDecision:
         self, selector: RuleToolSelector
     ):
         """The tool needs both arguments; one alone is a documentation question."""
-        assert (
-            selector.select("What does limits.atm.velocity_window_minutes do?") == ()
-        )
+        assert selector.select("What does limits.atm.velocity_window_minutes do?") == ()
 
     def test_ordinary_prose_does_not_look_like_an_error_code(
         self, selector: RuleToolSelector
@@ -164,9 +156,7 @@ class TestTheRoutingDecision:
 
 
 class TestTheAgentReachesTheTools:
-    def test_a_tool_question_produces_a_tool_result(
-        self, tool_agent: KnowledgeAgent
-    ):
+    def test_a_tool_question_produces_a_tool_result(self, tool_agent: KnowledgeAgent):
         answer = tool_agent.ask("What does error code LIM-4001 mean?")
         assert answer.tool_results
         assert answer.tool_results[0].tool == "look_up_error_code"
@@ -209,18 +199,14 @@ class TestTheAgentReachesTheTools:
         assert len(answer.tool_results) == 1
         assert mock_provider.call_count == 1
 
-    def test_several_tools_can_answer_one_question(
-        self, tool_agent: KnowledgeAgent
-    ):
+    def test_several_tools_can_answer_one_question(self, tool_agent: KnowledgeAgent):
         answer = tool_agent.ask("Is CoreBankingAdapter healthy?")
         assert {result.tool for result in answer.tool_results} == {
             "check_service_health",
             "get_component_status",
         }
 
-    def test_the_agent_without_a_registry_is_unchanged(
-        self, agent: KnowledgeAgent
-    ):
+    def test_the_agent_without_a_registry_is_unchanged(self, agent: KnowledgeAgent):
         """Stage 5's composition still answers documentation questions."""
         answer = agent.ask("What component handles card authentication?")
         assert answer.tool_results == ()
@@ -247,9 +233,7 @@ class TestTheExecutionRecord:
         body = answer.tools[0].model_dump_json()
         assert "daily_withdrawal_amount" not in body
 
-    def test_the_full_result_is_returned_for_display(
-        self, tool_agent: KnowledgeAgent
-    ):
+    def test_the_full_result_is_returned_for_display(self, tool_agent: KnowledgeAgent):
         """Stage 9 must be able to render the tool result without re-calling."""
         answer = tool_agent.ask("What does error code LIM-4001 mean?")
         assert answer.tool_results[0].data["breached_configuration_key"]
@@ -284,7 +268,9 @@ class TestTheExecutionRecord:
 
 class TestEvidenceAndRefusal:
     def test_a_tool_result_alone_is_enough_to_answer(
-        self, rag_settings: Settings, llm_settings: Settings,
+        self,
+        rag_settings: Settings,
+        llm_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         """A successful tool call must prevent a refusal even with no passages.
@@ -320,9 +306,7 @@ class TestEvidenceAndRefusal:
         assert answer.tool_results == ()
         assert mock_provider.call_count == 0
 
-    def test_the_refusal_sentence_is_still_stage_4s(
-        self, tool_agent: KnowledgeAgent
-    ):
+    def test_the_refusal_sentence_is_still_stage_4s(self, tool_agent: KnowledgeAgent):
         from app.llm.prompts import INSUFFICIENT_EVIDENCE
 
         assert tool_agent.ask("!!! ???").text == INSUFFICIENT_EVIDENCE
@@ -330,7 +314,10 @@ class TestEvidenceAndRefusal:
 
 class TestFailuresPropagate:
     def test_a_broken_tool_raises_rather_than_answering_without_it(
-        self, retriever: Retriever, llm_service: LLMService, llm_settings: Settings,
+        self,
+        retriever: Retriever,
+        llm_service: LLMService,
+        llm_settings: Settings,
         tool_registry: ToolRegistry,
     ):
         """Silently dropping the live half would produce a confident half-answer."""
@@ -348,9 +335,7 @@ class TestFailuresPropagate:
 
         broken = ToolRegistry()
         broken.register(BrokenTool(tool_registry.get("look_up_error_code").spec))
-        agent = KnowledgeAgent(
-            retriever, llm_service, llm_settings, tools=broken
-        )
+        agent = KnowledgeAgent(retriever, llm_service, llm_settings, tools=broken)
         with pytest.raises(ToolError):
             agent.ask("What does error code LIM-4001 mean?")
 
@@ -368,8 +353,11 @@ class TestFailuresPropagate:
         assert answer.tool_results == ()
 
     def test_a_selector_without_a_registry_is_a_loud_composition_error(
-        self, retriever: Retriever, llm_service: LLMService,
-        llm_settings: Settings, tool_registry: ToolRegistry,
+        self,
+        retriever: Retriever,
+        llm_service: LLMService,
+        llm_settings: Settings,
+        tool_registry: ToolRegistry,
     ):
         """Selecting tools the agent cannot call is still never silent."""
         with pytest.raises(ValueError, match="registry"):
@@ -404,9 +392,7 @@ class TestTheStage6Boundary:
         import ast
         from pathlib import Path
 
-        tree = ast.parse(
-            Path("app/agent/tool_policy.py").read_text(encoding="utf-8")
-        )
+        tree = ast.parse(Path("app/agent/tool_policy.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 assert not (node.module or "").startswith("app.llm")
@@ -461,9 +447,7 @@ class TestInvocationModel:
                 reason="r",
             )
 
-    def test_a_result_records_which_tool_produced_it(
-        self, tool_registry: ToolRegistry
-    ):
+    def test_a_result_records_which_tool_produced_it(self, tool_registry: ToolRegistry):
         result = tool_registry.call("look_up_error_code", {"error_code": "LIM-4001"})
         assert isinstance(result, ToolResult)
         assert result.tool == "look_up_error_code"

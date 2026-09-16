@@ -137,9 +137,7 @@ class OpenAIProvider:
         Raises:
             LLMError: On any failure, translated from the SDK's own hierarchy.
         """
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": request.system}
-        ]
+        messages: list[dict[str, str]] = [{"role": "system", "content": request.system}]
         messages.extend(
             {"role": turn.role, "content": turn.content} for turn in request.messages
         )

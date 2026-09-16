@@ -400,9 +400,7 @@ class TestOneRequestEndToEnd:
 
 
 class TestFailuresAreLoggedAndCounted:
-    def test_a_failed_llm_call(
-        self, retrieval, log_settings: Settings, app_log: Path
-    ):
+    def test_a_failed_llm_call(self, retrieval, log_settings: Settings, app_log: Path):
         def timeout(_request: object) -> object:
             raise LLMTimeoutError("provider said: internal-host token=abc")
 

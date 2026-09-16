@@ -82,9 +82,7 @@ def build_service(
 
 
 def tool_calls(answer) -> list[tuple[str, dict[str, str]]]:
-    return [
-        (call.tool, dict(call.arguments)) for call in answer.answer.decision.tools
-    ]
+    return [(call.tool, dict(call.arguments)) for call in answer.answer.decision.tools]
 
 
 @pytest.fixture
@@ -186,9 +184,7 @@ class TestFollowUps:
         assert result.context.carried == ("LIM-4001",)
         assert ("look_up_error_code", {"error_code": "LIM-4001"}) in tool_calls(result)
 
-    def test_is_it_healthy_checks_the_component_asked_about_before(
-        self, conversation
-    ):
+    def test_is_it_healthy_checks_the_component_asked_about_before(self, conversation):
         service, _ = conversation
         session = service.start()
         service.ask(session, "What version is CoreBankingAdapter running?")
@@ -198,9 +194,7 @@ class TestFollowUps:
             {"component": "CoreBankingAdapter"},
         ) in tool_calls(result)
 
-    def test_what_about_repeats_the_reading_for_another_component(
-        self, conversation
-    ):
+    def test_what_about_repeats_the_reading_for_another_component(self, conversation):
         service, _ = conversation
         session = service.start()
         service.ask(session, "What version is CoreBankingAdapter running?")
@@ -374,9 +368,7 @@ class TestLogging:
             session = service.start()
             service.ask(session, "What does error code LIM-4001 mean?")
             service.ask(session, "Which component raises it?")
-            text = (log_settings.log_dir / APP_LOG_FILENAME).read_text(
-                encoding="utf-8"
-            )
+            text = (log_settings.log_dir / APP_LOG_FILENAME).read_text(encoding="utf-8")
         finally:
             reset_logging()
 

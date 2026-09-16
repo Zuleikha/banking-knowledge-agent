@@ -134,9 +134,7 @@ class TestBothPathsAgree:
                 over_the_wire = _payload(
                     list((await client.call_tool(name, arguments)).content)
                 )
-                in_process = tool_registry.call(name, arguments).model_dump(
-                    mode="json"
-                )
+                in_process = tool_registry.call(name, arguments).model_dump(mode="json")
                 assert over_the_wire == in_process, name
 
     async def test_a_not_found_crosses_the_wire_as_a_result_not_an_error(

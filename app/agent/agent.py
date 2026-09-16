@@ -208,9 +208,7 @@ class KnowledgeAgent:
             summary = RetrievalSummary.not_performed()
 
         grounded = self._llm.answer(question, retrieval, tool_results, tuple(history))
-        evidence: DecisionOutcome = (
-            "insufficient" if grounded.refused else "sufficient"
-        )
+        evidence: DecisionOutcome = "insufficient" if grounded.refused else "sufficient"
         steps.append(record_step("evidence", evidence))
         decision = conclude(
             plan, searched=searched, passes=passes, refused=grounded.refused
