@@ -18,6 +18,8 @@ def test_defaults_are_local_and_safe():
 
 def test_environment_variables_override_defaults(monkeypatch):
     monkeypatch.setenv("BKA_ENVIRONMENT", "production")
+    # Production refuses to start without an API key (guide §20.50).
+    monkeypatch.setenv("BKA_API_KEY", "test-only-not-a-secret")
     monkeypatch.setenv("BKA_PORT", "9100")
     monkeypatch.setenv("BKA_LOG_FORMAT", "json")
 
@@ -37,6 +39,41 @@ def test_invalid_port_is_rejected():
 def test_invalid_environment_is_rejected():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, environment="staging")
+
+
+def test_security_defaults_are_open_locally_and_bounded():
+    settings = Settings(_env_file=None)
+    assert settings.api_key is None
+    assert settings.rate_limit_per_minute == 60
+    assert settings.question_max_chars == 2000
+
+
+def test_production_without_api_key_refuses_to_start(monkeypatch):
+    monkeypatch.delenv("BKA_API_KEY", raising=False)
+    with pytest.raises(ValidationError, match="BKA_API_KEY"):
+        Settings(_env_file=None, environment="production")
+
+
+def test_production_with_blank_api_key_refuses_to_start():
+    with pytest.raises(ValidationError, match="BKA_API_KEY"):
+        Settings(_env_file=None, environment="production", api_key="   ")
+
+
+def test_api_key_is_never_rendered():
+    settings = Settings(_env_file=None, api_key="test-only-not-a-secret")
+    assert "test-only-not-a-secret" not in repr(settings)
+    assert "test-only-not-a-secret" not in str(settings.model_dump())
+
+
+def test_rate_limit_zero_disables_and_negative_is_rejected():
+    assert Settings(_env_file=None, rate_limit_per_minute=0).rate_limit_per_minute == 0
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rate_limit_per_minute=-1)
+
+
+def test_question_max_chars_must_be_positive():
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, question_max_chars=0)
 
 
 def test_get_settings_is_cached():

@@ -40,6 +40,21 @@ result crosses the wire.
 * :class:`~app.mcp.base.ToolInputError` and the rest of the taxonomy **are**
   errors, and are reported as such.
 
+**What a client is told when a call fails (Stage 13).** A caller mistake —
+:class:`~app.mcp.base.ToolInputError` or :class:`~app.mcp.base.ToolNotFoundError`
+— is returned with its message, because that message is written for the caller
+and names only the tool and the argument. Every other tool error is replaced by
+a fixed sentence naming the tool: an unexpected exception's text can carry a
+path, a key or a row of backing data, and the SDK would otherwise send
+``str(exc)`` straight to the client. The detail stays server-side (the error
+*type* is logged; the message is not).
+
+**Who can reach it.** The transport is stdio, so the only client is the process
+that launched the server — there is no listening socket, no authentication and
+no rate limit, and none is needed while that stays true. Exposing these tools
+over a network transport is a Stage 14 concern and would need the same API-key
+and rate-limit protections as the HTTP API.
+
 **Running it.** ``python -m app.mcp serve``. The transport is stdio, so the
 server speaks JSON-RPC on stdin/stdout and must never print anything else there
 — which is why logging in this project goes to a file sink and to stderr, never
@@ -56,7 +71,14 @@ from mcp.types import TextContent
 from mcp.types import Tool as MCPToolDefinition
 
 from app.core.logging import get_logger
-from app.mcp.base import ToolError
+from app.core.tracing import traced
+from app.mcp.base import (
+    ToolError,
+    ToolExecutionError,
+    ToolInputError,
+    ToolNotFoundError,
+    ToolUnavailableError,
+)
 from app.mcp.factory import get_tool_registry
 from app.mcp.models import ToolResult
 from app.mcp.registry import ToolRegistry
@@ -65,6 +87,31 @@ logger = get_logger(__name__)
 
 SERVER_NAME = "banking-knowledge-agent"
 """The name this server reports to a client during ``initialize``."""
+
+CALLER_ERRORS: tuple[type[ToolError], ...] = (ToolInputError, ToolNotFoundError)
+"""Tool errors whose message is safe to return to a client verbatim."""
+
+
+@traced
+def client_safe_error(name: str, exc: ToolError) -> ToolError:
+    """The error to hand the SDK for a failed ``tools/call``.
+
+    Args:
+        name: The tool that was called (already known to be registered unless
+            ``exc`` is a :class:`~app.mcp.base.ToolNotFoundError`).
+        exc: What the registry raised.
+
+    Returns:
+        ``exc`` itself for a caller mistake; otherwise a new error of a public
+        type with a fixed message, so no internal detail crosses the wire.
+    """
+    if isinstance(exc, CALLER_ERRORS):
+        return exc
+    if isinstance(exc, ToolUnavailableError):
+        return ToolUnavailableError(
+            f"Tool '{name}' is temporarily unavailable. Retry later."
+        )
+    return ToolExecutionError(f"Tool '{name}' failed unexpectedly.")
 
 
 def _as_definition(registry: ToolRegistry, name: str) -> MCPToolDefinition:
@@ -127,9 +174,10 @@ def build_server(registry: ToolRegistry | None = None) -> Server[Any, Any]:
         number ``4001`` where a code was wanted gets the same treatment as one
         that sends ``"4001"``, rather than a type error from deep inside a tool.
 
-        A :class:`~app.mcp.base.ToolError` is allowed to propagate: the SDK
-        converts it into an MCP error response, which is the correct outcome for
-        a malformed call. A ``ok=False`` result is *not* an error and returns
+        A :class:`~app.mcp.base.ToolError` propagates, passed through
+        :func:`client_safe_error` first: the SDK converts it into an MCP error
+        response, which is the correct outcome for a malformed call.
+        A ``ok=False`` result is *not* an error and returns
         normally — see the module docstring.
         """
         supplied = {key: str(value) for key, value in (arguments or {}).items()}
@@ -142,7 +190,10 @@ def build_server(registry: ToolRegistry | None = None) -> Server[Any, Any]:
                 error=type(exc).__name__,
                 retryable=exc.retryable,
             )
-            raise
+            safe = client_safe_error(name, exc)
+            if safe is exc:
+                raise
+            raise safe from exc
         return _as_content(result)
 
     return server

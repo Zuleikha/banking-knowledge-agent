@@ -104,6 +104,13 @@ def test_the_server_binds_all_interfaces_from_settings():
     assert "$BKA_HOST" in cmd and "$BKA_PORT" in cmd
 
 
+def test_the_server_disables_uvicorn_access_log():
+    # 13.H: uvicorn's access log prints client IP and path and bypasses log
+    # redaction; the request middleware already logs every request.
+    cmd = next(line for line in stage_lines("runtime") if line.startswith("CMD "))
+    assert "--no-access-log" in cmd
+
+
 # --- 12.E: a separate test target -------------------------------------------
 
 

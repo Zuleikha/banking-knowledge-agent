@@ -4,15 +4,46 @@
 // textContent: answer and tool text is untrusted and must never be parsed as
 // markup (guide §20.31). The session id is kept in memory and sent in the JSON
 // body, never in a URL (guide §20.30).
+//
+// Stage 13 (guide §20.50): an optional API key, typed into a password box, is
+// sent as the X-API-Key header on every /api call. It is kept in
+// sessionStorage (this tab only, gone when the tab closes); storage may be
+// blocked, so every access is guarded and the page works without it.
 "use strict";
 
 const el = (id) => document.getElementById(id);
+const API_KEY_HEADER = "X-API-Key";
+const KEY_STORAGE = "bka.apiKey";
 let sessionId = null;
+
+function loadKey() {
+  try {
+    return window.sessionStorage.getItem(KEY_STORAGE) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveKey(value) {
+  try {
+    if (value) window.sessionStorage.setItem(KEY_STORAGE, value);
+    else window.sessionStorage.removeItem(KEY_STORAGE);
+  } catch {
+    // Storage blocked: the key still works for as long as the page is open.
+  }
+}
+
+function requestHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  const key = el("api-key").value.trim();
+  if (key) headers[API_KEY_HEADER] = key;
+  return headers;
+}
 
 async function post(path, body) {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: requestHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 204) return null;
@@ -32,7 +63,10 @@ async function post(path, body) {
 
 function describeError(status, payload) {
   const detail = payload && payload.detail;
-  if (status === 422) return "The question could not be sent: it must not be blank.";
+  if (status === 401) {
+    return "This server needs an API key. Enter it in the \"API key\" box at the top and try again.";
+  }
+  if (status === 422) return "The question could not be sent: it must not be blank or too long.";
   if (typeof detail === "string") return detail;
   return `The server returned an error (HTTP ${status}).`;
 }
@@ -185,6 +219,8 @@ async function ask(event) {
   }
 }
 
+el("api-key").value = loadKey();
+el("api-key").addEventListener("change", () => saveKey(el("api-key").value.trim()));
 el("ask-form").addEventListener("submit", ask);
 el("new-session").addEventListener("click", newConversation);
 el("question").addEventListener("keydown", (event) => {

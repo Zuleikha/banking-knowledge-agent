@@ -9,9 +9,17 @@ conversation.
 execution record, so the web page displays them and never re-derives them.
 
 **Failures never leak internals.** An unknown session is 404 with the store's
-fixed, id-free message. A tool or provider failure is 502 with a fixed sentence:
+fixed, id-free message. A tool, provider or embedding failure (the last added in
+Stage 13) is 502 with a fixed sentence:
 exception text from those layers can hold hostnames or provider detail and is
 logged by type only.
+
+**Input is bounded before the agent runs** (Stage 13). ``session_id`` has a
+static length bound and a URL-safe alphabet, enforced by the request model. The
+question's upper bound is a *setting* (``BKA_QUESTION_MAX_CHARS``) and settings
+are per application, so a class-level ``Field(max_length=...)`` cannot read it;
+the handler checks it first and answers 422 with a fixed sentence that never
+repeats the question.
 
 Route handlers are plain ``def``: the agent is synchronous, and FastAPI runs
 ``def`` handlers in its threadpool so one slow answer does not block the server.
@@ -24,7 +32,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agent.models import DecisionReason, DecisionStep, RetrievalSummary
-from app.api.dependencies import ConversationDep
+from app.api.dependencies import ConversationDep, SettingsDep
 from app.conversation.models import (
     ConversationAnswer,
     ConversationTurn,
@@ -36,6 +44,7 @@ from app.core.tracing import traced
 from app.llm.base import LLMError
 from app.mcp.base import ToolError
 from app.mcp.models import ToolResult
+from app.rag.embeddings import EmbeddingError
 
 logger = get_logger(__name__)
 
@@ -47,6 +56,17 @@ UPSTREAM_FAILURE = (
 )
 """The only text a 502 response carries."""
 
+QUESTION_TOO_LONG = "The question is longer than the {limit}-character limit."
+"""The only text a too-long-question 422 carries: the limit, never the input."""
+
+SESSION_ID_MAX_LENGTH = 64
+"""Upper bound on a session id. Real ids are
+``token_urlsafe(SESSION_ID_BYTES)`` in ``app.conversation.store``: 43 characters
+for 32 bytes. The rest is headroom; a test pins that the real ids fit."""
+
+SESSION_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+"""The URL-safe base64 alphabet ``secrets.token_urlsafe`` draws from."""
+
 
 # --- Request bodies ---------------------------------------------------------
 
@@ -56,7 +76,12 @@ class SessionRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str = Field(min_length=1, description="An id from POST /api/sessions.")
+    session_id: str = Field(
+        min_length=1,
+        max_length=SESSION_ID_MAX_LENGTH,
+        pattern=SESSION_ID_PATTERN,
+        description="An id from POST /api/sessions.",
+    )
 
 
 class AskRequest(SessionRef):
@@ -194,13 +219,21 @@ def create_session(service: ConversationDep) -> SessionCreated:
 
 
 @router.post("/ask", response_model=AnswerResponse, summary="Ask within a session")
-def ask(body: AskRequest, service: ConversationDep) -> AnswerResponse:
+def ask(
+    body: AskRequest, service: ConversationDep, settings: SettingsDep
+) -> AnswerResponse:
     """Answer a question in its session's context."""
+    limit = settings.question_max_chars
+    if len(body.question) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=QUESTION_TOO_LONG.format(limit=limit),
+        )
     try:
         result = service.ask(body.session_id, body.question)
     except SessionNotFoundError as exc:
         raise _not_found(exc) from exc
-    except (ToolError, LLMError) as exc:
+    except (ToolError, LLMError, EmbeddingError) as exc:
         logger.warning("api.ask_failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=UPSTREAM_FAILURE

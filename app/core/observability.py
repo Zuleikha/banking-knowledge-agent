@@ -74,6 +74,8 @@ LLM_OUTPUT_TOKENS_TOTAL = "llm_output_tokens_total"
 TOOL_CALLS_TOTAL = "tool_calls_total"
 TOOL_ERRORS_TOTAL = "tool_errors_total"
 TOOL_CALL_DURATION_MS = "tool_call_duration_ms"
+AUTH_FAILURES_TOTAL = "auth_failures_total"
+RATE_LIMITED_TOTAL = "rate_limited_total"
 
 
 @traced

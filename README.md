@@ -16,9 +16,11 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 12 — Containerisation** complete · Stage 13 next |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) |
-| **Next** | Guardrails and security (13) · production architecture (14) · final review (15) |
+| **Current stage** | **Stage 13 — Security and Production Readiness** complete · Stage 14 next |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) · API key, rate limit, readiness probe, input limits, log redaction |
+| **Next** | Production architecture (14) · final review (15) |
+
+Stages 6 and 13 were built with parallel sub-agents against a shared contract frozen first — see the architecture guide §21.
 
 Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md).
 
@@ -110,7 +112,8 @@ cp .env.example .env                               # optional — every setting 
 |---|---|
 | <http://127.0.0.1:8000/> | Web page — ask questions, see sources, tool activity and the route taken |
 | <http://127.0.0.1:8000/health> | Liveness check |
-| <http://127.0.0.1:8000/metrics> | In-process counters and latency histograms (JSON) |
+| <http://127.0.0.1:8000/ready> | Readiness check — index and LLM configuration (200 / 503) |
+| <http://127.0.0.1:8000/metrics> | In-process counters and latency histograms (JSON); needs `X-API-Key` when `BKA_API_KEY` is set |
 | <http://127.0.0.1:8000/docs> | Interactive API documentation |
 | <http://127.0.0.1:8000/openapi.json> | OpenAPI schema |
 
@@ -125,7 +128,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1145 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
+**1367 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
 
 ---
 
@@ -145,13 +148,13 @@ question ──▶ embed ──▶ filter ──▶ cosine score ──▶ top-k
 ## LLM Abstraction
 
 ```
-passages + tool results ──▶ budget ──▶ fenced prompt (v1.1.0) ──▶ LLMProvider ──▶ validate ──▶ GroundedAnswer
+passages + tool results ──▶ budget ──▶ fenced prompt (v1.2.0) ──▶ LLMProvider ──▶ validate ──▶ GroundedAnswer
 ```
 
 - One `LLMProvider` protocol; only the two adapter modules may import a vendor SDK (enforced by a test).
 - Switching vendor is one setting: `BKA_LLM_PROVIDER=mock | anthropic | openai`.
 - Spending needs two deliberate acts — a paid provider **and** `BKA_LLM_API_KEY`; `demo` refuses without `--paid`.
-- Retrieved text is fenced and escaped as untrusted data (prompt-injection defence).
+- Retrieved text, tool results and questions are fenced or escaped as untrusted data (prompt-injection defence).
 - No evidence → refusal with **no model call**; truncated, refused or empty generations raise.
 - Seven typed errors, each with a `retryable` flag.
 
@@ -187,7 +190,8 @@ index.html + app.js ──▶ POST /api/sessions · /ask · /turns · /end ─�
 - No build step: plain HTML, JavaScript and CSS served by FastAPI; all text inserted as text.
 - Badges for RAG used, MCP tools used, sources consulted and insufficient information.
 - The session id travels only in the JSON body — never in a URL or access log.
-- Errors: unknown session → 404 · blank question → 422 · tool or model failure → 502, no internal detail.
+- Errors: missing/wrong API key → 401 · unknown session → 404 · blank or too-long question → 422 · rate limit → 429 · tool, model or embedding failure → 502, no internal detail.
+- An **API key** box appears on the page; the key is kept for this browser tab only and sent as `X-API-Key`.
 - One question at a time per session (per-session lock).
 
 ## MCP Tools
@@ -257,6 +261,7 @@ docker compose up ─▶ app (user: app, offline) ─▶ :8000 ◀── HEALTHC
 - **Small where it counts:** CPU-only PyTorch at the pinned version — no CUDA libraries.
 - **Non-root:** runs as `app`; owns only the model cache, index and `logs/`.
 - **Free by default:** Compose sets `BKA_LLM_PROVIDER=mock`; no API key appears in any container file.
+- **Probes:** `HEALTHCHECK` uses `/health` (liveness); `/ready` is there for orchestrators. uvicorn runs with `--no-access-log`.
 - **Two build targets:** `runtime` (what Compose runs) and `test` (runtime + dev tools + the full suite).
 
 ```bash
@@ -265,6 +270,22 @@ docker build --target test -t bka-test . && docker run --rm bka-test          # 
 BKA_SMOKE_BASE_URL=http://localhost:8000 .venv/Scripts/python.exe -m pytest tests/test_docker_smoke.py
 docker compose down
 ```
+
+## Security
+
+```
+request ──▶ rate limit (429) ──▶ API key (401) ──▶ input limits (422) ──▶ agent ──▶ fenced prompt
+                                                                            │
+                     logs ◀── redaction processor ◀── fingerprints only ◀───┘
+```
+
+- **API key (optional):** `BKA_API_KEY` protects `/api/*` and `/metrics`; constant-time compare; **production refuses to start without it**. `/health`, `/ready` and the page stay open.
+- **Rate limit:** `BKA_RATE_LIMIT_PER_MINUTE` per client, in process; `429` + `Retry-After`; runs before the key check.
+- **Input limits:** questions ≤ `BKA_QUESTION_MAX_CHARS`, session ids ≤ 64 URL-safe characters, tool arguments ≤ 256 characters.
+- **Prompt injection:** documents, tool results, earlier questions **and the current question** are escaped against fence forgery in any case or spacing.
+- **Logs:** fields named like secrets and any `SecretStr` value are written as `[REDACTED]`; application logs hold no questions, answers, keys or client addresses in clear (uvicorn's own access log, which prints client IP and path, is off in the container via `--no-access-log`).
+- **Failures:** provider and tool errors reach callers as fixed text; every 500 carries `X-Request-ID`.
+- **Not built (Stage 14):** per-user identity, TLS, shared rate-limit store, secrets manager, hashed lock file, vulnerability scanning. Full review: architecture guide §16.
 
 ---
 
@@ -282,6 +303,7 @@ only, default `8000`) picks the port on your machine.
 | Agent | `BKA_AGENT_CONFIDENT_SCORE` |
 | Conversation | `BKA_CONVERSATION_MAX_HISTORY_TURNS` `BKA_CONVERSATION_MAX_HISTORY_CHARS` `BKA_CONVERSATION_MAX_TURNS` `BKA_CONVERSATION_MAX_SESSIONS` `BKA_CONVERSATION_TTL_SECONDS` |
 | LLM | `BKA_LLM_PROVIDER` `BKA_LLM_MODEL` `BKA_LLM_MAX_TOKENS` `BKA_LLM_TIMEOUT_SECONDS` `BKA_LLM_MAX_RETRIES` `BKA_LLM_CONTEXT_MAX_CHUNKS` `BKA_LLM_CONTEXT_MAX_CHARS` `BKA_LLM_API_KEY` |
+| Security | `BKA_API_KEY` `BKA_RATE_LIMIT_PER_MINUTE` `BKA_QUESTION_MAX_CHARS` |
 | Evaluation | `BKA_EVAL_DATASET_PATH` |
 | Logging | `BKA_LOG_LEVEL` `BKA_LOG_FORMAT` `BKA_LOG_DIR` `BKA_LOG_TO_FILE` |
 
@@ -293,7 +315,7 @@ only, default `8000`) picks the port on your machine.
 banking-knowledge-agent/
 ├── app/
 │   ├── agent/           Knowledge agent: decisions, tool selection, answering
-│   ├── api/             FastAPI dependencies, request middleware, routes (health, metrics, conversation)
+│   ├── api/             FastAPI dependencies, middleware, API key, rate limit, routes (health/ready, metrics, conversation)
 │   ├── conversation/    Sessions, follow-up rules, conversation service
 │   ├── core/            Settings, logging, tracing, observability (request ids, metrics)
 │   ├── eval/            Evaluation: dataset, metrics, runner, scorecard CLI
@@ -309,6 +331,7 @@ banking-knowledge-agent/
 ├── docs/
 │   ├── HANDOVER.md              Progress, decisions, next action
 │   ├── PROJECT_PLAN.md          Stage requirements
+│   ├── stage13-contract.md      Shared contract the Stage 13 sub-agents built against
 │   └── architecture-guide.html  Architecture reference and decision records
 ├── tests/               Unit, integration, API and container tests
 ├── CLAUDE.md            Working rules for AI-assisted development
@@ -328,11 +351,11 @@ banking-knowledge-agent/
 - **Deterministic, testable decisions** — routing, tool choice and follow-ups are rules, not model calls.
 - **Swappable boundaries** — protocols for embedders, vector stores, LLM providers, tools and session stores.
 - **Vendor neutrality, proven** — two real adapters behind one interface; switching is one setting.
-- **Security by default** — prompt-injection fencing, secrets only from the environment, questions, tool argument values and session ids kept out of logs.
+- **Security by default** — prompt-injection fencing, optional API key (mandatory in production), rate limiting, input limits, log redaction, secrets only from the environment.
 - **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1119 offline tests, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
+- **Quality gates** — 1367 tests with no paid call, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---

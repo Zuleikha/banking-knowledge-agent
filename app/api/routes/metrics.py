@@ -4,8 +4,9 @@
 They hold metric names and numbers only -- never a question, an identifier or
 an answer -- and reset when the process restarts.
 
-The endpoint is unauthenticated, like ``/health``. Who may read operational
-numbers in a deployment is a Stage 13 question.
+When ``BKA_API_KEY`` is set, the endpoint needs the ``X-API-Key`` header -- the
+check is attached where the router is included in :mod:`app.main` (Stage 13,
+guide §20.50). ``/health`` and ``/ready`` stay open.
 
 Not ``@traced``, for the reason every route handler is not (see
 :mod:`app.core.tracing`); the request middleware records it instead.

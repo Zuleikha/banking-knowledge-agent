@@ -14,9 +14,12 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import sys
+from collections.abc import MutableMapping
 from pathlib import Path
+from typing import Any
 
 import structlog
+from pydantic import SecretBytes, SecretStr
 
 from app.core.config import Settings, get_settings
 
@@ -36,6 +39,82 @@ _LOG_BACKUP_COUNT = 3
 
 _configured = False
 
+REDACTED = "[REDACTED]"
+SENSITIVE_FIELD_NAMES = frozenset(
+    {
+        "api_key",
+        "llm_api_key",
+        "authorization",
+        "proxy_authorization",
+        "x_api_key",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "access_token",
+        "refresh_token",
+        "cookie",
+        "set_cookie",
+        "session_id",
+    }
+)
+"""Event field names always replaced by :data:`REDACTED` (Stage 13, guide §16).
+
+Matched case-insensitively, with ``-`` read as ``_`` so a header name
+(``X-API-Key``) and a keyword argument (``x_api_key``) are the same field.
+Defence in depth: application code already never logs these.
+"""
+
+
+def _is_sensitive(name: object) -> bool:
+    """Return True when ``name`` is a sensitive field name.
+
+    Not ``@traced``: called from the log processor below (see its note).
+    """
+    return (
+        isinstance(name, str)
+        and name.lower().replace("-", "_") in SENSITIVE_FIELD_NAMES
+    )
+
+
+def _redact_leaf(value: Any) -> Any:
+    """Replace a pydantic secret with :data:`REDACTED`; return anything else as is.
+
+    Not ``@traced``: called from the log processor below (see its note).
+    """
+    if isinstance(value, SecretStr | SecretBytes):
+        return REDACTED
+    if isinstance(value, list | tuple):
+        return type(value)(
+            REDACTED if isinstance(v, SecretStr | SecretBytes) else v for v in value
+        )
+    return value
+
+
+def redact_sensitive_fields(
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    """Redact sensitive-named fields and pydantic secrets (a structlog processor).
+
+    Top-level fields and keys of a dict nested one level down are checked. A
+    nested dict is copied, never mutated, because it may belong to the caller.
+
+    Deliberately NOT ``@traced`` (same exemption as 10.F): it runs inside
+    logging itself, on every log line, and a traced log processor would emit
+    a trace event from within the log call that records it -- recursion.
+    """
+    for key, value in list(event_dict.items()):
+        if _is_sensitive(key):
+            event_dict[key] = REDACTED
+        elif isinstance(value, dict):
+            event_dict[key] = {
+                inner_key: REDACTED if _is_sensitive(inner_key) else _redact_leaf(inner)
+                for inner_key, inner in value.items()
+            }
+        else:
+            event_dict[key] = _redact_leaf(value)
+    return event_dict
+
 
 def _shared_processors() -> list[structlog.types.Processor]:
     """Return the structlog processors shared by every renderer."""
@@ -46,6 +125,8 @@ def _shared_processors() -> list[structlog.types.Processor]:
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
+        # Last, so fields merged from context variables are covered too.
+        redact_sensitive_fields,
     ]
 
 

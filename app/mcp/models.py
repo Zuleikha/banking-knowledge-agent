@@ -113,6 +113,20 @@ symbol rather than a literal scattered through six modules.
 """
 
 
+MAX_ARGUMENT_CHARS = 256
+"""Longest value, and longest name, any tool argument may have (Stage 13).
+
+Every argument in this domain is an identifier, a code, a component name or a
+dotted configuration key; the longest real one is well under 64 characters. The
+bound exists because a not-found result echoes the caller's value back, and that
+echo ends up inside the model's prompt: an unbounded argument would be an
+unbounded, caller-written block of prompt text. Advertised to MCP clients as
+``maxLength`` in :meth:`ToolSpec.input_schema` (the SDK enforces it) and checked
+again at run time by :func:`app.mcp.base.check_argument_bounds`, because the
+in-process path has no schema validator in front of it.
+"""
+
+
 class ToolParameter(BaseModel):
     """One argument a tool accepts.
 
@@ -138,9 +152,13 @@ class ToolSpec(BaseModel):
     """What a tool is and how to call it: the tool's half of the contract.
 
     This is the object the MCP protocol layer converts into an MCP tool
-    definition, and the object Stage 7 will put in front of a model when it
-    chooses a tool. It deliberately contains no callable and no implementation
-    detail — a spec can be listed, logged and rendered without the tool it
+    definition -- what a remote MCP client (and any model behind it) sees before
+    choosing a tool -- and the object the agent's rule-based selector
+    (:class:`app.agent.tool_policy.RuleToolSelector`) is built from: it reads the
+    declared parameters to decide which tools a question can supply. No model
+    chooses tools inside this application (``docs/HANDOVER.md`` §7.B). It
+    deliberately contains no callable and no implementation detail — a spec
+    can be listed, logged and rendered without the tool it
     describes being able to run.
     """
 
@@ -168,12 +186,16 @@ class ToolSpec(BaseModel):
         """Render the parameters as the JSON Schema the MCP protocol expects.
 
         Every property is typed ``string``. That is not laziness: every argument
-        in this domain is an identifier, a code or a configuration key, and
-        Stage 7 will have a language model producing these values — which
-        produces strings. Declaring a number here would mean a model emitting
-        ``"500"`` fails schema validation for being right in the wrong type.
-        Parsing, where any is needed, belongs inside the tool that knows what the
-        argument means.
+        in this domain is an identifier, a code or a configuration key. Inside
+        the application the values come from the agent's regular-expression
+        extractors, which produce strings; an external MCP client may have a
+        model producing them, and declaring a number here would mean a model
+        emitting ``"500"`` fails schema validation for being right in the wrong
+        type. Parsing, where any is needed, belongs inside the tool that knows
+        what the argument means.
+
+        Every property carries ``maxLength`` (:data:`MAX_ARGUMENT_CHARS`), which
+        the MCP SDK enforces before a call reaches the registry.
 
         ``additionalProperties`` is ``False`` so that a caller passing an
         argument the tool does not understand is told so, rather than having it
@@ -183,6 +205,7 @@ class ToolSpec(BaseModel):
         properties: dict[str, JsonValue] = {
             parameter.name: {
                 "type": "string",
+                "maxLength": MAX_ARGUMENT_CHARS,
                 "description": f"{parameter.description} Example: {parameter.example}",
             }
             for parameter in self.parameters
@@ -281,10 +304,15 @@ class ToolResult(BaseModel):
 class ToolInvocation(BaseModel):
     """A tool call the agent decided to make, before it is made.
 
+    Produced by the agent's rule-based selector
+    (:class:`app.agent.tool_policy.RuleToolSelector`) from the question alone
+    (after the conversation layer has resolved a follow-up from earlier
+    *questions*) -- never from model output, a retrieved passage or a tool
+    result.
     Separate from :class:`ToolResult` because the decision and its outcome are
-    recorded at different moments and are useful separately: Stage 7 will assert
-    that a question routed to the right tool with the right arguments without
-    caring what the tool then said.
+    recorded at different moments and are useful separately: the Stage 7 tests
+    assert that a question routed to the right tool with the right arguments
+    without caring what the tool then said.
     """
 
     model_config = ConfigDict(frozen=True)

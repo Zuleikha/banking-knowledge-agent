@@ -15,10 +15,15 @@ tracing lives here, around the whole application (guide §20.34):
 travels in the JSON body (guide §20.30) and a query string can hold anything.
 
 **An unhandled exception** is logged as ``http.request_failed`` with its type
-only -- its message may quote a provider or a tool -- and re-raised, so
-Starlette's server-error handler still turns it into a 500. That 500 is built
-outside this middleware and therefore carries no ``X-Request-ID`` header; the
-log line does.
+only -- its message may quote a provider or a tool. If no response has started,
+this middleware sends the 500 itself -- a fixed JSON body,
+:data:`SERVER_ERROR_BODY`, with the ``X-Request-ID`` header -- so a user
+reporting the failure can quote the id that finds its log lines (Stage 13; until
+then Starlette built the 500 outside this middleware, without the header). The
+exception is then **re-raised**, never swallowed: Starlette's outer error
+handler sees that a response has already started and sends nothing more, and
+the server still logs the traceback. If a response had already started, the
+exception is simply re-raised; a second response cannot be sent.
 
 Written as plain ASGI middleware rather than Starlette's ``BaseHTTPMiddleware``,
 which runs the application in a separate task and has a history of context and
@@ -31,6 +36,7 @@ import time
 
 import structlog
 from starlette.datastructures import Headers, MutableHeaders
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.logging import get_logger
@@ -49,6 +55,9 @@ logger = get_logger(__name__)
 
 SERVER_ERROR = 500
 """The status recorded when the application raised before responding."""
+
+SERVER_ERROR_BODY = {"detail": "Internal Server Error"}
+"""The only body a 500 from an unhandled exception carries."""
 
 
 class RequestContextMiddleware:
@@ -69,10 +78,12 @@ class RequestContextMiddleware:
         method: str = scope["method"]
         path: str = scope["path"]
         status = SERVER_ERROR
+        response_started = False
 
         async def send_with_request_id(message: Message) -> None:
-            nonlocal status
+            nonlocal status, response_started
             if message["type"] == "http.response.start":
+                response_started = True
                 status = message["status"]
                 MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
             await send(message)
@@ -88,6 +99,9 @@ class RequestContextMiddleware:
                     path=path,
                     error_type=type(exc).__name__,
                 )
+                if not response_started:
+                    error = JSONResponse(SERVER_ERROR_BODY, status_code=SERVER_ERROR)
+                    await error(scope, receive, send_with_request_id)
                 raise
             finally:
                 latency = elapsed_ms(started)

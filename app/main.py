@@ -3,7 +3,8 @@
 Stage 1 wired the foundation: configuration, structured logging, tracing and a
 health endpoint. Stage 9 adds the conversation API (``/api/sessions``) and the
 static web page at ``/``. Stage 10 adds request middleware (a request id, a
-timing record and metrics per request) and ``GET /metrics``.
+timing record and metrics per request) and ``GET /metrics``. Stage 13 adds an
+optional API key and a per-client rate limit on the API (guide §20.50-§20.51).
 
 Run locally with::
 
@@ -17,7 +18,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.conversation.service import ConversationService
@@ -79,12 +80,26 @@ def create_app(
     app.state.conversation_lock = threading.Lock()
 
     from app.api.middleware import RequestContextMiddleware
+    from app.api.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
     from app.api.routes import conversation, health, metrics
+    from app.api.security import require_api_key
+
+    # One limiter per application, so tests and processes never share counts.
+    app.state.rate_limiter = (
+        FixedWindowRateLimiter(settings.rate_limit_per_minute)
+        if settings.rate_limit_per_minute > 0
+        else None
+    )
 
     app.add_middleware(RequestContextMiddleware)
+    # /health and /ready stay open: probes hold no key (guide §20.50).
     app.include_router(health.router)
-    app.include_router(metrics.router)
-    app.include_router(conversation.router)
+    app.include_router(metrics.router, dependencies=[Depends(require_api_key)])
+    # Rate limit BEFORE the key check, so wrong-key guessing is capped too.
+    app.include_router(
+        conversation.router,
+        dependencies=[Depends(enforce_rate_limit), Depends(require_api_key)],
+    )
     # Mounted last: API routes and /docs always win over a same-named file.
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")
     return app

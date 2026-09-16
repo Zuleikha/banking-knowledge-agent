@@ -31,8 +31,16 @@ the module, and it is easy to get wrong:
 
 Collapsing the two in either direction does real damage. If "not found" raised,
 then asking about a transaction that has been purged would look like an outage.
-If a missing argument returned ``ok=False``, a genuine bug in Stage 7's argument
-extraction would be silently reported to users as "no such transaction" forever.
+If a missing argument returned ``ok=False``, a genuine bug in the agent's
+rule-based argument extraction (:mod:`app.agent.tool_policy`), or in an external
+MCP client's call, would be silently reported to users as "no such transaction"
+forever.
+
+**No model chooses tools here.** Inside the application a tool call is decided by
+the agent's deterministic selector from the question text (``docs/HANDOVER.md``
+§7.B); model output is never parsed into a tool call. A model can only reach
+these tools from outside, as an MCP client of :mod:`app.mcp.server`, which is why
+every argument is also bounded (:func:`check_argument_bounds`).
 """
 
 from __future__ import annotations
@@ -40,7 +48,21 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
-from app.mcp.models import ToolResult, ToolSpec
+from app.core.tracing import traced
+from app.mcp.models import MAX_ARGUMENT_CHARS, ToolResult, ToolSpec
+
+__all__ = [
+    "MAX_ARGUMENT_CHARS",
+    "Tool",
+    "ToolError",
+    "ToolExecutionError",
+    "ToolInputError",
+    "ToolNotFoundError",
+    "ToolUnavailableError",
+    "check_argument_bounds",
+    "reject_unknown_arguments",
+    "require_argument",
+]
 
 
 class ToolError(RuntimeError):
@@ -72,10 +94,14 @@ class ToolNotFoundError(ToolError):
 class ToolInputError(ToolError):
     """The arguments do not satisfy the tool's spec.
 
-    A required argument is missing, is blank, or cannot be parsed into what the
-    tool needs. Not retryable — the same arguments will fail identically. The
-    message names the offending argument and the tool, because in Stage 7 this
-    error is the feedback signal that tells a model it called the tool wrongly.
+    A required argument is missing, is blank, is too long, or cannot be parsed
+    into what the tool needs. Not retryable — the same arguments will fail
+    identically. The message names the offending argument and the tool, because
+    it is the feedback that tells the caller — the agent's rule-based selector
+    in-process, or an external MCP client (possibly driven by its own model) —
+    that it called the tool wrongly. It is the one tool error whose message an
+    MCP client receives verbatim (:mod:`app.mcp.server`), so it must never carry
+    internal detail, and it never echoes an over-long value.
     """
 
 
@@ -210,3 +236,33 @@ def reject_unknown_arguments(
             f"{', '.join(repr(name) for name in unknown)}. "
             f"Accepted: {', '.join(sorted(declared)) or 'none'}."
         )
+
+
+@traced
+def check_argument_bounds(arguments: Mapping[str, str], tool: str) -> None:
+    """Raise if any argument name or value exceeds :data:`MAX_ARGUMENT_CHARS`.
+
+    Run by :meth:`app.mcp.registry.ToolRegistry.call` before every tool, so it
+    covers the two tools that read their optional ``component`` argument
+    directly instead of through :func:`require_argument`. The over-long value is
+    never echoed: repeating it would put the very text the bound exists to keep
+    out into an error message, a log line or a prompt.
+
+    Args:
+        arguments: The arguments as passed to :meth:`Tool.invoke`.
+        tool: The tool being called, for the error message.
+
+    Raises:
+        ToolInputError: If a name or a value is longer than the bound.
+    """
+    for name, value in arguments.items():
+        if len(name) > MAX_ARGUMENT_CHARS:
+            raise ToolInputError(
+                f"Tool '{tool}' was passed an argument name longer than "
+                f"{MAX_ARGUMENT_CHARS} characters."
+            )
+        if len(value) > MAX_ARGUMENT_CHARS:
+            raise ToolInputError(
+                f"Tool '{tool}' argument '{name}' is longer than "
+                f"{MAX_ARGUMENT_CHARS} characters."
+            )

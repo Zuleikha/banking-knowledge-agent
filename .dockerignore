@@ -2,10 +2,12 @@
 # local state and anything the image does not run out of the build.
 
 # --- Secrets -- never in an image ------------------------------------------
-.env
-.env.*
-*.pem
-*.key
+# **/ matches the root too, and also a stray file inside app/ or data/,
+# which COPY would otherwise carry into the image (Stage 13, U6).
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
 secrets
 
 # --- Version control and local tooling -------------------------------------

@@ -33,6 +33,12 @@ button {
 }
 button:disabled { opacity: 0.6; cursor: progress; }
 #new-session { background: transparent; color: var(--accent); }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.key { display: flex; gap: 6px; align-items: center; }
+.key label { font-size: 0.9rem; color: var(--muted); }
+.key input {
+  font: inherit; padding: 7px 8px; border-radius: 6px; border: 1px solid var(--line); min-width: 0; width: 16rem; max-width: 100%;
+}
 
 .error {
   margin: 12px 0; padding: 10px 12px; border-radius: 6px;

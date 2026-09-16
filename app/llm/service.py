@@ -247,6 +247,11 @@ class LLMService:
         table. Wrapping it here keeps a raw SDK exception from reaching the API
         layer -- where it would be reported as a generic 500 with a vendor's
         wording -- while still failing loudly and preserving the cause.
+
+        **Stage 13: the message names the type, never the text.** The original
+        exception stays reachable as ``__cause__`` for debugging; its wording
+        (which may quote a provider, a host or a payload) is not copied into an
+        application error that any caller might print.
         """
         try:
             return self._provider.complete(request)
@@ -255,20 +260,31 @@ class LLMService:
         except Exception as exc:  # noqa: BLE001 - re-raised as a typed error
             raise LLMProviderError(
                 f"Provider '{getattr(self._provider, 'provider_id', 'unknown')}' "
-                f"raised an untranslated {type(exc).__name__}: {exc}"
+                f"raised an untranslated {type(exc).__name__}."
             ) from exc
 
     @staticmethod
     def _validate(response: LLMResponse) -> None:
         """Reject a generation that must not be shown as an answer.
 
+        **Stage 13: a generation that ended in an error is withheld too**, even
+        when it carries text -- the provider said it did not finish normally
+        (for example, the context window filled mid-answer), so the text is no
+        safer to show than a truncated one.
+
         Raises:
             LLMRefusalError: If the model declined.
-            LLMResponseError: If the generation was truncated or empty.
+            LLMResponseError: If the generation was truncated, ended in an
+                error, or is empty.
         """
         if response.stop_reason == "refusal":
             raise LLMRefusalError(
                 f"Model '{response.model_id}' declined to answer the question."
+            )
+        if response.stop_reason == "error":
+            raise LLMResponseError(
+                f"Model '{response.model_id}' reported that the generation ended "
+                "in an error. Any partial text is withheld."
             )
         if response.stop_reason == "max_tokens":
             raise LLMResponseError(

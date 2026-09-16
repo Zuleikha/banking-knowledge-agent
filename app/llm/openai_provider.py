@@ -45,6 +45,7 @@ from app.core.tracing import traced
 from app.llm.base import (
     LLMConfigurationError,
     LLMConnectionError,
+    LLMError,
     LLMProviderError,
     LLMRateLimitError,
     LLMResponseError,
@@ -151,7 +152,16 @@ class OpenAIProvider:
         except Exception as exc:
             raise self._translate(exc) from exc
 
-        response = self._to_response(completion)
+        try:
+            response = self._to_response(completion)
+        except LLMError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - re-raised as a typed error
+            # See the Anthropic adapter: malformed, not unmapped.
+            raise LLMResponseError(
+                f"OpenAI returned a reply that could not be read "
+                f"({type(exc).__name__})."
+            ) from exc
         logger.info(
             "llm.openai.completed",
             # Shape and cost only -- never the prompt or the answer.
@@ -216,38 +226,40 @@ class OpenAIProvider:
         translation should look identical; where they differ -- refusals, token
         field names, the output-ceiling parameter -- the difference is handled
         above and stops here.
+
+        As in the Anthropic adapter, messages name the SDK type and status,
+        never the SDK's own text (Stage 13); the original is ``__cause__``.
         """
+        kind = type(exc).__name__
         if isinstance(exc, openai.APITimeoutError):
-            return LLMTimeoutError(f"OpenAI request timed out: {exc}")
+            return LLMTimeoutError(f"OpenAI request timed out ({kind}).")
         if isinstance(exc, openai.RateLimitError):
             return LLMRateLimitError(
-                f"OpenAI rate limit reached: {exc}",
+                f"OpenAI rate limit reached ({kind}, {exc.status_code}).",
                 retry_after_seconds=_retry_after(exc),
             )
         if isinstance(exc, openai.AuthenticationError | openai.PermissionDeniedError):
             return LLMConfigurationError(
                 "OpenAI rejected the credentials in BKA_LLM_API_KEY "
-                f"({type(exc).__name__}). The key is wrong, revoked, or lacks "
+                f"({kind}). The key is wrong, revoked, or lacks "
                 "access to the configured model."
             )
         if isinstance(exc, openai.NotFoundError):
             return LLMConfigurationError(
-                f"OpenAI does not recognise the configured model: {exc}. "
-                "Check BKA_LLM_MODEL."
+                f"OpenAI does not recognise the configured model ({kind}, "
+                f"{exc.status_code}). Check BKA_LLM_MODEL."
             )
         if isinstance(exc, openai.APIStatusError) and exc.status_code >= 500:
             return LLMConnectionError(
-                f"OpenAI returned a server error ({exc.status_code}): {exc}"
+                f"OpenAI returned a server error ({kind}, {exc.status_code})."
             )
         if isinstance(exc, openai.APIConnectionError):
-            return LLMConnectionError(f"Could not reach OpenAI: {exc}")
+            return LLMConnectionError(f"Could not reach OpenAI ({kind}).")
         if isinstance(exc, openai.APIStatusError):
             return LLMProviderError(
-                f"OpenAI rejected the request ({exc.status_code}): {exc}"
+                f"OpenAI rejected the request ({kind}, {exc.status_code})."
             )
-        return LLMProviderError(
-            f"OpenAI call failed with an unmapped {type(exc).__name__}: {exc}"
-        )
+        return LLMProviderError(f"OpenAI call failed with an unmapped {kind}.")
 
 
 def _retry_after(exc: Exception) -> float | None:

@@ -46,12 +46,15 @@ ENV HF_HUB_OFFLINE=1 \
 
 EXPOSE 8000
 
-# 12.D: liveness via Python -- the slim image has no curl.
+# 12.D: liveness via Python -- the slim image has no curl. 13.G: stays on
+# /health; /ready is for orchestrators that route traffic, not for restarts.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['BKA_PORT'] + '/health', timeout=4)"
 
 # 12.G: BKA_HOST / BKA_PORT are applied here; the app itself does not read them.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host \"$BKA_HOST\" --port \"$BKA_PORT\""]
+# 13.H: --no-access-log -- uvicorn's access log prints client IP and path and
+# bypasses log redaction; the request middleware already logs every request.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host \"$BKA_HOST\" --port \"$BKA_PORT\" --no-access-log"]
 
 # ---------------------------------------------------------------------------
 # 12.E: the runtime image plus dev tools and tests. Never deployed.

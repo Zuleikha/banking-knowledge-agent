@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 12 - Containerisation &nbsp;·&nbsp; Last updated 2026-09-16</div>
+    <div class="pill">Stage 13 - Security &amp; Production Readiness &nbsp;·&nbsp; Last updated 2026-09-16</div>
   </div>
 </header>
 
@@ -145,7 +145,7 @@ defined interface, so one piece can be changed or tested without touching the re
             ├──▶ MCP Tools                  Stage 6  ✅
             ├──▶ Conversation Context       Stage 8  ✅
             ├──▶ Observability              Stage 10 ✅
-            └──▶ Guardrails                 Stage 13
+            └──▶ Guardrails                 Stage 13 ✅
             │
             ▼
    Source-backed Answer</pre>
@@ -167,7 +167,9 @@ defined interface, so one piece can be changed or tested without touching the re
         like "and what about cards?" makes sense.</li>
     <li><strong>Observability</strong> - records what every step did and how long it took,
         labelled with one request id, and counts the work at <code>GET /metrics</code> (§13).</li>
-    <li><strong>Guardrails</strong> - safety checks around the whole flow.</li>
+    <li><strong>Guardrails</strong> - safety checks around the whole flow. At the API door, in this
+        order: a per-client rate limit, an optional API key, then input limits; inside, prompt-injection
+        escaping, tool-argument limits and log redaction (§16).</li>
   </ul>
   Without the middle layers, the model would answer from general knowledge and could
   confidently invent details about a platform it has never seen.
@@ -188,7 +190,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>10</td><td>Observability - request ids, per-step latency, in-process metrics</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>11</td><td>Testing &amp; evaluation framework - 49-question dataset, recall@5 / MRR / route accuracy, scorecard CLI</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>12</td><td>Containerisation - Dockerfile, Compose, baked model + index, health check, non-root user</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>13</td><td>Security &amp; production readiness</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>13</td><td>Security &amp; production readiness - API key, rate limit, readiness probe, input limits, injection hardening, log redaction</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>14</td><td>Production architecture</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>15</td><td>Final engineering review</td><td><span class="tag t-todo">PLANNED</span></td></tr>
 </table>
@@ -2143,7 +2145,7 @@ grounding, hallucination resistance and tool selection - because "the tests pass
 <!-- ================================================================== -->
 <section id="docker">
 <h2>15. Docker</h2>
-<span class="tag t-done">BUILT · containerisation Stage 12</span>
+<span class="tag t-done">BUILT · containerisation Stage 12 · access log off Stage 13</span>
 
 <div class="note">
   <strong>In plain English.</strong> A <em>Dockerfile</em> is a recipe for building an <em>image</em>: a
@@ -2192,7 +2194,7 @@ answered from the baked index, and metrics.</p>
 <!-- ================================================================== -->
 <section id="security">
 <h2>16. Security</h2>
-<span class="tag t-done">BUILT (foundations) · <span class="tag t-todo">full review Stage 13</span></span>
+<span class="tag t-done">BUILT · reviewed in Stage 13</span>
 
 <div class="note">
   <strong>In plain English.</strong> This section lists what already protects the system and
@@ -2201,7 +2203,8 @@ answered from the baked index, and metrics.</p>
   exposing sensitive text in logs; and <em>prompt injection</em> - text inside a document, a
   tool result or an earlier question that tries to give the model instructions. Each protection
   below addresses one of those risks, and most are enforced by a test rather than by a promise.
-  Stage 13 carries out the full security review.
+  Stage 13 carried out the full security review - its results are in
+  <a href="#s13-review">"The Stage 13 review"</a> below.
 </div>
 
 <h3>In place today</h3>
@@ -2232,17 +2235,102 @@ answered from the baked index, and metrics.</p>
   <li><code>data/vectorstore/</code> is git-ignored. It contains no secrets, but it is a
       derived artefact and committing it would let the index and the documents drift
       apart in version control.</li>
-  <li>The retrieval log records the question text. That is a deliberate, recorded
-      decision: these are technical support queries about a synthetic platform, not
-      customer data. It is flagged in <code>retriever.py</code> for reassessment in
-      Stage 13 if the deployment context ever changes.</li>
+  <li>The retrieval log records a question <em>fingerprint</em> (a short one-way hash) and its
+      length, never the text. Stages 3-9 logged the text; Stage 10 changed it (§20.32), so the
+      item carried into Stage 13 for reassessment was already closed.</li>
 </ul>
 
-<h3>To be assessed and documented in Stage 13</h3>
-<p>Authentication, authorisation, secrets management, input validation, prompt-injection
-risk, MCP tool security, data privacy, rate limiting, LLM and tool failure handling,
-logging risks, and dependency security. Lightweight protections where practical - no
-unnecessary enterprise infrastructure for a portfolio project.</p>
+<h3 id="s13-review">The Stage 13 review</h3>
+
+<p><strong>What it is.</strong> The project plan names twelve areas to check. Each was audited against
+the code, and every risk found was given one of four outcomes: <strong>FIXED</strong> (a small protection
+was added, with a test), <strong>ALREADY OK</strong> (an existing protection covers it - the evidence was
+checked), <strong>DOCUMENTED</strong> (a known, accepted limit), or <strong>STAGE 14</strong> (it needs
+production infrastructure, so it belongs in the production-architecture stage). The plan asked for
+<em>lightweight</em> protections only - nothing that needs a new server or service. How the work was split
+between parallel sub-agents is in §21.</p>
+
+<table>
+  <tr><th style="width:190px">Area</th><th>Fixed in Stage 13</th><th>Left for Stage 14 / documented</th></tr>
+  <tr><td><strong>Authentication</strong></td>
+      <td>Optional shared key <code>BKA_API_KEY</code>, sent as header <code>X-API-Key</code>, on
+      <code>/api/*</code> and <code>/metrics</code>. Compared in constant time
+      (<code>hmac.compare_digest</code>), so response timing cannot reveal how much of a guess was right.
+      A missing and a wrong key get the identical 401. Production refuses to start without a key. The web
+      page has a password box and keeps the key in <code>sessionStorage</code> - this browser tab only
+      (§20.50).</td>
+      <td>One static key: no rotation or per-client revocation. Key travels in clear unless TLS (encrypted
+      HTTPS) is added at a proxy. Real identity needs OAuth2/OIDC.</td></tr>
+  <tr><td><strong>Authorisation</strong></td>
+      <td>- (one role: whoever holds the key may use the whole API)</td>
+      <td>A session id works for whoever holds it - it is not tied to a caller. Stage 14: an owner on each
+      session, scopes such as <code>metrics:read</code>, per-identity quotas.</td></tr>
+  <tr><td><strong>Secrets management</strong></td>
+      <td><code>.dockerignore</code> now keeps <code>.env</code> and key files out of the image at any
+      folder depth, not only at the root.</td>
+      <td>Keys come from environment variables; a secrets manager and rotation are Stage 14. Git history
+      searched: no real secret.</td></tr>
+  <tr><td><strong>Input validation</strong></td>
+      <td>Questions over <code>BKA_QUESTION_MAX_CHARS</code> (2000) get a 422 that does not repeat the
+      question. Session ids are limited to 64 URL-safe characters. <code>GET /ready</code> added (below).</td>
+      <td>FastAPI's default 422 body echoes the caller's own input back to them (not logged). No request
+      body size limit before parsing - a proxy's job.</td></tr>
+  <tr><td><strong>Prompt injection</strong></td>
+      <td>Fence tags are now escaped in any letter case and with spaces inside the tag, not only in their
+      exact form. The <em>current</em> question is now escaped too - before, it could forge a fake
+      passage and the mock turned that into a citation.</td>
+      <td>Inline citation markers like <code>[2]</code> are not checked against the passages sent.
+      <strong>No real model has been tested against injection</strong> - that needs a paid run.</td></tr>
+  <tr><td><strong>MCP security</strong></td>
+      <td>Tool arguments capped at 256 characters (<code>MAX_ARGUMENT_CHARS</code>), advertised to MCP
+      clients as <code>maxLength</code> and re-checked in process. Calls to unknown tools are counted and
+      logged. Internal exception text no longer reaches an MCP client. A tool returning the wrong type is
+      a counted tool error. A test forbids file, shell, network and dynamic-code modules in
+      <code>app/mcp</code>.</td>
+      <td>The MCP server uses stdio - only the process that launched it can talk to it. A network
+      transport would need a key, rate limit and per-client tool list.</td></tr>
+  <tr><td><strong>Data privacy</strong></td>
+      <td>- (see logging)</td>
+      <td>Questions may hold personal data: never logged in clear; kept in memory only, with a size cap and
+      30-minute idle expiry. A paid LLM would receive passages and questions. Log files have size rotation
+      but no retention policy. Stage 14: vendor data agreement, retention, PII detection.</td></tr>
+  <tr><td><strong>Rate limiting</strong></td>
+      <td>Per-client fixed window, <code>BKA_RATE_LIMIT_PER_MINUTE</code> (60), 429 + <code>Retry-After</code>,
+      runs before the key check. Thread-safe; expired entries pruned (§20.51).</td>
+      <td>Counts are per process and reset on restart. Clients are told apart by IP only, so clients behind
+      one NAT gateway share a limit. <code>X-Forwarded-For</code> is deliberately not trusted.</td></tr>
+  <tr><td><strong>LLM failure handling</strong></td>
+      <td>Error messages carry only the error type and HTTP status, never the provider's wording. A
+      malformed reply or a <code>stop_reason</code> of <code>error</code> is now an error, not an answer.</td>
+      <td>Timeout and retry settings have no upper bound. Circuit breaker, fallback provider and a
+      per-request deadline are Stage 14.</td></tr>
+  <tr><td><strong>Tool failure handling</strong></td>
+      <td>An unhandled 500 now carries <code>X-Request-ID</code> (open since Stage 10, §20.54).</td>
+      <td>A failed tool aborts the turn with a 502 - no partial answer; a failure of the embedding model
+      mid-question now does the same instead of a bare 500. Retries and per-tool timeouts wait for real
+      backing systems.</td></tr>
+  <tr><td><strong>Logging risks</strong></td>
+      <td>A <em>redaction processor</em> - a step every log line passes through - replaces any field named
+      like a secret (<code>api_key</code>, <code>authorization</code>, <code>token</code>,
+      <code>session_id</code>, ...) and any <code>SecretStr</code> value with <code>[REDACTED]</code>, in
+      console, JSON and file output. Defence in depth: no current log call uses those names.</td>
+      <td>uvicorn's own access log prints the client IP and path and bypasses the processor - turned off in
+      the container (<code>--no-access-log</code>, §20.57); still on for a local <code>uvicorn</code> run.</td></tr>
+  <tr><td><strong>Dependency security</strong></td>
+      <td>- (all direct dependencies already pinned; torch installed from a single index, so no
+      dependency-confusion risk)</td>
+      <td>No hashed lock file for indirect dependencies; base image pinned by tag, not digest; no
+      vulnerability scanner (<code>pip-audit</code> not installed, nothing run). All Stage 14.</td></tr>
+</table>
+
+<div class="note">
+  <strong>Readiness, carried from Stage 12.</strong> <code>GET /health</code> answers "is the process
+  alive?". The new <code>GET /ready</code> answers "can it answer questions?": it checks the index's
+  metadata files and the LLM configuration, and returns 200 or 503 with one named result per check. It
+  is deliberately cheap - probes call it often - so it never loads the embedding model, never builds
+  the conversation service, and never makes a network or paid call. That means it cannot detect a
+  revoked provider key; the LLM error metric shows that instead. Both endpoints stay open without a key.
+</div>
 
 <div class="warn">
   <strong>Prompt injection is the live risk for this class of system.</strong> Retrieved
@@ -4451,10 +4539,173 @@ current task's scope points the same way.</p>
 </table>
 </div>
 
+<h3>20.50 Stage 13.1 - An optional shared API key protects the API, and is mandatory in production</h3>
+<div class="card">
+<p><strong>What.</strong> <em>Authentication</em> means checking who is calling before doing any work for
+them. A new setting, <code>BKA_API_KEY</code>, holds one shared secret. When it is set, every request to
+<code>/api/*</code> (the conversation endpoints) and to <code>/metrics</code> must carry the same value in an
+HTTP header named <code>X-API-Key</code>, or it is rejected with <code>401 Unauthorized</code>. When it is not
+set, the API stays open, as it has been since Stage 9 - convenient for local work. With
+<code>BKA_ENVIRONMENT=production</code>, the application <strong>refuses to start</strong> without a key, so a
+real deployment cannot be left open by forgetting a setting. <code>/health</code>, <code>/ready</code> and the
+web page itself stay open: health checks run from infrastructure that holds no key, and the page is just a
+file. The page gains a box where the user types the key.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 13. The project plan asks for lightweight
+protection, not enterprise infrastructure. A shared key is the smallest control that stops an anonymous
+caller from running questions (which cost money once a paid model is configured) or reading operational
+numbers. Like the LLM key, it is held as a <code>SecretStr</code> so it cannot be printed by accident, and it
+is compared in constant time so its value cannot be guessed from response timing.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Document the design only</strong></td><td>Leaves the conversation API open to anyone who can reach the port, in every environment.</td></tr>
+  <tr><td><strong>Per-user accounts, OAuth or JWT</strong></td><td>Real identity needs a user store and an identity provider - the enterprise infrastructure the plan rules out. Recorded as the production path in Stage 14.</td></tr>
+</table>
+</div>
+
+<h3>20.51 Stage 13.2 - An in-process rate limiter caps requests per client</h3>
+<div class="card">
+<p><strong>What.</strong> <em>Rate limiting</em> caps how many requests one caller may make in a period.
+Each client (identified by its network address) may make <code>BKA_RATE_LIMIT_PER_MINUTE</code> requests to
+<code>/api/*</code> in a one-minute <em>fixed window</em> - a counter that resets at the start of each minute.
+Past the cap, the request is refused with <code>429 Too Many Requests</code> and a <code>Retry-After</code>
+header saying how many seconds to wait. Setting the limit to 0 turns it off. The counters live in the
+application's own memory.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 13. Every question can trigger an embedding
+search and, with a paid provider, a billed model call; without a cap one script can run up cost or starve other
+users. The limiter runs <em>before</em> the key check, so wrong-key guessing is capped too.</p>
+
+<div class="note">
+  The limit is <strong>per process</strong>. Run two copies of the app and each counts separately; restart it and
+  the counters reset. That is acceptable for one container. A shared counter (for example in Redis) is the
+  multi-instance answer and is recorded for Stage 14.
+</div>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Document only</strong></td><td>No protection against a runaway client or cost spike.</td></tr>
+  <tr><td><strong>Redis-backed limiter</strong></td><td>Correct across instances, but adds a service to run - unnecessary for a single container.</td></tr>
+</table>
+</div>
+
+<h3>20.52 Stage 13.3 - The off-006 / off-007 refusal gap is recorded, not fixed, in Stage 13</h3>
+<div class="card">
+<p><strong>What.</strong> Two evaluation questions (Stage 11) that are banking-adjacent but not covered by the
+documents score just above the retrieval floor of 0.25, so the agent answers instead of refusing. Stage 13
+records this as a known risk and does not change retrieval.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 13. The gap is about retrieval quality - how
+well the search separates "covered" from "nearly covered" - not a security control. Fixing it means changing
+score floors or adding hybrid search, then re-measuring the whole evaluation, which is its own piece of work.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Raise the floor for refined searches now</strong></td><td>Risks turning currently-correct answers into refusals, inside a stage about security.</td></tr>
+</table>
+</div>
+
+<h3>20.53 Stage 13.4 - The 24 unformatted files are formatted first, before any sub-agent starts</h3>
+<div class="card">
+<p><strong>What.</strong> The formatter (<code>ruff format</code>, see §20.49) is run on the whole repository
+at the very start of Stage 13, before the parallel sub-agents begin.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 13. Several sub-agents edit files at the
+same time. If formatting happened afterwards, cosmetic rewrites would land on top of their changes and make the
+integration diff hard to review. Formatting first means every agent starts from the same, already-tidy code.
+To keep §20.49's "a commit should be about one thing", the formatting is proposed as its own
+<code>style</code> commit ahead of the Stage 13 commit.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Leave them again</strong></td><td>The debt keeps moving forward; every later stage inherits it.</td></tr>
+</table>
+</div>
+
+<h3>20.54 Stage 13.5 - An unhandled error is answered by the middleware, then still raised</h3>
+<div class="card">
+<p><strong>What.</strong> <em>Middleware</em> is code that wraps every request (§13). When a request hits a
+bug - an exception nothing else catches - the request middleware now sends the 500 response itself, as
+<code>{"detail": "Internal Server Error"}</code> with the <code>X-Request-ID</code> header, and
+<em>then</em> re-raises the exception. The web server sees that a response has already been sent, so it
+sends nothing more, but it still logs the full error trace.</p>
+
+<p><strong>Why.</strong> Decided by the failure-handling sub-agent and accepted at integration. Since
+Stage 10 a 500 had no request id, because the web framework builds that response outside the middleware -
+so a user reporting an error could not give the id that finds its log line. Sending the response inside
+the middleware fixes that. Re-raising afterwards keeps the project rule "fail loud": swallowing the
+exception would lose the trace.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Send the 500 and swallow the exception</strong></td><td>The request id is fixed, but the full error trace is lost from the server log.</td></tr>
+  <tr><td><strong>A framework exception handler</strong></td><td>Runs outside the middleware's context, so the request id is not available - the original problem.</td></tr>
+</table>
+</div>
+
+<h3>20.55 Stage 13.6 - Hard input limits: 2000-character questions, 64-character session ids, 256-character tool arguments</h3>
+<div class="card">
+<p><strong>What.</strong> Three upper limits on text a caller controls. A question longer than
+<code>BKA_QUESTION_MAX_CHARS</code> (default 2000) is refused with 422 before the agent runs, with a
+message that does not repeat the question. A session id must be 1-64 letters, digits, <code>-</code> or
+<code>_</code> (real ids are 43). An MCP tool argument may be at most 256 characters
+(<code>MAX_ARGUMENT_CHARS</code>).</p>
+
+<p><strong>Why.</strong> Found in the Stage 13 audit. Without them, one request could make the embedding model
+and the prompt handle megabytes of text, and a not-found tool result would repeat an arbitrarily long
+string into the prompt. The question limit is a setting because settings belong to each application
+instance; FastAPI's built-in length check is fixed when the code loads, so the check is done in the route
+instead.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>No limit, rely on a proxy</strong></td><td>A proxy caps request bytes, not question length, and this app runs without one locally and in Compose.</td></tr>
+  <tr><td><strong>Static <code>Field(max_length=...)</code></strong></td><td>Cannot read the per-app setting, so tests and deployments could not change it.</td></tr>
+</table>
+</div>
+
+<h3>20.56 Stage 13.7 - The container health check stays on /health, not /ready</h3>
+<div class="card">
+<p><strong>What.</strong> Docker's <code>HEALTHCHECK</code> keeps calling <code>GET /health</code>. The new
+<code>GET /ready</code> is available but not used by Docker.</p>
+
+<p><strong>Why.</strong> Decided with the user at Stage 13 approval. The two answer different questions.
+<em>Liveness</em> (<code>/health</code>) asks "is the process stuck?" - if not, restarting it helps nothing.
+<em>Readiness</em> (<code>/ready</code>) asks "should traffic be sent here?" - an orchestrator such as
+Kubernetes uses it to hold traffic back, not to restart. Docker has only one health check and marks a
+container unhealthy when it fails, so pointing it at <code>/ready</code> would, for example, flag a container
+configured for a paid provider but missing its key as broken, when restarting it cannot fix a configuration
+problem.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Switch HEALTHCHECK to <code>/ready</code></strong></td><td>Stricter, but mixes "restart me" with "don't route to me", and a configuration fault would read as a crash.</td></tr>
+</table>
+</div>
+
+<h3>20.57 Stage 13.8 - The container turns off uvicorn's own access log</h3>
+<div class="card">
+<p><strong>What.</strong> <em>uvicorn</em> is the web server that runs the app. By default it prints one
+<em>access log</em> line per request, with the caller's IP address and the path. The container now starts it
+with <code>--no-access-log</code>.</p>
+
+<p><strong>Why.</strong> Decided with the user at Stage 13 approval. That log line bypasses the application's
+logging, so the new redaction processor never sees it, and an IP address is personal data. It is also
+redundant: the request middleware already logs method, path, status, latency and request id for every
+request, without the address. Local <code>uvicorn app.main:app</code> runs are unchanged.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Keep it, document it</strong></td><td>Leaves client addresses in container output for no diagnostic gain.</td></tr>
+  <tr><td><strong>Route it through structlog</strong></td><td>More configuration to keep a duplicate of a line the app already writes.</td></tr>
+</table>
+</div>
+
 </section>
 <!-- ================================================================== -->
 <section id="subagents">
-<h2>21. How Stage 6 was built: parallel sub-agents</h2>
+<h2>21. How Stages 6 and 13 were built: parallel sub-agents</h2>
 <span class="tag t-done">BUILT</span>
 
 <p class="muted">This section is personal reference material, not architecture. It
@@ -4660,11 +4911,50 @@ work out, do it yourself.</p>
   <li>Write the cross-cutting tests last. They are the only thing standing where a shared
     module would otherwise be.</li>
 </ol>
+
+<h3>21.8 Stage 13: the same method, used a second time</h3>
+
+<p><strong>What was split.</strong> Stage 13's twelve audit areas became six units, one sub-agent each:
+authentication and authorisation (U1); rate limiting (U2); readiness and input validation (U3); prompt
+injection and MCP security (U4); LLM and tool failure handling (U5); secrets, logging, data privacy and
+dependency security (U6). The user asked for this at kickoff; <code>CLAUDE.md</code> marks Stage 13 as a
+good fit because the areas touch different files.</p>
+
+<p><strong>What was frozen first.</strong> Before any agent started, the main session wrote
+<code>docs/stage13-contract.md</code> and the code it describes: the three new settings and the production
+rule, two metric names, and the two new modules (<code>security.py</code>, <code>rate_limit.py</code>) as
+<em>stubs</em> - functions with their final names and signatures that do nothing yet. The stubs were
+already wired into <code>app/main.py</code>. Because a do-nothing check lets every request through, the
+whole suite stayed green while the agents worked. The contract also listed which files each agent owned
+and fixed one shape for every agent's findings. The 24-file reformat (§20.53) ran before this, so no agent
+started from untidy code.</p>
+
+<p><strong>What happened, beyond Stage 6's lessons.</strong></p>
+<ul>
+  <li><strong>Four agents were cut off by a usage limit</strong> part-way through. They were resumed with
+      their context intact, and each carried on from its last step. Their half-finished edits on disk did
+      no harm, because each agent owned its own files.</li>
+  <li><strong>The agents could not write their findings files</strong> - the tool environment blocked it.
+      They returned the findings in their final reply instead, and the main session saved them. The lesson:
+      ask for findings in the reply from the start.</li>
+  <li><strong>Several agents found gaps in files another agent owned.</strong> U5 (failure handling) found
+      three in U4's tool registry and one in U3's route. Those were passed on while the owners were still
+      running, and each owner made the fix in its own file. No agent edited a file it did not own; this was
+      checked afterwards by comparing every changed file against a formatted copy of the last commit.</li>
+  <li><strong>Running checks at the same time caused noise.</strong> Two agents running
+      <code>mypy</code> together broke its shared cache, and two suite runs failed once while another agent
+      was halfway through editing a file. Neither failure came back when rerun. The only run that counts is
+      the full one after integration.</li>
+  <li><strong>One agent chose differently from its brief, for a good reason</strong> - the 500 fix re-raises
+      instead of swallowing the error (§20.54). One contract gap was found: the <code>status</code> value
+      for a failed readiness check was not specified. The agent chose <code>not_ready</code>, and the
+      contract was updated to match.</li>
+</ul>
 </section>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 12 (Containerisation) · Last updated 2026-09-16<br>
+  Stage 13 (Security &amp; Production Readiness) · Last updated 2026-09-16<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

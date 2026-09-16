@@ -46,8 +46,10 @@ from app.core.tracing import traced
 from app.llm.base import (
     LLMConfigurationError,
     LLMConnectionError,
+    LLMError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMResponseError,
     LLMTimeoutError,
 )
 from app.llm.models import CompletionRequest, LLMResponse, StopReason, TokenUsage
@@ -162,7 +164,17 @@ class AnthropicProvider:
         except Exception as exc:
             raise self._translate(exc) from exc
 
-        response = self._to_response(message)
+        try:
+            response = self._to_response(message)
+        except LLMError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - re-raised as a typed error
+            # The call succeeded but the reply is not the shape the SDK
+            # promises. Malformed, not unmapped: retrying will not fix it.
+            raise LLMResponseError(
+                f"Anthropic returned a reply that could not be read "
+                f"({type(exc).__name__})."
+            ) from exc
         logger.info(
             "llm.anthropic.completed",
             # Shape and cost only -- never the prompt or the answer, both of
@@ -208,12 +220,17 @@ class AnthropicProvider:
         ``APITimeoutError`` is an ``APIConnectionError``, and every status error
         is an ``APIError``. Reversing two of these lines would silently coarsen
         the mapping rather than break a test.
+
+        **Stage 13: messages name the SDK type and status, never the SDK's own
+        text**, which can quote the provider's response body. The original
+        stays reachable as ``__cause__`` (``raise ... from exc``).
         """
+        kind = type(exc).__name__
         if isinstance(exc, anthropic.APITimeoutError):
-            return LLMTimeoutError(f"Anthropic request timed out: {exc}")
+            return LLMTimeoutError(f"Anthropic request timed out ({kind}).")
         if isinstance(exc, anthropic.RateLimitError):
             return LLMRateLimitError(
-                f"Anthropic rate limit reached: {exc}",
+                f"Anthropic rate limit reached ({kind}, {exc.status_code}).",
                 retry_after_seconds=_retry_after(exc),
             )
         if isinstance(
@@ -223,27 +240,25 @@ class AnthropicProvider:
             # not echo the key or any part of it.
             return LLMConfigurationError(
                 "Anthropic rejected the credentials in BKA_LLM_API_KEY "
-                f"({type(exc).__name__}). The key is wrong, revoked, or lacks "
+                f"({kind}). The key is wrong, revoked, or lacks "
                 "access to the configured model."
             )
         if isinstance(exc, anthropic.NotFoundError):
             return LLMConfigurationError(
-                f"Anthropic does not recognise the configured model: {exc}. "
-                "Check BKA_LLM_MODEL."
+                f"Anthropic does not recognise the configured model ({kind}, "
+                f"{exc.status_code}). Check BKA_LLM_MODEL."
             )
         if isinstance(exc, anthropic.APIStatusError) and exc.status_code >= 500:
             return LLMConnectionError(
-                f"Anthropic returned a server error ({exc.status_code}): {exc}"
+                f"Anthropic returned a server error ({kind}, {exc.status_code})."
             )
         if isinstance(exc, anthropic.APIConnectionError):
-            return LLMConnectionError(f"Could not reach Anthropic: {exc}")
+            return LLMConnectionError(f"Could not reach Anthropic ({kind}).")
         if isinstance(exc, anthropic.APIStatusError):
             return LLMProviderError(
-                f"Anthropic rejected the request ({exc.status_code}): {exc}"
+                f"Anthropic rejected the request ({kind}, {exc.status_code})."
             )
-        return LLMProviderError(
-            f"Anthropic call failed with an unmapped {type(exc).__name__}: {exc}"
-        )
+        return LLMProviderError(f"Anthropic call failed with an unmapped {kind}.")
 
 
 def _retry_after(exc: Exception) -> float | None:

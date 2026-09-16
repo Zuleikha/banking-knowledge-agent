@@ -58,6 +58,7 @@ the answer could not check.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 
 from app.core.config import Settings, get_settings
@@ -245,7 +246,7 @@ _DELIMITERS = (
     EARLIER_QUESTION_CLOSE,
     EARLIER_QUESTION_OPEN,
 )
-"""Every sequence that must not survive inside untrusted content.
+"""Every fence tag that must not survive inside untrusted content.
 
 One tuple, covering both fences. Stage 6 added four entries to it and no second
 function: a tool result is escaped by the same code that escapes a passage, so
@@ -253,7 +254,26 @@ the two can never fall out of step. Closing tags precede their opening
 counterparts because ``</passage>`` contains no substring collision with
 ``<passage``, but listing the longer form first keeps the intent obvious to the
 next reader.
+
+Stage 13: the tuple is the source of the tag *names*; :data:`_FENCE_TAG` matches
+them in any letter case and with whitespace inside the tag, because a model does
+not read ``</TOOL_RESULTS>`` or ``< /tool_results>`` as anything other than a
+closing fence.
 """
+
+_FENCE_TAG = re.compile(
+    r"<(?=\s*/?\s*(?:"
+    + "|".join(
+        sorted(
+            {re.escape(delimiter.strip("</>")) for delimiter in _DELIMITERS},
+            key=len,
+            reverse=True,
+        )
+    )
+    + r"))",
+    re.IGNORECASE,
+)
+"""A ``<`` that begins any fence tag, in any letter case or spacing (Stage 13)."""
 
 
 def _fence_safe(content: str) -> str:
@@ -272,10 +292,16 @@ def _fence_safe(content: str) -> str:
 
     The replacement is visible rather than silent: a reader of the prompt (or of
     a logged prompt) can see that a delimiter was defused.
+
+    Stage 13 widened it in two ways. It now matches a fence tag in any letter
+    case and with whitespace inside it (``</TOOL_RESULTS>``, ``< /passage>``),
+    not only the exact spelling. And it is applied to the **current question**
+    too, not only to earlier ones: a question is user-typed text, and unescaped
+    it could forge a ``<passage id="99">`` or a ``<tool_results>`` block that a
+    model -- or the mock provider's citation parser -- would read as evidence.
+    Only the ``<`` is replaced, so the text stays readable.
     """
-    for delimiter in _DELIMITERS:
-        content = content.replace(delimiter, delimiter.replace("<", "&lt;"))
-    return content
+    return _FENCE_TAG.sub("&lt;", content)
 
 
 @traced
@@ -409,7 +435,9 @@ def build_user_turn(
     it is the oldest context, and the question still goes last.
 
     Order is documentation, then tool results, then the question. The question
-    goes last on purpose. It is the instruction the model is meant to act on, and
+    is escaped by :func:`_fence_safe` like every other piece of user text
+    (Stage 13), so it cannot forge a block of its own. It goes last on purpose.
+    It is the instruction the model is meant to act on, and
     placing it after both fenced blocks keeps it visually and positionally
     outside every untrusted region.
 
@@ -436,9 +464,10 @@ def build_user_turn(
         )
         if block
     ]
+    asked = f"Question: {_fence_safe(question)}"
     if not blocks:
-        return f"Question: {question}"
-    return "\n\n".join([*blocks, f"Question: {question}"])
+        return asked
+    return "\n\n".join([*blocks, asked])
 
 
 @traced

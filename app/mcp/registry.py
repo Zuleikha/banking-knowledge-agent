@@ -48,8 +48,14 @@ from app.core.observability import (
     get_metrics,
 )
 from app.core.tracing import traced
-from app.mcp.base import Tool, ToolError, ToolExecutionError, ToolNotFoundError
-from app.mcp.models import ToolInvocation, ToolResult, ToolSpec
+from app.mcp.base import (
+    Tool,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    check_argument_bounds,
+)
+from app.mcp.models import MAX_ARGUMENT_CHARS, ToolInvocation, ToolResult, ToolSpec
 
 logger = get_logger(__name__)
 
@@ -160,27 +166,48 @@ class ToolRegistry:
 
         Raises:
             ToolNotFoundError: If no such tool is registered.
-            ToolInputError: If the arguments do not satisfy the tool's spec.
+            ToolInputError: If the arguments do not satisfy the tool's spec, or
+                a name or value exceeds
+                :data:`~app.mcp.models.MAX_ARGUMENT_CHARS` (Stage 13).
             ToolExecutionError: If the tool raised something untyped. Wrapped
                 here rather than allowed to escape, for the same reason
                 :meth:`app.llm.service.LLMService._complete` wraps an untyped
                 provider exception: a raw ``KeyError`` from inside a tool
                 reaching the API layer would be reported as a generic 500 with
-                no indication of which tool produced it.
+                no indication of which tool produced it. The message names the
+                exception *type* only; the original exception is kept as
+                ``__cause__``. Its text can carry internal detail (a key, a
+                path, a row of data) and this message is printed by the CLI
+                and may reach an MCP client (Stage 13).
+                Also raised when a tool returns something that is not a
+                :class:`~app.mcp.models.ToolResult` -- a contract bug that would
+                otherwise surface later as an ``AttributeError``.
+
+        Every call is counted, including one naming an unregistered tool: an
+        unknown name is a failed call, and leaving it out of
+        ``tool_errors_total`` would hide a misbehaving client (Stage 13).
         """
-        tool = self.get(name)
         supplied = dict(arguments or {})
         metrics = get_metrics()
         metrics.increment(TOOL_CALLS_TOTAL)
         started = time.perf_counter()
+        # The requested name is caller-supplied; only a registered one is logged.
+        logged_name = name if name in self._tools else "unregistered"
         try:
+            tool = self.get(name)
+            check_argument_bounds(supplied, name)
             result = tool.invoke(supplied)
+            if not isinstance(result, ToolResult):
+                raise ToolExecutionError(
+                    f"Tool '{name}' returned {type(result).__name__}, "
+                    "not a ToolResult."
+                )
         except Exception as exc:  # noqa: BLE001 - logged, re-raised as a typed error
             error = (
                 exc
                 if isinstance(exc, ToolError)
                 else ToolExecutionError(
-                    f"Tool '{name}' raised an unhandled {type(exc).__name__}: {exc}"
+                    f"Tool '{name}' raised an unhandled {type(exc).__name__}."
                 )
             )
             latency = elapsed_ms(started)
@@ -189,8 +216,10 @@ class ToolRegistry:
             logger.warning(
                 "mcp.tool_failed",
                 # Type and argument names only, as for a successful call below.
-                tool=name,
-                arguments=sorted(supplied),
+                # Names are clipped: an over-long one is exactly what
+                # check_argument_bounds refuses, and must not reach the log whole.
+                tool=logged_name,
+                arguments=sorted(key[:MAX_ARGUMENT_CHARS] for key in supplied),
                 error_type=type(error).__name__,
                 latency_ms=latency,
             )

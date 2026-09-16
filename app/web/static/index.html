@@ -12,7 +12,15 @@
       <h1>Banking Knowledge Agent</h1>
       <p class="muted">Source-backed answers over a synthetic banking platform. All data is synthetic.</p>
     </div>
-    <button id="new-session" type="button">New conversation</button>
+    <div class="controls">
+      <div class="key">
+        <label for="api-key">API key</label>
+        <input id="api-key" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Only if the server needs one" aria-describedby="api-key-help">
+        <span id="api-key-help" class="visually-hidden">Kept in this browser tab only and sent with each request.</span>
+      </div>
+      <button id="new-session" type="button">New conversation</button>
+    </div>
   </header>
 
   <main>
