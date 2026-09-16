@@ -7,9 +7,24 @@ update HANDOVER.md immediately, not at stage completion.
 > This file, not conversation history, is the record of project progress.
 > Never assume a previous session completed work unless the repository confirms it.
 
-Last updated: **2026-09-15, end of session (refreshed after `cecaf60`)** · **Stages 1–11 approved, committed and pushed.**
-Stage 11 — Testing and Evaluation — `7b8c85e`. Stage 10 follow-up (10.E + 10.F) — `42788e8`.
-**Stage 12 — Containerisation — NOT started;** the user will kick it off in a new session.
+Last updated: **2026-09-15, Stage 12 session** · **Stages 1–11 approved, committed and pushed.**
+Stage 11 — Testing and Evaluation — `7b8c85e`. Chore `691c393` (`.gitattributes` LF, `.claude/` ignored).
+**Stage 12 — Containerisation — ✅ APPROVED BY THE USER 2026-09-16 — committed and pushed**
+(commit hash recorded in the follow-up `docs(handover)` commit).
+
+### Stage 12 — current state (supersedes the checkpoint table below until committed)
+
+| | |
+|---|---|
+| Status | ✅ **Approved by the user 2026-09-16** — committed and pushed. Decisions 12.A–12.H recorded below (*Decisions made (Stage 12)*) and in guide §20.43–§20.49 |
+| New files | `Dockerfile` (targets `runtime`, `test`) · `compose.yaml` · `.dockerignore` · `tests/test_container_config.py` (22 static contract tests) · `tests/test_docker_smoke.py` (4 tests, skipped unless `BKA_SMOKE_BASE_URL`) |
+| Changed | `README.md` (Status, Requirements, new Docker section, Configuration note, Structure) · guide §15 rewritten as BUILT, §11 `/ready` → Stage 13, §20.43–§20.48 · this file |
+| Local | `pytest` **1141 passed, 4 skipped** · ruff check clean · mypy strict clean (70 files) |
+| In image | `docker run --rm bka-test` → **1141 passed, 4 skipped** (Linux, CPU torch `2.14.0+cpu`, no nvidia packages, user `app`) |
+| Live container | `BKA_HOST_PORT=8001 docker compose up -d --wait` → **healthy**; smoke test **4 passed**; uid 999 `app`; `HF_HUB_OFFLINE=1`; provider `mock`; `app.log`/`traces.log` written to host `./logs` |
+| Image size | runtime **2.24 GB** (deps layer 1.48 GB · model + index 92 MB · rest base); test image 2.35 GB |
+| Found during the stage | (1) First in-image run failed 22 container tests: `.dockerignore` excluded the files they read — fixed by keeping them in the context and copying them only into the `test` target. (2) Host port 8000 is taken by another local project's container (`production-llm-platform-api-1`) — smoke run used `BKA_HOST_PORT=8001`; nothing stopped. (3) **Pre-existing:** `ruff format --check .` reports 24 files at HEAD (none touched by Stage 12) — not fixed; **decided 2026-09-16 (12.H) — left as-is, carried to Stage 13**. (4) `BKA_HOST`/`BKA_PORT` unused by app code (12.G) — Stage 13 candidate. (5) `docs/HOW_TO_RUN.html` (git-ignored, local) has no Docker section — not edited |
+| Next | **Stage 13 — Security and Production Readiness**, when the user asks. Carried in: `GET /ready` (12.D) · `BKA_HOST`/`BKA_PORT` unused by app code (12.G) · `ruff format` on the 24 pre-existing files (12.H) |
 
 **Rules live in `CLAUDE.md`** (sole authority). Stage requirements live in
 `docs/PROJECT_PLAN.md` — read only the Stage 12 section. This file is state and decisions.
@@ -18,21 +33,28 @@ Stage 11 — Testing and Evaluation — `7b8c85e`. Stage 10 follow-up (10.E + 10
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Session state:** **Stage 11 — Testing and Evaluation — approved by the user 2026-09-15**,
-committed `7b8c85e` and pushed (verified). Earlier the same day the Stage 10 follow-up (10.E/10.F)
-was approved and committed as `42788e8`. **Nothing is in progress. Stage 12 has not been started**
-and starts only when the user asks — they plan to kick it off in a new session.
+**Session state (2026-09-16):** **Stage 12 — Containerisation — is APPROVED, committed and pushed.**
+The user approved it on 2026-09-16 after the one open question — the 24 pre-existing `ruff format`
+files — was answered: **leave them as they are, carry to Stage 13**, recorded as decision **12.H**
+and guide **§20.49**. Before committing, the suite was re-verified (**1141 passed, 4 skipped**, ruff
+and mypy clean), the guide status markers were set to Stage 12 (pill, footer, §1 table; the §1 diagram
+was deliberately left alone — containerisation is not a component on the request path), and
+`git add -An` confirmed exactly 9 files, no secrets, no nested directory, `.env` untracked.
+
+*Previous:* **Stage 11 — Testing and Evaluation — approved by the user 2026-09-15**,
+committed `7b8c85e` and pushed (verified). Chore `691c393` (LF `.gitattributes`, `.claude/`
+ignored) was approved, committed and pushed at the start of the Stage 12 session.
 
 ### State at checkpoint
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 11 — Testing and Evaluation** (approved 2026-09-15, `7b8c85e`) |
-| Current stage | **None in progress** — Stage 12 not started |
-| `HEAD` | This handover-refresh commit, on top of `cecaf60` (gitignore) → `a99f5f7` (end-of-session handover) = `origin/main` |
+| Last **approved** stage | **Stage 12 — Containerisation** (approved 2026-09-16; hash in *Git*) |
+| Current stage | **None in progress** — Stage 13 not started |
+| `HEAD` | The Stage 12 commit, on top of `691c393` (LF `.gitattributes`, `.claude/` ignored) = `origin/main` |
 | Working tree | Clean, apart from git-ignored local files |
-| Tests | **1119 passed** (77 integration) · ruff clean · mypy strict clean (70 source files) · `python -m app.eval` PASS |
-| Next | **Stage 12 — Containerisation** when the user asks — read *Stage 12 — starting notes*. Open for the user: `off-006`/`off-007` refusal gap and whether to run `--paid` (Stage 11 unfinished #1, #3) |
+| Tests | **1141 passed, 4 skipped** · ruff clean · mypy strict clean (70 source files) · in-image pytest 1141 passed · container smoke 4 passed |
+| Next | **Stage 13 — Security and Production Readiness** when the user asks. Carried in: `GET /ready` (12.D) · `BKA_HOST`/`BKA_PORT` unused by app code (12.G) · `ruff format` on the 24 pre-existing files (12.H) · Stage 11's `off-006`/`off-007` refusal gap and whether to run `--paid` |
 
 ### Commits made this session (2026-09-15, Stage 10–11 session), oldest first
 
@@ -74,6 +96,7 @@ records were written to the standard when made. Readability-only edits go in the
 (readiness: vector store and LLM reachable) as planned for **Stage 12**, but neither
 `docs/PROJECT_PLAN.md` nor this file records that decision; the nearest plan item is Stage 13,
 "Security and production readiness". Confirm the stage (or drop the row) when planning Stage 12/13.
+**Resolved 2026-09-15 (Stage 12 decision 12.D):** `/ready` moves to **Stage 13**; guide §11 row updated.
 
 ### Commits made in the last session (2026-09-14, Stage 9 session), oldest first
 
@@ -129,6 +152,19 @@ through Docker**; handover.
 5. **"Test through Docker"** — run pytest inside the image · a smoke test against the running
    container (`/health`, one question via `/api/sessions`, `/metrics`) · both.
 6. **Run as non-root** in the container (likely yes; confirm).
+
+**Decisions made (Stage 12):**
+
+| # | Decision | Why | Rejected |
+|---|---|---|---|
+| 12.A | **Model and index baked into the image** at `docker build`: download `all-MiniLM-L6-v2` and run `python -m app.rag build` in the Dockerfile (2026-09-15, user chose) | Container runs fully offline and starts fast; meets "no cloud infrastructure" and "synthetic data available locally"; index always matches the docs in the image | Fetch at container start (network needed on every fresh container, slow first start) · named volume (the index can go stale after the knowledge docs change) |
+| 12.B | **CPU-only PyTorch on `python:3.12-slim`** (venv is 3.12.13; mypy `python_version = "3.12"`): install `torch==2.14.0` from PyTorch's CPU wheel index, same pinned version (2026-09-15, user chose) | Embedding runs on CPU; the default Linux wheel pulls in several GB of CUDA libraries the app never uses | Default wheel on slim (several GB larger) · default wheel on the full base image (largest) |
+| 12.C | **`compose.yaml` = one `app` service**: port 8000, `BKA_LLM_PROVIDER` defaults to `mock`, `./logs` bind-mounted to the container's log directory (2026-09-15, user chose) | No index-build service needed (12.A); logs are readable on the host and survive container removal | One service with no mounts (logs lost with the container) · no Compose, `docker run` only |
+| 12.D | **Docker `HEALTHCHECK` on `GET /health` only**, via a Python one-liner (slim has no `curl`). **`GET /ready` is not built in Stage 12** — moved to Stage 13; guide §11 row updated, which closes the open question above (2026-09-15, user chose) | Liveness is all the stage asks for; `/ready` is new app code the plan does not list for Stage 12 and fits Stage 13 "production readiness" | Adding `/ready` now (out of plan scope) · no `HEALTHCHECK` (Docker never reports unhealthy) |
+| 12.E | **"Test through Docker" = both**: (1) full pytest suite inside the image, via a separate `test` build target that adds `requirements-dev.txt` on top of the runtime image (the runtime image carries no dev tools); (2) smoke test against the running Compose container on `mock`: `GET /health`, one question via `/api/sessions`, `GET /metrics`, container reports `healthy` (2026-09-15, user chose) | pytest-in-image proves the Linux image matches the venv; the smoke test proves port, env, mount and `HEALTHCHECK` work. Both free, no key | Smoke test only (Linux-only dependency breaks slip through) · pytest in image only (the running container is never checked) |
+| 12.F | **Run as a dedicated non-root user** (`app`), which owns the model cache, the index and the log directory (2026-09-15, user chose) | A compromised app process gets no root inside the container; standard practice Stage 13 would otherwise flag | Root (image default) |
+| 12.G | **Implementation choices (made during build, 2026-09-15):** (1) **Finding:** `Settings.host`/`port` (`BKA_HOST`/`BKA_PORT`) are read by nothing in `app/`; uvicorn's `--host`/`--port` are what apply. The image sets `BKA_HOST=0.0.0.0`, `BKA_PORT=8000` and the `CMD` passes them to uvicorn, so the settings mean something in the container; app code unchanged. (2) Smoke test is `tests/test_docker_smoke.py`, **skipped unless `BKA_SMOKE_BASE_URL` is set**, using an eval `knowledge_required` question. (3) Static contract tests `tests/test_container_config.py` pin 12.A–12.F. (4) `.dockerignore` excludes all of `docs/` and `*.md` (the image runs none of it). (5) `compose.yaml` carries no `BKA_LLM_API_KEY` at all. (6) `HF_HUB_OFFLINE=1` at runtime | (1) avoids a cross-module app change in a config stage; (2) the normal suite stays Docker-free; (5) nothing secret-shaped in a committed file; (6) proves 12.A — a missing baked model fails loudly instead of downloading | Wiring `BKA_HOST` into app code (out of Stage 12 scope — candidate for Stage 13) · a shell smoke script (not repeatable under pytest) · passing `BKA_LLM_API_KEY: ${BKA_LLM_API_KEY}` through compose |
+| 12.H | **The 24 files `ruff format --check .` would reformat are left unchanged**; formatting them is carried to **Stage 13** (2026-09-16, user chose) | All 24 were already unformatted before Stage 12 and **none is a Stage 12 file** (verified 2026-09-16); reformatting 24 unrelated files would bury the containerisation diff, and `CLAUDE.md` Discipline says not to refactor outside the current task's scope. This is formatting only — `ruff check` (lint) is clean | Fixing them now in a separate `style` commit ahead of the Stage 12 commit |
 
 **Constraints to carry in:**
 - No paid LLM call without the user's explicit confirmation at the time. Container default stays `mock`.
@@ -243,14 +279,15 @@ has ever been committed.
 
 | | |
 |---|---|
-| **Stage number** | 11 |
-| **Stage name** | Testing and Evaluation |
-| **Status** | ✅ **APPROVED BY THE USER 2026-09-15 — committed and pushed** (hash in *Git*) |
-| **Last completed step** | Re-verified after approval: 1119 passed, ruff and mypy clean, `git add -An` = 16 files, no secrets, no nested directory, `.env` untracked. Guide status markers updated (pill, footer, §1 table; §1 diagram unchanged — evaluation is not on the request path) |
-| **Next step** | Stage 12 — Containerisation — begins when the user asks. See *Next Action* |
+| **Stage number** | 12 |
+| **Stage name** | Containerisation |
+| **Status** | ✅ **APPROVED BY THE USER 2026-09-16 — committed and pushed** (hash in *Git*) |
+| **Last completed step** | Re-verified after approval: 1141 passed / 4 skipped, ruff and mypy clean, `git add -An` = 9 files, no secrets, no nested directory, `.env` untracked. Guide status markers updated (pill, footer, §1 table; §1 diagram unchanged — containerisation is not on the request path) |
+| **Next step** | Stage 13 — Security and Production Readiness — begins when the user asks. See *Next Action* |
 
 | Stage | Name | Status |
 |---|---|---|
+| 11 | Testing and Evaluation | ✅ Approved 2026-09-15, committed `7b8c85e`, pushed |
 | 10 | Observability | ✅ Approved 2026-09-15, committed `c627358` (+ follow-up `42788e8`), pushed |
 | 9 | Web Interface | ✅ Approved 2026-09-14, committed `2484b73`, pushed |
 | 8 | Conversation Context | ✅ Approved 2026-09-14, committed `2abbb39`, pushed |
@@ -2756,7 +2793,15 @@ edit.
 
 ## Next Action
 
-**Stage 11 — Testing and Evaluation — is approved, committed and pushed** (hash in *Git*). **The
+**Stage 12 — Containerisation — is approved, committed and pushed** (approved 2026-09-16; hash in
+*Git*). **The next action is Stage 13 — Security and Production Readiness — when the user asks for
+it.** Read only its section of `docs/PROJECT_PLAN.md`; `CLAUDE.md` §2 marks it ✅ for sub-agents, but
+only if the user asks at kickoff. Carried into Stage 13: add `GET /ready` (12.D) · wire or drop
+`BKA_HOST`/`BKA_PORT`, which no app code reads (12.G) · run `ruff format` on the 24 pre-existing
+files (12.H) · Stage 11's `off-006`/`off-007` refusal gap and whether to run `--paid`. Host port 8000
+is taken by another project; use `BKA_HOST_PORT=8001` for any Docker re-check.
+
+*Superseded:* **Stage 11 — Testing and Evaluation — is approved, committed and pushed** (hash in *Git*). **The
 next action is Stage 12 — Containerisation — when the user asks for it.** Read only its section
 of `docs/PROJECT_PLAN.md`; `CLAUDE.md` §2 marks it ❌ for sub-agents. Open for
 the user: `off-006`/`off-007` refusal gap (Stage 11 unfinished #1) and whether to run `--paid`

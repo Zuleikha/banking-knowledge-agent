@@ -16,9 +16,9 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 11 — Testing and Evaluation** complete · Stage 12 next |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard |
-| **Next** | Docker (12) · guardrails and security (13) · production architecture (14) |
+| **Current stage** | **Stage 12 — Containerisation** complete · Stage 13 next |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) |
+| **Next** | Guardrails and security (13) · production architecture (14) · final review (15) |
 
 Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md).
 
@@ -74,6 +74,7 @@ Full reference, diagrams and decision records: [`docs/architecture-guide.html`](
 - Python 3.12
 - Git
 - ~90 MB free for the embedding model (downloaded once from Hugging Face on first use)
+- *Optional:* Docker with Compose v2, to run it as a container instead (see [Docker](#docker))
 
 No API key is needed. The default LLM provider is a free, deterministic, in-process mock.
 
@@ -124,7 +125,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1119 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model.
+**1145 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
 
 ---
 
@@ -243,12 +244,36 @@ data/eval/questions.yaml ──▶ app/eval runner ──▶ retrieval ranks + a
 - Soft floors in the dataset file (0.90 · 0.85 · 0.90) gate the `integration` tests; invented citations and dishonest refusals gate at 100%.
 - Free by default, whatever `BKA_LLM_PROVIDER` says; `--paid` runs the real model only with a paid provider **and** a key set.
 
+## Docker
+
+```
+docker build ─▶ python:3.12-slim + CPU-only torch ─▶ model downloaded + index built ─▶ image
+                                                                                      │
+docker compose up ─▶ app (user: app, offline) ─▶ :8000 ◀── HEALTHCHECK GET /health ───┘
+                        └─ ./logs mounted from the host
+```
+
+- **Offline at runtime:** the embedding model and search index are baked in at build time; `HF_HUB_OFFLINE=1`.
+- **Small where it counts:** CPU-only PyTorch at the pinned version — no CUDA libraries.
+- **Non-root:** runs as `app`; owns only the model cache, index and `logs/`.
+- **Free by default:** Compose sets `BKA_LLM_PROVIDER=mock`; no API key appears in any container file.
+- **Two build targets:** `runtime` (what Compose runs) and `test` (runtime + dev tools + the full suite).
+
+```bash
+docker compose up --build -d                       # http://localhost:8000 · docker compose ps → (healthy)
+docker build --target test -t bka-test . && docker run --rm bka-test          # full suite in the image
+BKA_SMOKE_BASE_URL=http://localhost:8000 .venv/Scripts/python.exe -m pytest tests/test_docker_smoke.py
+docker compose down
+```
+
 ---
 
 ## Configuration
 
 All settings are optional `BKA_*` environment variables with safe defaults. Full descriptions and
 defaults: [`.env.example`](.env.example). Secrets come from the environment only and are never logged.
+In the container, `BKA_HOST`/`BKA_PORT` are passed to uvicorn by the image; `BKA_HOST_PORT` (Compose
+only, default `8000`) picks the port on your machine.
 
 | Area | Variables |
 |---|---|
@@ -285,8 +310,11 @@ banking-knowledge-agent/
 │   ├── HANDOVER.md              Progress, decisions, next action
 │   ├── PROJECT_PLAN.md          Stage requirements
 │   └── architecture-guide.html  Architecture reference and decision records
-├── tests/               Unit, integration and API tests
+├── tests/               Unit, integration, API and container tests
 ├── CLAUDE.md            Working rules for AI-assisted development
+├── Dockerfile           Image build: runtime and test targets
+├── compose.yaml         One-command local run (single app service)
+├── .dockerignore        Keeps secrets and local state out of the image
 ├── .env.example         Documented configuration
 ├── pyproject.toml       pytest, ruff and mypy configuration
 └── requirements*.txt    Pinned runtime and dev dependencies

@@ -53,3 +53,5 @@ docs/legacy/
 docs/HOW_TO_RUN.html
 # Claude Code local settings, per machine.
 .claude/
+# Session to-do list for unfinished stage work, kept local.
+TO_BE_DONE.md

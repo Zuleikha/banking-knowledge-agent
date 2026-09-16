@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 11 - Testing and Evaluation &nbsp;·&nbsp; Last updated 2026-09-15</div>
+    <div class="pill">Stage 12 - Containerisation &nbsp;·&nbsp; Last updated 2026-09-16</div>
   </div>
 </header>
 
@@ -187,7 +187,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>9</td><td>Web interface</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>10</td><td>Observability - request ids, per-step latency, in-process metrics</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>11</td><td>Testing &amp; evaluation framework - 49-question dataset, recall@5 / MRR / route accuracy, scorecard CLI</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>12</td><td>Containerisation</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>12</td><td>Containerisation - Dockerfile, Compose, baked model + index, health check, non-root user</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>13</td><td>Security &amp; production readiness</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>14</td><td>Production architecture</td><td><span class="tag t-todo">PLANNED</span></td></tr>
   <tr><td>15</td><td>Final engineering review</td><td><span class="tag t-todo">PLANNED</span></td></tr>
@@ -1729,7 +1729,7 @@ new class with the same methods, and nothing above it changes.</p>
   <tr><td><code>POST /api/sessions/end</code></td><td>Body <code>{session_id}</code>; the id stops working (204)</td><td><span class="tag t-done">Stage 9</span></td></tr>
   <tr><td><code>GET /</code></td><td>The web page (<code>app/web/static/</code>)</td><td><span class="tag t-done">Stage 9</span></td></tr>
   <tr><td><code>GET /metrics</code></td><td>In-process counters and latency histograms, as JSON (§13)</td><td><span class="tag t-done">Stage 10</span></td></tr>
-  <tr><td><code>GET /ready</code></td><td>Readiness - vector store and LLM reachable</td><td><span class="tag t-todo">Stage 12</span></td></tr>
+  <tr><td><code>GET /ready</code></td><td>Readiness - vector store and LLM reachable</td><td><span class="tag t-todo">Stage 13</span></td></tr>
 </table>
 
 <p><strong>What it does.</strong> The API layer (the HTTP entry point) stays thin: it
@@ -2143,16 +2143,50 @@ grounding, hallucination resistance and tool selection - because "the tests pass
 <!-- ================================================================== -->
 <section id="docker">
 <h2>15. Docker</h2>
-<span class="tag t-todo">PLANNED - Stage 12</span>
+<span class="tag t-done">BUILT · containerisation Stage 12</span>
 
-<p>A Dockerfile and a Docker Compose setup, so the whole system runs locally with one
-command and no cloud infrastructure. A <em>Dockerfile</em> describes how to build an
-<em>image</em> - the app packaged with everything it needs to run; <em>Compose</em> starts it
-with a single command. Configuration comes from environment variables, exactly as today (for
-example <code>BKA_LOG_FORMAT=json</code>, so logs are machine-readable), the container's health
-check calls <code>/health</code>, and the synthetic knowledge documents are either built into
-the image or mounted as a <em>volume</em> (a folder shared from the host machine). Why: everyone
-who runs it gets the same environment, so "it works on my machine" stops being a question.</p>
+<div class="note">
+  <strong>In plain English.</strong> A <em>Dockerfile</em> is a recipe for building an <em>image</em>: a
+  packaged, read-only snapshot of the application with the exact Python, libraries, model and data it needs.
+  A <em>container</em> is one running copy of that image. <em>Docker Compose</em> starts the container from a
+  short settings file with one command. Without this, running the system means reproducing a Python virtual
+  environment, a model download and an index build by hand on every machine, and "it works on my machine"
+  stays a real question. Stage 11 proved the system works in the development environment; this stage packages
+  it so it works the same everywhere, and Stage 13 reviews that package for security.
+</div>
+
+<h3>How the image is built</h3>
+<table>
+  <tr><th style="width:230px">Step (in <code>Dockerfile</code>)</th><th>What it does and why</th></tr>
+  <tr><td><strong>Base</strong> <code>python:3.12-slim</code></td><td>The official Python image without compilers and extras; the same Python minor version as the development environment (§20.44).</td></tr>
+  <tr><td><strong>User</strong> <code>app</code></td><td>An ordinary account created early, so the app never runs as the administrator account, root (§20.48).</td></tr>
+  <tr><td><strong>PyTorch, CPU-only</strong></td><td>Installed from PyTorch's CPU package index, at the version read from <code>requirements.txt</code> - so there is one pin, not two. Then the rest of <code>requirements.txt</code>, which finds PyTorch already satisfied (§20.44).</td></tr>
+  <tr><td><strong>Code and data</strong></td><td><code>app/</code>, <code>data/</code> (the 15 synthetic documents and the evaluation set) and <code>pyproject.toml</code>. <code>.dockerignore</code> keeps out <code>.env</code>, the virtual environment, git history, caches, <code>logs/</code>, a locally built index and all of <code>docs/</code>.</td></tr>
+  <tr><td><strong>Bake model and index</strong></td><td>As user <code>app</code>, <code>python -m app.rag build</code> downloads the embedding model into <code>HF_HOME</code> and writes the index. This is the only step that needs the network (§20.43).</td></tr>
+  <tr><td><strong>Runtime settings</strong></td><td><code>HF_HUB_OFFLINE=1</code> forbids model downloads, so a missing model fails loudly rather than quietly fetching one. <code>BKA_HOST=0.0.0.0</code> (listen on every network interface, so traffic from outside the container arrives) and <code>BKA_PORT=8000</code> are passed to uvicorn by the start command.</td></tr>
+  <tr><td><strong><code>HEALTHCHECK</code></strong></td><td>Every 30 seconds, a one-line Python script requests <code>GET /health</code>; three failures in a row mark the container <em>unhealthy</em> (§20.46).</td></tr>
+</table>
+
+<div class="note">
+  <strong>A finding worth knowing.</strong> <code>BKA_HOST</code> and <code>BKA_PORT</code> exist in the settings
+  class, but no application code reads them: when you run uvicorn yourself, its own <code>--host</code> and
+  <code>--port</code> options decide. The image makes the settings meaningful by passing them to those options in
+  its start command. The application code is unchanged (HANDOVER 12.G).
+</div>
+
+<h3>Two build targets</h3>
+<p>A Dockerfile can define named <em>build targets</em>. <code>runtime</code> is the image above, and it is what
+Compose runs. <code>test</code> starts from <code>runtime</code>, adds the development tools and the
+<code>tests/</code> folder, and runs the full pytest suite inside Linux. That proves the image behaves like the
+development environment, while the image that actually runs carries no test tools (§20.47).</p>
+
+<h3>Running it</h3>
+<p><code>compose.yaml</code> defines one service, <code>app</code>: host port <code>${BKA_HOST_PORT:-8000}</code>
+to container port 8000, <code>BKA_LLM_PROVIDER</code> defaulting to the free <code>mock</code>, and
+<code>./logs</code> bind-mounted (a host folder made visible inside the container) so log files survive the
+container. No API key appears in the file (§20.45). A smoke test, <code>tests/test_docker_smoke.py</code>, runs
+against the live container only when <code>BKA_SMOKE_BASE_URL</code> is set: health, the web page, one question
+answered from the baked index, and metrics.</p>
 </section>
 
 <!-- ================================================================== -->
@@ -4261,6 +4295,162 @@ part stays absolute.</p>
 </table>
 </div>
 
+<h3>20.43 Stage 12.1 - The embedding model and the search index are baked into the Docker image</h3>
+<div class="card">
+<p><strong>What.</strong> A <em>Docker image</em> is a packaged, read-only snapshot of the application and
+everything it needs; a <em>container</em> is one running copy of it. "Baked in" means the work happens once,
+during <code>docker build</code>: the build downloads the embedding model
+(<code>sentence-transformers/all-MiniLM-L6-v2</code>, ~90 MB, the model that turns text into numbers for
+search) and builds the search index from <code>data/knowledge/</code> with <code>python -m app.rag build</code>.
+Both end up inside the image, so a container starts with them already present.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. The stage requires the system to run
+locally with no cloud infrastructure and with the synthetic data available locally. A baked-in image needs no
+network at runtime and has no slow first start. Because the index is built from the same knowledge documents
+copied into that image, it cannot drift out of step with them. The cost, flagged in §20 Stage 3, is paid
+here: a larger image, and a build that needs network access once.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Download and build when the container starts</strong></td><td>Smaller image, but every fresh container needs network access to Hugging Face and waits for the download and index build before it can answer.</td></tr>
+  <tr><td><strong>Keep the model and index in a named volume</strong></td><td>A volume outlives the image, so after the knowledge documents change a container can quietly serve an index built from the old ones.</td></tr>
+</table>
+</div>
+
+<h3>20.44 Stage 12.2 - PyTorch is installed as the CPU-only build, on a slim Python base image</h3>
+<div class="card">
+<p><strong>What.</strong> PyTorch is the numerical library the embedding model runs on. It is published in
+several builds: the default Linux one includes NVIDIA CUDA libraries for running on a graphics card (GPU);
+the CPU-only build leaves them out. The image installs the same pinned version, <code>torch==2.14.0</code>,
+from PyTorch's CPU-only package index. The base image - the starting snapshot the image is built on - is
+the official <em>slim</em> Python image, which drops compilers and tools the running app does not need.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. This project embeds a short question
+with a small model on the CPU; nothing uses a GPU. The CUDA libraries would add several gigabytes to an image
+that 20.43 already makes larger by baking in the model and index. Keeping the version pin means the container
+runs the same PyTorch the tests run.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Default PyTorch wheel on the slim image</strong></td><td>Simplest install, but several GB of GPU libraries that are never loaded.</td></tr>
+  <tr><td><strong>Default wheel on the full Python image</strong></td><td>The largest image of all: GPU libraries plus build tools, none of which the app uses at runtime.</td></tr>
+</table>
+</div>
+
+<h3>20.45 Stage 12.3 - Docker Compose runs one service, with the log folder shared to the host</h3>
+<div class="card">
+<p><strong>What.</strong> <em>Docker Compose</em> starts containers from a settings file,
+<code>compose.yaml</code>, so the whole system comes up with one command, <code>docker compose up</code>,
+instead of a long <code>docker run</code> line. This file defines a single service, <code>app</code>. It
+publishes port 8000, keeps the LLM provider on the free <code>mock</code> by default, and uses a
+<em>bind mount</em> - a folder on your machine made visible inside the container - so the application's log
+files land in the project's <code>logs/</code> folder.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. Everything the app needs at runtime is
+already in the image (20.43), so there is no second service to run: no separate index builder, no database.
+Logs are the one thing worth keeping outside the container. Without the mount they would sit inside it, and be
+deleted along with it.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>One service, no mounts</strong></td><td>Logs are only reachable through Docker commands and are lost when the container is removed.</td></tr>
+  <tr><td><strong>No Compose file, <code>docker run</code> only</strong></td><td>Allowed by the plan ("where appropriate"), but the port, environment and mount then live in a command someone has to copy exactly.</td></tr>
+</table>
+</div>
+
+<h3>20.46 Stage 12.4 - The container's health check calls <code>GET /health</code>; readiness waits for Stage 13</h3>
+<div class="card">
+<p><strong>What.</strong> A Docker <code>HEALTHCHECK</code> is a command Docker runs inside the container every
+few seconds. If it keeps failing, Docker marks the container <em>unhealthy</em>, and <code>docker ps</code> and
+Compose show that. Here the command is a one-line Python script that requests <code>GET /health</code>, the
+existing <em>liveness</em> endpoint ("is the process up and answering?"). It uses Python because the slim image
+has no <code>curl</code>. A <em>readiness</em> endpoint, <code>GET /ready</code> ("are the index and the LLM
+provider usable?"), is not added in this stage.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. The plan asks this stage for health
+checks, and <code>/health</code> already exists and is tested. <code>/ready</code> would be new application code
+that the plan does not list for Stage 12, so it belongs with Stage 13, "Security and production readiness". The
+§11 table previously listed it for Stage 12 without a recorded decision; it now says Stage 13.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Add <code>GET /ready</code> in Stage 12</strong></td><td>New endpoint, new tests and a new failure mode, none of them in this stage's plan.</td></tr>
+  <tr><td><strong>No <code>HEALTHCHECK</code>, smoke test only</strong></td><td>The smoke test checks the container once. Without a health check, Docker would never notice a container that stopped answering later.</td></tr>
+</table>
+</div>
+
+<h3>20.47 Stage 12.5 - "Tested through Docker" means the full test suite in the image and a smoke test of the running container</h3>
+<div class="card">
+<p><strong>What.</strong> Two checks. First, the whole pytest suite runs inside the image. A Dockerfile can
+define several <em>build targets</em> - named stopping points in one file - so a <code>test</code> target
+adds the development tools (<code>requirements-dev.txt</code>) on top of the runtime image, and the image
+that actually runs stays free of them. Second, a <em>smoke test</em> - a short end-to-end check that the
+assembled system switches on and works - runs against the container started by Compose, using the free
+<code>mock</code> LLM provider. It checks <code>GET /health</code>, asks one question through
+<code>/api/sessions</code>, reads <code>GET /metrics</code>, and confirms Docker reports the container
+<em>healthy</em>.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. The two checks catch different
+failures. The suite inside the image catches anything that works in the Windows virtual environment but
+breaks on Linux: a missing system library, a path, a different wheel. The smoke test catches what the suite
+cannot see: the published port, the environment settings, the log mount and the health check itself.
+Neither needs an API key or costs money.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Smoke test only</strong></td><td>Faster, but a Linux-only break in a path the smoke test never touches would ship.</td></tr>
+  <tr><td><strong>Test suite in the image only</strong></td><td>Never exercises the running container, so a wrong port, host binding or health check goes unnoticed.</td></tr>
+</table>
+</div>
+
+<h3>20.48 Stage 12.6 - The application runs as a dedicated non-root user inside the container</h3>
+<div class="card">
+<p><strong>What.</strong> Unless told otherwise, a process in a container runs as <em>root</em>, the
+all-powerful administrator account. The image instead creates an ordinary user, <code>app</code>, gives it
+ownership of the only places the application needs: the model cache, the search index and the log folder.
+The web server then runs as <code>app</code>.</p>
+
+<p><strong>Why.</strong> Decided with the user at the start of Stage 12. This is <em>least privilege</em>:
+give a process only the access it needs. If a flaw in the application were ever exploited, the attacker would
+hold an unprivileged account that cannot change the installed code or system files. It is standard practice
+for container images, and Stage 13's security review would otherwise raise it.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Run as root (the default)</strong></td><td>No setup and no file-permission questions, but any compromise of the app is a compromise of the whole container.</td></tr>
+</table>
+</div>
+
+<h3>20.49 Stage 12.7 - Twenty-four files the formatter would rewrite are left alone until Stage 13</h3>
+<div class="card">
+<p><strong>What.</strong> The project uses <em>Ruff</em> for two separate jobs. <code>ruff check</code> is the
+<em>linter</em>: it hunts for real problems - unused imports, undefined names, suspicious code. <code>ruff
+format</code> is the <em>formatter</em>: it rewrites purely cosmetic things such as line breaks, quote style and
+indentation, and never changes what the code does. Running <code>ruff format --check .</code> reports that
+<strong>24 files</strong> are not laid out the way the formatter would lay them out. Those 24 are left exactly
+as they are; tidying them is carried to Stage 13.</p>
+
+<p><strong>Why.</strong> Decided with the user on 2026-09-16, at the end of Stage 12. Two facts drove it. First,
+all 24 were already unformatted before Stage 12 began, and <strong>none of them is a file Stage 12 created or
+touched</strong> - this was verified, not assumed. Second, the linter is clean, so nothing here is a defect;
+it is cosmetics only. Reformatting 24 unrelated files as part of the containerisation commit would mean a
+reviewer opening that commit sees a large spray of cosmetic churn sitting alongside the handful of files that
+actually add Docker, making the real change hard to find. The project rule against refactoring outside the
+current task's scope points the same way.</p>
+
+<div class="note">
+  The general point, which outlives this particular number: <strong>a commit should be about one thing.</strong>
+  Cosmetic cleanup and a feature are two things. Bundling them costs nothing to write and a great deal to read
+  later, when someone is trying to work out why a change was made.
+</div>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Reformat all 24 now, in a separate <code>style</code> commit</strong></td><td>Keeps the Stage 12 commit clean too, and gets the repository consistent sooner - but it puts a 24-file diff in front of the user for review before the stage they are actually trying to finish, for no functional gain.</td></tr>
+  <tr><td><strong>Reformat them inside the Stage 12 commit</strong></td><td>Buries the containerisation change in cosmetic noise, and mixes two unrelated concerns in one commit.</td></tr>
+</table>
+</div>
+
 </section>
 <!-- ================================================================== -->
 <section id="subagents">
@@ -4474,7 +4664,7 @@ work out, do it yourself.</p>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 11 (Testing and Evaluation) · Last updated 2026-09-15<br>
+  Stage 12 (Containerisation) · Last updated 2026-09-16<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>
