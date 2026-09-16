@@ -2932,3 +2932,51 @@ its evidence in *Testing → Stage 4 required coverage* above.
 - Do not create a nested `banking-knowledge-agent/` directory.
 - Approval cycle: IMPLEMENT → TEST → UPDATE HANDOVER → SHOW → **STOP** → APPROVAL →
   VERIFY → COMMIT → PUSH → VERIFY PUSH → NEXT STAGE. Never commit an unapproved stage.
+
+---
+
+## Moved from HANDOVER.md on 2026-09-16 (Stage 13 close)
+
+Verbatim, as they stood when Stage 13 was approved (`e29bbae`).
+
+### Stage 13 progress
+
+| Step | Status |
+|---|---|
+| 1. `ruff format` 24 files (13.D) | ✅ done — suite unchanged, 1141 passed / 4 skipped |
+| 2. Freeze contract (config fields + production rule, metric names, `security.py` / `rate_limit.py` no-op stubs, `main.py` wiring, `.env.example`, config tests) | ✅ done — 105 targeted tests pass, ruff + mypy clean |
+| 3. Six sub-agents U1–U6 dispatched in one batch (split: contract §3) | ✅ all six done. U3–U6 hit the usage limit mid-task and were resumed with context intact. Scratchpad writes were blocked, so findings came back in replies (summarised in guide §16) |
+| 4. Integration | ✅ ownership verified (every non-owned change is formatting only) · `metrics.py` docstring fixed · guide §16 review table, §20.54–§20.55, §21.8 · README Security section, `/ready`, config row, counts · contract gap filled (`/ready` 503 → `"status": "not_ready"`) |
+
+**STATUS: APPROVED 2026-09-16 and committed.**
+
+### Stage 12 decisions (12.A–12.H) — full records in guide §20.43–§20.49
+
+| # | Decision |
+|---|---|
+| 12.A | **Model and index baked into the image** at build time — container runs fully offline, starts fast, index always matches the docs in the image |
+| 12.B | **CPU-only PyTorch on `python:3.12-slim`**, same pinned version read from `requirements.txt` — the default Linux wheel drags in GBs of unused CUDA |
+| 12.C | **`compose.yaml` = one `app` service**, port 8000, provider `mock`, `./logs` bind-mounted to the host |
+| 12.D | **`HEALTHCHECK` on `GET /health` only**, via a Python one-liner (slim has no `curl`). **`GET /ready` moved to Stage 13** |
+| 12.E | **"Test through Docker" = both** — full pytest inside the image (`test` target) *and* a smoke test against the running container |
+| 12.F | **Runs as non-root user `app`**, owning the model cache, index and log directory |
+| 12.G | `BKA_HOST`/`BKA_PORT` are read by **no app code**; uvicorn's flags are what apply. The image sets them and `CMD` passes them through. App code unchanged — wiring them is a Stage 13 candidate |
+| 12.H | **The 24 files `ruff format` would rewrite are left unchanged**, carried to Stage 13. All pre-existing; none is a Stage 12 file. `ruff check` (lint) is clean — cosmetics only |
+
+### Deliberately unfinished — Stage 11 (evaluation)
+
+1. **`off-006`, `off-007` answered instead of refused** — banking-adjacent questions clear the 0.25 floor. A real hallucination-resistance gap. Candidates: higher floor for refined searches, hybrid search, or a reranker. **Needs a user decision.**
+2. `know-018` evidence lacks `TransactionSwitch` — reported, not gated.
+3. **Paid mode never run.** `--paid` implemented and guarded; no real-model answer scored. Needs explicit confirmation at the time.
+4. Mentions in free mode are checked against retrieved evidence, not answer wording.
+5. Same author wrote corpus, routing rules and dataset — defensible, not independent.
+6. API behaviour covered by Stage 9/10 tests, not re-scored by the evaluation.
+
+### Deliberately unfinished — Stage 10 (observability)
+
+1. **`GET /metrics` is unauthenticated** (like `/health`); names and numbers only → **Stage 13**.
+2. Metrics are per-process and reset on restart; JSON, not Prometheus → Stage 14.
+3. `httpx` full-URL logging — **resolved (10.E)**, raised to `warning`.
+4. A 500 from an unhandled exception carries no `X-Request-ID` header (Starlette builds it outside the middleware); the `http.request_failed` log line does carry the id.
+5. **Untraced by deliberate exception (10.F):** `Metrics`/`_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics`, the middleware's inner response wrapper — they run inside the measurements.
+6. **Stale "Stage 7 … a model" wording** remains in `app/mcp/models.py` (`ToolSpec`, `input_schema`, `ToolInvocation`) and `app/mcp/base.py` (module docstring, `ToolInputError`) — fix in the next stage that touches `app/mcp/`.

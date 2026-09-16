@@ -10,7 +10,8 @@ before implementation begins, write it down immediately — not at stage complet
 📦 **History lives in [`HANDOVER-archive.md`](HANDOVER-archive.md).** This file was trimmed
 from 2934 lines to current state on 2026-09-16. Everything removed — Stage 5–11 decision
 sections, resolved problems, superseded Next Actions, long-form architecture/files/testing —
-is preserved there verbatim. Design decisions are also committed in
+is preserved there verbatim. At Stage 13 close the Stage 12 decision table, the Stage 10/11 lists and
+the Stage 13 step log were moved there too. Design decisions are also committed in
 `docs/architecture-guide.html` §20. **Do not read the archive unless you need history.**
 
 ---
@@ -38,7 +39,8 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 | `ed46ae1` | Handover split into current state + archive |
 | `bc9f69d` | `style:` ruff format, 24 files (13.D) |
 | `e29bbae` | **Stage 13 — Security and Production Readiness** (37 files) |
-| *(next)* | Handover: Stage 13 hash and push result |
+| `3e3b524` | Handover: Stage 13 hashes and push result |
+| *(latest)* | Handover: session-close refresh, history moved to archive |
 
 ---
 
@@ -87,16 +89,7 @@ first by the main session: `docs/stage13-contract.md`.
 | 13.H | **`--no-access-log` added to the runtime `CMD`** — uvicorn's access log bypassed redaction; the middleware already logs each request — user, at approval (guide §20.57) |
 | 13.D | **`ruff format` the 24 files first**, before sub-agents run, so no agent edits an unformatted file. Proposed at commit time: a separate `style:` commit ahead of the Stage 13 commit (keeps guide §20.49's "one thing per commit") |
 
-### Stage 13 progress
-
-| Step | Status |
-|---|---|
-| 1. `ruff format` 24 files (13.D) | ✅ done — suite unchanged, 1141 passed / 4 skipped |
-| 2. Freeze contract (config fields + production rule, metric names, `security.py` / `rate_limit.py` no-op stubs, `main.py` wiring, `.env.example`, config tests) | ✅ done — 105 targeted tests pass, ruff + mypy clean |
-| 3. Six sub-agents U1–U6 dispatched in one batch (split: contract §3) | ✅ all six done. U3–U6 hit the usage limit mid-task and were resumed with context intact. Scratchpad writes were blocked, so findings came back in replies (summarised in guide §16) |
-| 4. Integration | ✅ ownership verified (every non-owned change is formatting only) · `metrics.py` docstring fixed · guide §16 review table, §20.54–§20.55, §21.8 · README Security section, `/ready`, config row, counts · contract gap filled (`/ready` 503 → `"status": "not_ready"`) |
-
-**STATUS: APPROVED 2026-09-16 and committed.**
+How it was built (contract, six sub-agents, interruption, integration): guide §21.8; step log in the archive.
 
 ### What Stage 13 built (all tested)
 
@@ -137,36 +130,15 @@ injection evaluation against a real model (paid — needs confirmation).
 Found at kickoff: the Stage 3 carried item "`retriever.py` logs the question text" is
 **already resolved** — Stage 10 changed it to a fingerprint and a length.
 
-### Stage 12 decisions (12.A–12.H) — full records in guide §20.43–§20.49
+### Still open from earlier stages (history moved to the archive)
 
-| # | Decision |
+| From | Item |
 |---|---|
-| 12.A | **Model and index baked into the image** at build time — container runs fully offline, starts fast, index always matches the docs in the image |
-| 12.B | **CPU-only PyTorch on `python:3.12-slim`**, same pinned version read from `requirements.txt` — the default Linux wheel drags in GBs of unused CUDA |
-| 12.C | **`compose.yaml` = one `app` service**, port 8000, provider `mock`, `./logs` bind-mounted to the host |
-| 12.D | **`HEALTHCHECK` on `GET /health` only**, via a Python one-liner (slim has no `curl`). **`GET /ready` moved to Stage 13** |
-| 12.E | **"Test through Docker" = both** — full pytest inside the image (`test` target) *and* a smoke test against the running container |
-| 12.F | **Runs as non-root user `app`**, owning the model cache, index and log directory |
-| 12.G | `BKA_HOST`/`BKA_PORT` are read by **no app code**; uvicorn's flags are what apply. The image sets them and `CMD` passes them through. App code unchanged — wiring them is a Stage 13 candidate |
-| 12.H | **The 24 files `ruff format` would rewrite are left unchanged**, carried to Stage 13. All pre-existing; none is a Stage 12 file. `ruff check` (lint) is clean — cosmetics only |
+| Stage 11 | **`off-006`/`off-007` answered instead of refused** — deferred (13.C) · `know-018` evidence lacks `TransactionSwitch` · **paid mode never run** (needs confirmation) · free-mode mentions checked against evidence, not wording · same author wrote corpus, rules and dataset |
+| Stage 10 | Metrics per-process, JSON not Prometheus → Stage 14 · untraced by deliberate exception (10.F): `Metrics`/`_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics`, middleware internals |
+| 12.G | `BKA_HOST`/`BKA_PORT` read by no app code (uvicorn flags only) |
 
-### Deliberately unfinished — Stage 11 (evaluation)
-
-1. **`off-006`, `off-007` answered instead of refused** — banking-adjacent questions clear the 0.25 floor. A real hallucination-resistance gap. Candidates: higher floor for refined searches, hybrid search, or a reranker. **Needs a user decision.**
-2. `know-018` evidence lacks `TransactionSwitch` — reported, not gated.
-3. **Paid mode never run.** `--paid` implemented and guarded; no real-model answer scored. Needs explicit confirmation at the time.
-4. Mentions in free mode are checked against retrieved evidence, not answer wording.
-5. Same author wrote corpus, routing rules and dataset — defensible, not independent.
-6. API behaviour covered by Stage 9/10 tests, not re-scored by the evaluation.
-
-### Deliberately unfinished — Stage 10 (observability)
-
-1. **`GET /metrics` is unauthenticated** (like `/health`); names and numbers only → **Stage 13**.
-2. Metrics are per-process and reset on restart; JSON, not Prometheus → Stage 14.
-3. `httpx` full-URL logging — **resolved (10.E)**, raised to `warning`.
-4. A 500 from an unhandled exception carries no `X-Request-ID` header (Starlette builds it outside the middleware); the `http.request_failed` log line does carry the id.
-5. **Untraced by deliberate exception (10.F):** `Metrics`/`_Histogram` methods, `elapsed_ms`, `get_metrics`, `reset_metrics`, the middleware's inner response wrapper — they run inside the measurements.
-6. **Stale "Stage 7 … a model" wording** remains in `app/mcp/models.py` (`ToolSpec`, `input_schema`, `ToolInvocation`) and `app/mcp/base.py` (module docstring, `ToolInputError`) — fix in the next stage that touches `app/mcp/`.
+Resolved in Stage 13: Stage 10 items 1 (`/metrics` auth), 4 (500 request id), 6 (stale MCP wording) · 12.D (`/ready`) · 12.H (formatting).
 
 ### Guide readability pass (plain English, `CLAUDE.md` §4)
 
@@ -180,7 +152,7 @@ guide edits are uncommitted.
 ## Architecture
 
 Full reference: **`docs/architecture-guide.html`** (§1 overview and diagram, §20 decision
-records 20.1–20.49). Subsystem summaries: `README.md`.
+records 20.1–20.57). Subsystem summaries: `README.md`.
 
 ```
 User → Web Interface (9) → API/FastAPI (1) → Agent/LLM (4,5,7)
@@ -188,7 +160,7 @@ User → Web Interface (9) → API/FastAPI (1) → Agent/LLM (4,5,7)
                                                  ├─▶ MCP tools          (6)
                                                  ├─▶ Conversation ctx   (8)
                                                  ├─▶ Observability      (10)
-                                                 └─▶ Guardrails         (13, planned)
+                                                 └─▶ Guardrails         (13) — rate limit → API key → input limits
                                               → Source-backed answer
 ```
 
@@ -198,7 +170,8 @@ Key properties, all load-bearing:
 - **Two LLM adapters (Anthropic, OpenAI), no vendor chosen**; default provider `mock`.
 - **The MCP registry is the source of truth**; `app/mcp/server.py` is a thin protocol wrapper over the same six tools.
 - **Documents and tool results are untrusted input** — fenced, escaped, declared untrusted in the system prompt, question placed last outside the fence.
-- **Containerised (Stage 12)** — model and index baked in, non-root, offline at runtime.
+- **Containerised (Stage 12)** — model and index baked in, non-root, offline at runtime, `--no-access-log`.
+- **Guarded (Stage 13)** — optional API key (required in production), per-process rate limit, `/ready`, input limits, log redaction. Full review: guide §16.
 
 ---
 
@@ -214,12 +187,13 @@ Repository layout: `README.md` → *Repository Structure*. Orientation only:
 | `app/agent/` | Decision paths, policy, the agent loop |
 | `app/mcp/` | Six synthetic tools, registry, MCP server |
 | `app/conversation/` | Sessions, follow-up rules |
-| `app/api/` | Routes (`/health`, `/metrics`, sessions), middleware |
+| `app/api/` | Routes (`/health`, `/ready`, `/metrics`, sessions), middleware, `security.py` (API key), `rate_limit.py` |
 | `app/eval/` | Dataset, metrics, runner, scorecard CLI |
 | `data/knowledge/` | 15 synthetic documents (in git) |
 | `data/eval/questions.yaml` | 49 evaluation cases (in git) |
 | `data/vectorstore/` | 115-chunk index — **git-ignored**, rebuilt by `python -m app.rag build` |
 | `Dockerfile` · `compose.yaml` · `.dockerignore` | Stage 12 containerisation |
+| `docs/stage13-contract.md` | The frozen contract Stage 13's sub-agents built against — reuse its shape for Stage 14 |
 
 ---
 
@@ -229,6 +203,7 @@ Repository layout: `README.md` → *Repository Structure*. Orientation only:
 |---|---|
 | `./.venv/Scripts/python.exe -m pytest` | **1363 passed, 4 skipped** (~90–150 s) |
 | `./.venv/Scripts/python.exe -m ruff check .` | All checks passed! |
+| `./.venv/Scripts/python.exe -m ruff format --check .` | 112 files already formatted |
 | `./.venv/Scripts/python.exe -m mypy` | no issues in 72 source files |
 | `./.venv/Scripts/python.exe -m app.eval` | Result: PASS (free, mock provider) |
 
@@ -322,7 +297,7 @@ multi-question `demo` against a paid provider without `--paid`.
 | **Style commit** | `bc9f69d` — `style: apply ruff format to the 24 files carried from Stage 12` — 24 files |
 | **Stage 13 commit** | `e29bbae` — `feat(stage-13): security and production readiness - API key, rate limit, readiness, input limits, log redaction` — 37 files |
 | **Stage 13 push** | ✅ `ed46ae1..e29bbae`; verified `origin/main == local HEAD` |
-| **`HEAD`** | handover commit on top of `e29bbae` |
+| **`HEAD`** | latest `docs(handover)` commit on top of `3e3b524` → `e29bbae` = `origin/main` |
 | **Working tree** | Clean |
 
 Earlier per-stage commit hashes: *Current Stage* table above, and
@@ -342,7 +317,7 @@ Architecture — when the user asks for it.** Do not start it unprompted.
 Read only the Stage 14 section of `docs/PROJECT_PLAN.md`. `CLAUDE.md` §2 marks Stage 14 ✅ for
 parallel sub-agents — only if the user asks at kickoff, contract frozen first.
 
-**Carried into Stage 14:** the *Stage 14 items recorded* list in *Current Work* · the three
+**Carried into Stage 14:** the *Stage 14 items recorded* list in *Current Work* · *Still open from earlier stages* · the three
 unanswered items (LLM timeout/retry bounds, 12.G `BKA_HOST`/`BKA_PORT`, 422 `input` stripping and
 citation-marker check) · Stage 11 `off-006`/`off-007` (13.C) and `--paid` (needs confirmation) ·
 small: `.gitattributes` does not cover `Dockerfile`, `.js`, `.css`, `.dockerignore`, `.env.example`
@@ -353,7 +328,7 @@ small: `.gitattributes` does not cover `Dockerfile`, `.js`, `.css`, `.dockerigno
 ```bash
 cd D:/PROJECTS/banking-knowledge-agent
 
-git log --oneline -3        # expect docs(handover) Stage 13, e29bbae, bc9f69d
+git log --oneline -5        # expect docs(handover) commits on top of e29bbae, bc9f69d
 git status --short          # expect clean
 
 ./.venv/Scripts/python.exe -m pytest        # expect 1363 passed, 4 skipped
@@ -375,7 +350,7 @@ git status --short          # expect clean
 ## Constraints carried forward (all stages)
 
 - Synthetic content only. No proprietary, confidential or copyrighted material.
-- Documents and tool results are data, not instructions — untrusted LLM input. Stage 13 reviews the whole surface.
+- Documents and tool results are data, not instructions — untrusted LLM input. Reviewed in Stage 13 (guide §16); the current question is escaped too.
 - No secrets in documents, tests, logs or this handover.
 - **Never spend money or call a paid external API without the user's explicit confirmation.**
 - Do not create a nested `banking-knowledge-agent/` directory.
