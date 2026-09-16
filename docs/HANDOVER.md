@@ -30,6 +30,25 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 | Tests | **1363 passed, 4 skipped** · ruff clean · format clean (112 files) · mypy strict clean (72 source files) · `app.eval` PASS |
 | Next | **Stage 14 — Production Architecture** when the user asks |
 
+### Stage 13 outcome
+
+| | |
+|---|---|
+| **13.G** | Docker `HEALTHCHECK` **stays on `/health`** (liveness); `/ready` is for orchestrators — guide §20.56 |
+| **13.H** | **`--no-access-log` added** to the runtime `CMD`, with a new test written first (`test_the_server_disables_uvicorn_access_log`, seen failing, then passing) — guide §20.57 |
+| **Commit split** | `bc9f69d` `style:` = all **24** files the formatter changed. **3 of them** (`app/llm/anthropic_provider.py`, `openai_provider.py`, `prompts.py`) also had real Stage 13 changes, so only their *formatting* went in the style commit (formatted `HEAD` version staged); their real changes are in `e29bbae` `feat(stage-13)` (37 files) |
+| **Checks passed** | **1363 passed, 4 skipped** · ruff clean · format clean · mypy clean (72 files) · `app.eval` PASS · **no secrets** (only the marked fake `test-only-not-a-secret`) · **`.env` not tracked** · no nested directory |
+| **Guide status** | Stage 13 marked complete: header pill, footer, §1 table (BUILT), §1 diagram (Guardrails ✅) |
+| **Push** | `ed46ae1..e29bbae`, then handover commits; `origin/main == local HEAD` verified |
+
+### Carried to Stage 14 — fix next stage
+
+1. **Upper limits on LLM timeout and retry settings** — `BKA_LLM_TIMEOUT_SECONDS` / `BKA_LLM_MAX_RETRIES` have no `le` bound (worst case ≈180 s+ holding a worker and the session lock)
+2. **`BKA_HOST` / `BKA_PORT` are not read by the app** (12.G) — only uvicorn's flags apply; wire them or drop them
+3. **Stop 422 errors echoing caller input** — FastAPI's default validation body includes `input`; add a `RequestValidationError` handler that strips `input`/`ctx`
+4. **Verify `[n]` / `[Tn]` citations match the passages sent** — inline markers in answer text are not checked against the evidence given to the model
+5. **Add `Dockerfile`, `*.js`, `*.css`, `.dockerignore`, `.env.example` to `.gitattributes`** (`text eol=lf`) — they are LF today, but git warns on every commit
+
 ### Commits, 2026-09-16 session
 
 | Commit | What |
@@ -108,13 +127,8 @@ Stage 10 item 4 (500 without request id) ✅ · Stage 10 item 6 (stale MCP wordi
 12.H formatting ✅ · Stage 10 item 1 / Stage 13 `/metrics` auth ✅ · Stage 3 question logging (already
 closed in Stage 10) ✅
 
-### Open — not answered at approval, left unchanged (carry forward)
-
-1. **Upper bounds on `BKA_LLM_TIMEOUT_SECONDS` / `BKA_LLM_MAX_RETRIES`?** Currently unbounded (worst case ≈180 s+ holding a worker)
-2. **12.G `BKA_HOST`/`BKA_PORT`** — still read by no app code (only uvicorn's flags)
-3. Optional, small: a `RequestValidationError` handler that strips `input` from 422 bodies; citation-marker check (`[n]` vs evidence sent)
-
 Answered at approval: HEALTHCHECK → 13.G · access log → 13.H · two commits → 13.D.
+Unanswered items → *Carried to Stage 14* (checkpoint, top of file).
 
 ### Stage 14 items recorded (guide §16)
 
@@ -317,11 +331,9 @@ Architecture — when the user asks for it.** Do not start it unprompted.
 Read only the Stage 14 section of `docs/PROJECT_PLAN.md`. `CLAUDE.md` §2 marks Stage 14 ✅ for
 parallel sub-agents — only if the user asks at kickoff, contract frozen first.
 
-**Carried into Stage 14:** the *Stage 14 items recorded* list in *Current Work* · *Still open from earlier stages* · the three
-unanswered items (LLM timeout/retry bounds, 12.G `BKA_HOST`/`BKA_PORT`, 422 `input` stripping and
-citation-marker check) · Stage 11 `off-006`/`off-007` (13.C) and `--paid` (needs confirmation) ·
-small: `.gitattributes` does not cover `Dockerfile`, `.js`, `.css`, `.dockerignore`, `.env.example`
-(files are LF today; git warns only).
+**Fix first in Stage 14:** the five items in **Carried to Stage 14** (checkpoint, top of file).
+**Also in scope:** the *Stage 14 items recorded* list and *Still open from earlier stages* in
+*Current Work* · Stage 11 `off-006`/`off-007` (13.C) · `--paid` (needs explicit confirmation).
 
 ### To resume — run this before trusting anything in this file
 
