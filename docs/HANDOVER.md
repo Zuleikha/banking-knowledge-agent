@@ -19,7 +19,7 @@ is preserved there verbatim. Design decisions are also committed in
 
 **Stage 13 — Security and Production Readiness — is APPROVED (2026-09-16) and committed**
 as two commits: `bc9f69d` (`style:` — the 24 formatting-only files, 13.D) and the
-`feat(stage-13)` commit on top (hash and push result: *Git* below). At approval the user chose:
+`feat(stage-13)` commit `e29bbae` on top — **pushed**, verified `origin/main == local HEAD`. At approval the user chose:
 keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), two commits.
 
 | | |
@@ -37,7 +37,8 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 | `e60335c` | Handover: Stage 12 hash and push result |
 | `ed46ae1` | Handover split into current state + archive |
 | `bc9f69d` | `style:` ruff format, 24 files (13.D) |
-| *see Git* | **Stage 13 — Security and Production Readiness** (37 files) |
+| `e29bbae` | **Stage 13 — Security and Production Readiness** (37 files) |
+| *(next)* | Handover: Stage 13 hash and push result |
 
 ---
 
@@ -53,7 +54,7 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 | Stage | Name | Status |
 |---|---|---|
-| 13 | Security and Production Readiness | ✅ 2026-09-16, `bc9f69d` + feat commit (see *Git*) |
+| 13 | Security and Production Readiness | ✅ 2026-09-16, `bc9f69d` + `e29bbae` |
 | 12 | Containerisation | ✅ 2026-09-16, `27739f2` |
 | 11 | Testing and Evaluation | ✅ 2026-09-15, `7b8c85e` |
 | 10 | Observability | ✅ 2026-09-15, `c627358` (+ `42788e8`) |
@@ -319,8 +320,9 @@ multi-question `demo` against a paid provider without `--paid`.
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
 | **Style commit** | `bc9f69d` — `style: apply ruff format to the 24 files carried from Stage 12` — 24 files |
-| **Stage 13 commit** | `feat(stage-13): security and production readiness - API key, rate limit, readiness, input limits, log redaction` — 37 files (hash recorded in the follow-up handover commit) |
-| **Stage 13 push** | recorded in the follow-up handover commit |
+| **Stage 13 commit** | `e29bbae` — `feat(stage-13): security and production readiness - API key, rate limit, readiness, input limits, log redaction` — 37 files |
+| **Stage 13 push** | ✅ `ed46ae1..e29bbae`; verified `origin/main == local HEAD` |
+| **`HEAD`** | handover commit on top of `e29bbae` |
 | **Working tree** | Clean |
 
 Earlier per-stage commit hashes: *Current Stage* table above, and
@@ -351,7 +353,7 @@ small: `.gitattributes` does not cover `Dockerfile`, `.js`, `.css`, `.dockerigno
 ```bash
 cd D:/PROJECTS/banking-knowledge-agent
 
-git log --oneline -3        # expect the Stage 13 handover commit, the feat(stage-13) commit, bc9f69d
+git log --oneline -3        # expect docs(handover) Stage 13, e29bbae, bc9f69d
 git status --short          # expect clean
 
 ./.venv/Scripts/python.exe -m pytest        # expect 1363 passed, 4 skipped
