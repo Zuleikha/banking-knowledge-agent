@@ -19,7 +19,7 @@ the Stage 13 step log were moved there too. Design decisions are also committed 
 ## ⏱️ SESSION CHECKPOINT — start here
 
 **Stage 14 — Production Architecture — is APPROVED (2026-09-17) and committed** as one
-`feat(stage-14)` commit (hash and push result in *Git*). Decisions 14.A–14.F below.
+`feat(stage-14)` commit `e38f967` — **pushed** `f109758..e38f967`, verified `origin/main == local HEAD`. Decisions 14.A–14.F below.
 
 **Previous: Stage 13 — Security and Production Readiness — APPROVED (2026-09-16) and committed**
 as two commits: `bc9f69d` (`style:` — the 24 formatting-only files, 13.D) and the
@@ -83,13 +83,13 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 |---|---|
 | **Stage number** | 14 |
 | **Stage name** | Production Architecture |
-| **Status** | ✅ **APPROVED 2026-09-17 — committed** (hash in *Git*) |
+| **Status** | ✅ **APPROVED 2026-09-17 — committed `e38f967`, pushed** |
 | **Last completed step** | Implemented and tested (incl. review fix 14.E): 1396 passed / 4 skipped, ruff, format and mypy clean, `app.eval` PASS, `python -m app` live-checked. Guide §17 rewritten, §20.58–§20.62 added. Re-verified after approval (same results, `git add -An` = 28 files, no secrets, `.env` untracked, no nested directory). Guide status markers set to Stage 14 (pill, footer, §1 table, §1 diagram) |
 | **Next step** | Stage 15 — Final Engineering Review — begins when the user asks |
 
 | Stage | Name | Status |
 |---|---|---|
-| 14 | Production Architecture | ✅ 2026-09-17 (hash in *Git*) |
+| 14 | Production Architecture | ✅ 2026-09-17, `e38f967` |
 | 13 | Security and Production Readiness | ✅ 2026-09-16, `bc9f69d` + `e29bbae` |
 | 12 | Containerisation | ✅ 2026-09-16, `27739f2` |
 | 11 | Testing and Evaluation | ✅ 2026-09-15, `7b8c85e` |
@@ -346,7 +346,7 @@ multi-question `demo` against a paid provider without `--paid`.
 |---|---|
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
-| **Style commit** | `bc9f69d` — `style: apply ruff format to the 24 files carried from Stage 12` — 24 files |
+| **Stage 14 commit** | `e38f967` — `feat(stage-14): production architecture - design doc, runtime citation check, safe 422s, python -m app` — 28 files | `bc9f69d` — `style: apply ruff format to the 24 files carried from Stage 12` — 24 files |
 | **Stage 13 commit** | `e29bbae` — `feat(stage-13): security and production readiness - API key, rate limit, readiness, input limits, log redaction` — 37 files |
 | **Stage 13 push** | ✅ `ed46ae1..e29bbae`; verified `origin/main == local HEAD` |
 | **`HEAD`** | latest `docs(handover)` commit on top of `3e3b524` → `e29bbae` = `origin/main` |
