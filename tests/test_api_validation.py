@@ -159,6 +159,46 @@ class TestSessionId:
         assert response.status_code == 404
 
 
+class TestValidationErrorBody:
+    """Stage 14 (carried from 13): a 422 names the field, never the value sent."""
+
+    MARKER = "ZEBRA-marker"
+
+    def test_a_bad_session_id_is_not_echoed(self, api):
+        response = api.post(
+            "/api/sessions/turns", json={"session_id": f"has space {self.MARKER}"}
+        )
+        assert response.status_code == 422
+        assert self.MARKER not in response.text
+
+    def test_a_wrong_type_is_not_echoed(self, api):
+        response = api.post(
+            "/api/sessions/ask",
+            json={"session_id": start(api), "question": {"x": self.MARKER}},
+        )
+        assert response.status_code == 422
+        assert self.MARKER not in response.text
+
+    def test_each_error_keeps_location_message_and_type_only(self, api):
+        response = api.post("/api/sessions/turns", json={"session_id": "has space"})
+        detail = response.json()["detail"]
+        assert detail, "a 422 must still say what was wrong"
+        for error in detail:
+            assert "input" not in error
+            assert "ctx" not in error
+            assert {"loc", "msg", "type"} <= error.keys()
+            assert error["loc"] == ["body", "session_id"]
+
+    def test_malformed_json_is_not_echoed(self, api):
+        response = api.post(
+            "/api/sessions/turns",
+            content=f'{{"session_id": "{self.MARKER}"',
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422
+        assert self.MARKER not in response.text
+
+
 class FailingEmbedService(RecordingService):
     """A service whose question cannot be embedded mid-turn."""
 

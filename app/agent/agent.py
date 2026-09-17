@@ -66,6 +66,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.core.observability import fingerprint
 from app.core.tracing import traced
+from app.llm.base import LLMInvalidCitationError
 from app.llm.service import LLMService
 from app.mcp.models import ToolResult
 from app.mcp.registry import ToolRegistry
@@ -207,7 +208,17 @@ class KnowledgeAgent:
             retrieval, passes = self._no_evidence(question), 0
             summary = RetrievalSummary.not_performed()
 
-        grounded = self._llm.answer(question, retrieval, tool_results, tuple(history))
+        try:
+            grounded = self._llm.answer(
+                question, retrieval, tool_results, tuple(history)
+            )
+        except LLMInvalidCitationError as exc:
+            # 14.E: the model did answer, so this is the route it answered on.
+            # The evaluation scores the withheld answer against it.
+            exc.route = conclude(
+                plan, searched=searched, passes=passes, refused=False
+            ).reason
+            raise
         evidence: DecisionOutcome = "insufficient" if grounded.refused else "sufficient"
         steps.append(record_step("evidence", evidence))
         decision = conclude(

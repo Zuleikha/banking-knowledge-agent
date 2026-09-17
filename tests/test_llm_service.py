@@ -6,10 +6,14 @@ mock provider -- offline, deterministic, free.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.core.config import Settings
+from app.core.observability import LLM_INVALID_CITATIONS_TOTAL, get_metrics
 from app.llm.base import (
+    LLMInvalidCitationError,
     LLMProviderError,
     LLMRateLimitError,
     LLMRefusalError,
@@ -260,6 +264,40 @@ class TestErrorHandling:
         service = LLMService(MockLLMProvider(responses=[empty]), llm_settings)
         with pytest.raises(LLMResponseError, match="empty"):
             service.answer(retrieval.query, retrieval)
+
+    @pytest.mark.parametrize("marker", ["[99]", "[0]", "[T1]"])
+    def test_a_citation_to_evidence_never_sent_is_withheld(
+        self, llm_settings, retrieval, marker
+    ):
+        """14.B: a citation to nothing is the mechanical sign of hallucination."""
+        invented = LLMResponse(
+            text=f"The limit is 500.00 {marker}.", provider_id="mock", model_id="m"
+        )
+        service = LLMService(MockLLMProvider(responses=[invented]), llm_settings)
+        with pytest.raises(LLMInvalidCitationError, match=re.escape(marker)) as info:
+            service.answer(retrieval.query, retrieval)
+        assert isinstance(info.value, LLMResponseError), "still a 502 at the API"
+        assert info.value.markers == (marker,)
+        assert info.value.route is None, "the agent sets the route, not the service"
+
+    def test_citations_to_supplied_passages_are_accepted(self, llm_settings, retrieval):
+        cited = LLMResponse(
+            text="The limit is 500.00 [1].", provider_id="mock", model_id="m"
+        )
+        service = LLMService(MockLLMProvider(responses=[cited]), llm_settings)
+        assert service.answer(retrieval.query, retrieval).text.endswith("[1].")
+
+    def test_a_withheld_citation_is_counted_as_a_failed_call(
+        self, llm_settings, retrieval
+    ):
+        metrics = get_metrics()
+        before = metrics.snapshot()["counters"].get(LLM_INVALID_CITATIONS_TOTAL, 0)
+        invented = LLMResponse(text="See [42].", provider_id="mock", model_id="m")
+        service = LLMService(MockLLMProvider(responses=[invented]), llm_settings)
+        with pytest.raises(LLMResponseError):
+            service.answer(retrieval.query, retrieval)
+        after = metrics.snapshot()["counters"][LLM_INVALID_CITATIONS_TOTAL]
+        assert after == before + 1
 
     def test_a_failure_produces_no_answer_object(self, llm_settings, retrieval):
         service = LLMService(

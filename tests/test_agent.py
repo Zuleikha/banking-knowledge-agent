@@ -19,6 +19,7 @@ from app.agent.policy import decide_retrieval
 from app.core.config import Settings
 from app.llm.base import (
     LLMConfigurationError,
+    LLMInvalidCitationError,
     LLMRateLimitError,
     LLMResponseError,
     LLMTimeoutError,
@@ -474,6 +475,24 @@ class TestErrorHandling:
         )
         with pytest.raises(LLMResponseError, match="truncated"):
             agent.ask("What configuration controls transaction limits?")
+
+    def test_a_withheld_answer_carries_the_route_taken(
+        self, retrieval: RetrievalResult, llm_settings: Settings
+    ):
+        # 14.E: the evaluation scores the withheld answer on the real route.
+        question = "What configuration controls transaction limits?"
+        agent = KnowledgeAgent(
+            RecordingRetriever(retrieval),  # type: ignore[arg-type]
+            LLMService(
+                MockLLMProvider(responses=["See [1].", "See [9]."]), llm_settings
+            ),
+            llm_settings,
+        )
+        answered = agent.ask(question)
+        with pytest.raises(LLMInvalidCitationError) as info:
+            agent.ask(question)
+        assert info.value.route == answered.decision.reason
+        assert info.value.markers == ("[9]",)
 
     def test_a_retrieval_failure_propagates(self, llm_settings: Settings):
         class BrokenRetriever:

@@ -18,17 +18,20 @@ the Stage 13 step log were moved there too. Design decisions are also committed 
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Stage 13 — Security and Production Readiness — is APPROVED (2026-09-16) and committed**
+**Stage 14 — Production Architecture — is APPROVED (2026-09-17) and committed** as one
+`feat(stage-14)` commit (hash and push result in *Git*). Decisions 14.A–14.F below.
+
+**Previous: Stage 13 — Security and Production Readiness — APPROVED (2026-09-16) and committed**
 as two commits: `bc9f69d` (`style:` — the 24 formatting-only files, 13.D) and the
 `feat(stage-13)` commit `e29bbae` on top — **pushed**, verified `origin/main == local HEAD`. At approval the user chose:
 keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), two commits.
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 13 — Security and Production Readiness** (2026-09-16) |
-| Current stage | **None in progress** — Stage 14 not started |
-| Tests | **1363 passed, 4 skipped** · ruff clean · format clean (112 files) · mypy strict clean (72 source files) · `app.eval` PASS |
-| Next | **Stage 14 — Production Architecture** when the user asks |
+| Last **approved** stage | **Stage 14 — Production Architecture** (2026-09-17) |
+| Current stage | **None in progress** — Stage 15 not started |
+| Tests | **1396 passed, 4 skipped** · ruff clean · format clean (117 files) · mypy strict clean (75 source files) · `app.eval` PASS |
+| Next | **Stage 15 — Final Engineering Review** when the user asks |
 
 ### Stage 13 outcome
 
@@ -41,7 +44,18 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 | **Guide status** | Stage 13 marked complete: header pill, footer, §1 table (BUILT), §1 diagram (Guardrails ✅) |
 | **Push** | `ed46ae1..e29bbae`, then handover commits; `origin/main == local HEAD` verified |
 
-### Carried to Stage 14 — fix next stage
+### Stage 14 decisions (2026-09-17)
+
+| # | Decision |
+|---|---|
+| 14.A | **Wire `BKA_HOST` / `BKA_PORT`** — add `python -m app`, which starts uvicorn with `settings.host` / `settings.port`, so the Settings validation really applies; Dockerfile `CMD` uses it — user, at kickoff (guide §20.58). Rejected: drop the fields; leave and document |
+| 14.B | **Withhold an answer that cites evidence never sent** — a `[n]` / `[Tn]` outside the passages/tool results supplied raises `LLMResponseError` (→ 502), counted and logged, like a truncated answer — user, at kickoff (guide §20.59). Rejected: flag and still answer; strip the markers |
+| 14.C | **LLM wait capped:** `BKA_LLM_TIMEOUT_SECONDS` ≤ 120, `BKA_LLM_MAX_RETRIES` ≤ 3 → worst case 480 s per call (guide §20.60). Default choice, not asked. Rejected: no bound; a total-deadline setting (Stage 14 design note instead) |
+| 14.D | **422 bodies keep an allow-list** — `type`, `loc`, `msg` only; `input`, `ctx`, `url` and any future field dropped. New `app/api/errors.py` (guide §20.61). Default choice, not asked. Rejected: deleting just `input`/`ctx` (a deny-list lets new fields through) |
+| 14.E | **Evaluation scores a withheld answer, does not crash** — new `LLMInvalidCitationError(LLMResponseError)` with `markers` + `route` (set by the agent); runner catches only it → `path` + failed `citations` check, run continues. Other errors still stop the run — user, at Stage 14 review (guide §20.62). Rejected: catch all `LLMResponseError`; guess the route in the runner |
+| 14.F | **No exemption for markers found in the user's question** — a `[9]` quoted from the question and repeated by the model stays withheld. User text is untrusted; an exemption would be exploitable like prompt injection. Documented as a known limitation (guide §20.59) — user, at approval |
+
+### Carried to Stage 14 — ✅ all five done in Stage 14 (see *Current Work*)
 
 1. **Upper limits on LLM timeout and retry settings** — `BKA_LLM_TIMEOUT_SECONDS` / `BKA_LLM_MAX_RETRIES` have no `le` bound (worst case ≈180 s+ holding a worker and the session lock)
 2. **`BKA_HOST` / `BKA_PORT` are not read by the app** (12.G) — only uvicorn's flags apply; wire them or drop them
@@ -67,14 +81,15 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 | | |
 |---|---|
-| **Stage number** | 13 |
-| **Stage name** | Security and Production Readiness |
-| **Status** | ✅ **APPROVED 2026-09-16 — committed** |
-| **Last completed step** | Re-verified after approval: 1363 passed / 4 skipped (one new container test for 13.H), ruff, format and mypy clean, no secrets (only the marked fake `test-only-not-a-secret`), no nested directory, `.env` untracked, `git add -An` = 37 files. Guide status markers set to Stage 13 (pill, footer, §1 table, §1 diagram Guardrails ✅) |
-| **Next step** | Stage 14 — Production Architecture — begins when the user asks |
+| **Stage number** | 14 |
+| **Stage name** | Production Architecture |
+| **Status** | ✅ **APPROVED 2026-09-17 — committed** (hash in *Git*) |
+| **Last completed step** | Implemented and tested (incl. review fix 14.E): 1396 passed / 4 skipped, ruff, format and mypy clean, `app.eval` PASS, `python -m app` live-checked. Guide §17 rewritten, §20.58–§20.62 added. Re-verified after approval (same results, `git add -An` = 28 files, no secrets, `.env` untracked, no nested directory). Guide status markers set to Stage 14 (pill, footer, §1 table, §1 diagram) |
+| **Next step** | Stage 15 — Final Engineering Review — begins when the user asks |
 
 | Stage | Name | Status |
 |---|---|---|
+| 14 | Production Architecture | ✅ 2026-09-17 (hash in *Git*) |
 | 13 | Security and Production Readiness | ✅ 2026-09-16, `bc9f69d` + `e29bbae` |
 | 12 | Containerisation | ✅ 2026-09-16, `27739f2` |
 | 11 | Testing and Evaluation | ✅ 2026-09-15, `7b8c85e` |
@@ -89,7 +104,30 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 ## Current Work
 
-**Nothing in progress.** Stage 13 closed; the record below stays until Stage 14 replaces it.
+### Stage 14 — what was built (2026-09-17, all tested)
+
+| Item | Result |
+|---|---|
+| Production architecture doc | Guide **§17 rewritten** as *Production architecture*: local vs production diagrams + table, scaling, vector DB, LLM abstraction, MCP, service boundaries, deployment, observability, failure modes, data privacy, HA, "deliberately not built". README gets a short *Production Architecture* section |
+| Carried 1 — LLM caps (14.C) | `LLM_TIMEOUT_MAX_SECONDS=120`, `LLM_MAX_RETRIES_MAX=3` in `app/core/config.py` · 5 tests |
+| Carried 2 — host/port (14.A) | New `app/__main__.py` (`python -m app [--reload] [--no-access-log]`); Dockerfile `CMD ["python", "-m", "app", "--no-access-log"]` · `tests/test_server_entrypoint.py` (7) · container test updated to the new spec · **live-checked**: started on `BKA_PORT=8002`, `/health` 200 |
+| Carried 3 — 422 echo (14.D) | New `app/api/errors.py` allow-list handler, registered in `create_app` · 4 tests · **live-checked**: 422 body has no `input` |
+| Carried 4 — citations (14.B) | New `app/llm/citations.py` (moved from `app/eval/metrics.py`, shared); `LLMService._check_citations` → `LLMResponseError`; metric `llm_invalid_citations_total` · 6 tests |
+| Carried 5 — `.gitattributes` | `*.js`, `*.css`, `Dockerfile`, `.dockerignore`, `.env.example`, `.gitattributes` → LF · `tests/test_repository.py` (10) |
+
+**Tests changed because the spec changed — flag for review:**
+- `test_container_config.py::test_the_server_binds_all_interfaces_from_settings` — now asserts `python -m app` (14.A) instead of shell `$BKA_HOST`.
+- `test_eval_metrics.py::test_an_invented_citation_is_caught` and `test_eval_runner.py::test_an_invented_citation_fails_even_with_zero_floors` — assertions unchanged; they now use `UnguardedLLMService` (new, `tests/conftest.py`) because 14.B stops invented citations inside the service. New test pins that the real service stops the eval run.
+
+**Consequence noted (guide §20.59):** a user question containing `[9]` that a model repeats is also withheld — accepted, fails safe. Exempting markers found in the question was **rejected** (14.F) — known limitation, documented.
+
+**Review fix (14.E, 2026-09-17):** eval now scores a withheld answer as a failed `citations` check instead of stopping. Files: `app/llm/base.py`, `app/llm/__init__.py`, `app/llm/service.py`, `app/agent/agent.py`, `app/eval/metrics.py`, `app/eval/runner.py`; tests in `test_eval_runner.py` (3 replace the "stops the run" test), `test_agent.py` (1), `test_llm_service.py` (assertions extended).
+
+**Other session work (not stage work):** a PR for `Zuleikha/production-llm-platform` branch `chore/security-dep-bumps` (anthropic SDK 1.6.0) **failed** — `gh` token lacks `createPullRequest` permission on that repo. Not retried.
+
+---
+
+**Stage 13 record (previous stage) follows.**
 
 **Stage 13 — Security and Production Readiness (2026-09-16).**
 Built with parallel sub-agents, at the user's request at kickoff. Shared contract frozen
@@ -325,15 +363,13 @@ credentials. Never commit or push an unapproved stage.
 
 ## Next Action
 
-**Stage 13 is approved and committed. The next action is Stage 14 — Production
-Architecture — when the user asks for it.** Do not start it unprompted.
+**Stage 14 is approved and committed. The next action is Stage 15 — Final Engineering
+Review — when the user asks for it.** Do not start it unprompted. `CLAUDE.md` §2: Stage 15
+is a single build, no sub-agents. Read only the Stage 15 section of `docs/PROJECT_PLAN.md`.
 
-Read only the Stage 14 section of `docs/PROJECT_PLAN.md`. `CLAUDE.md` §2 marks Stage 14 ✅ for
-parallel sub-agents — only if the user asks at kickoff, contract frozen first.
-
-**Fix first in Stage 14:** the five items in **Carried to Stage 14** (checkpoint, top of file).
-**Also in scope:** the *Stage 14 items recorded* list and *Still open from earlier stages* in
-*Current Work* · Stage 11 `off-006`/`off-007` (13.C) · `--paid` (needs explicit confirmation).
+The *Stage 14 items recorded* list and Stage 11/13 open items are now **documented as design**
+in guide §17, not built — per the plan. They remain open for Stage 15 to judge.
+`--paid` still needs explicit confirmation.
 
 ### To resume — run this before trusting anything in this file
 

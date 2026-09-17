@@ -111,6 +111,29 @@ class LLMResponseError(LLMError):
     """
 
 
+class LLMInvalidCitationError(LLMResponseError):
+    """The answer cites a passage or tool result that was never sent (14.B).
+
+    A :class:`LLMResponseError`, so every caller that withholds an unusable
+    answer -- the API's 502 included -- handles it unchanged. Its own type exists
+    for the one caller that must tell it apart: the evaluation scores it as a
+    failed citation check instead of stopping the run (14.E).
+
+    Attributes:
+        markers: The invalid markers, e.g. ``("[9]",)``. Safe to log: a marker
+            carries no content.
+        route: The agent's route for the question, set by the agent before it
+            re-raises. ``None`` when raised outside an agent. A plain string
+            because this layer does not know the agent's types.
+    """
+
+    def __init__(self, message: str, markers: tuple[str, ...]) -> None:
+        """Record the markers alongside the message."""
+        super().__init__(message)
+        self.markers = markers
+        self.route: str | None = None
+
+
 class LLMRefusalError(LLMError):
     """The model declined to answer.
 

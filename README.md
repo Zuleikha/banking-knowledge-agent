@@ -16,9 +16,9 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 13 — Security and Production Readiness** complete · Stage 14 next |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) · API key, rate limit, readiness probe, input limits, log redaction |
-| **Next** | Production architecture (14) · final review (15) |
+| **Current stage** | **Stage 14 — Production Architecture** complete · Stage 15 next |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) · API key, rate limit, readiness probe, input limits, log redaction · production architecture documented; runtime citation check, safe 422 bodies, `python -m app` |
+| **Next** | Final engineering review (15) |
 
 Stages 6 and 13 were built with parallel sub-agents against a shared contract frozen first — see the architecture guide §21.
 
@@ -100,7 +100,7 @@ cp .env.example .env                               # optional — every setting 
 ## Run
 
 ```bash
-.venv/Scripts/python.exe -m uvicorn app.main:app --reload
+.venv/Scripts/python.exe -m app --reload                 # web app on BKA_HOST:BKA_PORT (default 127.0.0.1:8000)
 
 .venv/Scripts/python.exe -m app.agent demo               # decision paths, end to end
 .venv/Scripts/python.exe -m app.agent conversation-demo  # follow-up rules, end to end
@@ -128,7 +128,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1367 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
+**1400 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
 
 ---
 
@@ -155,8 +155,8 @@ passages + tool results ──▶ budget ──▶ fenced prompt (v1.2.0) ──
 - Switching vendor is one setting: `BKA_LLM_PROVIDER=mock | anthropic | openai`.
 - Spending needs two deliberate acts — a paid provider **and** `BKA_LLM_API_KEY`; `demo` refuses without `--paid`.
 - Retrieved text, tool results and questions are fenced or escaped as untrusted data (prompt-injection defence).
-- No evidence → refusal with **no model call**; truncated, refused or empty generations raise.
-- Seven typed errors, each with a `retryable` flag.
+- No evidence → refusal with **no model call**; truncated, refused or empty generations raise, and so does an answer citing `[n]`/`[Tn]` that was never sent.
+- Eight typed errors, each with a `retryable` flag.
 
 ## Knowledge Agent
 
@@ -245,7 +245,7 @@ data/eval/questions.yaml ──▶ app/eval runner ──▶ retrieval ranks + a
 - 49 reviewed questions across knowledge, paraphrase, tool, hybrid, failure, off-topic and injection; each names its expected route, documents, tools and facts.
 - Retrieval: recall@5 and MRR. Answers: route, tools, documents, refusal, honest refusal, citation validity, required facts.
 - Measured (real embedding model, mock provider): recall@5 **1.000** · MRR **0.927** · path accuracy **0.959**.
-- Soft floors in the dataset file (0.90 · 0.85 · 0.90) gate the `integration` tests; invented citations and dishonest refusals gate at 100%.
+- Soft floors in the dataset file (0.90 · 0.85 · 0.90) gate the `integration` tests; invented citations and dishonest refusals gate at 100%. A withheld answer is scored as a failed citation check; the run continues.
 - Free by default, whatever `BKA_LLM_PROVIDER` says; `--paid` runs the real model only with a paid provider **and** a key set.
 
 ## Docker
@@ -261,7 +261,7 @@ docker compose up ─▶ app (user: app, offline) ─▶ :8000 ◀── HEALTHC
 - **Small where it counts:** CPU-only PyTorch at the pinned version — no CUDA libraries.
 - **Non-root:** runs as `app`; owns only the model cache, index and `logs/`.
 - **Free by default:** Compose sets `BKA_LLM_PROVIDER=mock`; no API key appears in any container file.
-- **Probes:** `HEALTHCHECK` uses `/health` (liveness); `/ready` is there for orchestrators. uvicorn runs with `--no-access-log`.
+- **Probes:** `HEALTHCHECK` uses `/health` (liveness); `/ready` is there for orchestrators. The image runs `python -m app --no-access-log`.
 - **Two build targets:** `runtime` (what Compose runs) and `test` (runtime + dev tools + the full suite).
 
 ```bash
@@ -281,11 +281,28 @@ request ──▶ rate limit (429) ──▶ API key (401) ──▶ input limit
 
 - **API key (optional):** `BKA_API_KEY` protects `/api/*` and `/metrics`; constant-time compare; **production refuses to start without it**. `/health`, `/ready` and the page stay open.
 - **Rate limit:** `BKA_RATE_LIMIT_PER_MINUTE` per client, in process; `429` + `Retry-After`; runs before the key check.
-- **Input limits:** questions ≤ `BKA_QUESTION_MAX_CHARS`, session ids ≤ 64 URL-safe characters, tool arguments ≤ 256 characters.
+- **Input limits:** questions ≤ `BKA_QUESTION_MAX_CHARS`, session ids ≤ 64 URL-safe characters, tool arguments ≤ 256 characters. A `422` names the field, never the value sent.
 - **Prompt injection:** documents, tool results, earlier questions **and the current question** are escaped against fence forgery in any case or spacing.
 - **Logs:** fields named like secrets and any `SecretStr` value are written as `[REDACTED]`; application logs hold no questions, answers, keys or client addresses in clear (uvicorn's own access log, which prints client IP and path, is off in the container via `--no-access-log`).
 - **Failures:** provider and tool errors reach callers as fixed text; every 500 carries `X-Request-ID`.
-- **Not built (Stage 14):** per-user identity, TLS, shared rate-limit store, secrets manager, hashed lock file, vulnerability scanning. Full review: architecture guide §16.
+- **Not built (design only, see Production Architecture):** per-user identity, TLS, shared rate-limit store, secrets manager, hashed lock file, vulnerability scanning. Full review: architecture guide §16.
+
+## Production Architecture
+
+```
+            LOCAL (built)                              PRODUCTION (design only)
+Client ─▶ one uvicorn process              Client ─▶ load balancer + TLS + sign-in
+           API → Agent                                API × N replicas → Agent
+             ├─ RAG  NumPy index (in image)             ├─ RAG  managed vector DB ◀─ ingestion job
+             ├─ MCP  6 synthetic tools                  ├─ MCP  same contracts → real systems
+             └─ LLM  mock (paid adapters exist)         └─ LLM  gateway: deadline, breaker, fallback
+           sessions + limits in memory                sessions + limits in Redis
+```
+
+- **Only the local column exists.** The production column is a documented design; no infrastructure was built for it.
+- **First change for scale:** move sessions and rate-limit counters to a shared store — every other step depends on it.
+- **Each production box is one new class** behind an existing protocol (`VectorStore`, `SessionStore`, `LLMProvider`, `Tool`).
+- Covered: scaling, vector DB, LLM abstraction, MCP, service boundaries, deployment, observability, failure modes, data privacy, high availability — architecture guide §17.
 
 ---
 
@@ -293,7 +310,7 @@ request ──▶ rate limit (429) ──▶ API key (401) ──▶ input limit
 
 All settings are optional `BKA_*` environment variables with safe defaults. Full descriptions and
 defaults: [`.env.example`](.env.example). Secrets come from the environment only and are never logged.
-In the container, `BKA_HOST`/`BKA_PORT` are passed to uvicorn by the image; `BKA_HOST_PORT` (Compose
+`python -m app` applies `BKA_HOST`/`BKA_PORT` (locally and in the image); `BKA_HOST_PORT` (Compose
 only, default `8000`) picks the port on your machine.
 
 | Area | Variables |
@@ -315,12 +332,12 @@ only, default `8000`) picks the port on your machine.
 banking-knowledge-agent/
 ├── app/
 │   ├── agent/           Knowledge agent: decisions, tool selection, answering
-│   ├── api/             FastAPI dependencies, middleware, API key, rate limit, routes (health/ready, metrics, conversation)
+│   ├── __main__.py      `python -m app` — starts the web app from the settings
 │   ├── conversation/    Sessions, follow-up rules, conversation service
 │   ├── core/            Settings, logging, tracing, observability (request ids, metrics)
 │   ├── eval/            Evaluation: dataset, metrics, runner, scorecard CLI
 │   ├── knowledge/       Document models and the strict loader
-│   ├── llm/             Provider protocol, prompts, mock and vendor adapters
+│   ├── llm/             Provider protocol, prompts, citation check, mock and vendor adapters
 │   ├── mcp/             Tool contract, registry, MCP server, six tools
 │   ├── rag/             Chunking, embeddings, vector store, retrieval
 │   └── web/static/      The no-build web page
@@ -355,7 +372,7 @@ banking-knowledge-agent/
 - **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1367 tests with no paid call, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
+- **Quality gates** — 1400 tests with no paid call, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---

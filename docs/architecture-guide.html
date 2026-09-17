@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 13 - Security &amp; Production Readiness &nbsp;·&nbsp; Last updated 2026-09-16</div>
+    <div class="pill">Stage 14 - Production Architecture &nbsp;·&nbsp; Last updated 2026-09-17</div>
   </div>
 </header>
 
@@ -86,7 +86,7 @@
     <li><a href="#testing">Testing</a></li>
     <li><a href="#docker">Docker</a></li>
     <li><a href="#security">Security</a></li>
-    <li><a href="#deployment">Deployment</a></li>
+    <li><a href="#deployment">Production architecture</a></li>
     <li><a href="#extension">Extension points</a></li>
     <li><a href="#decisions">Design decisions</a></li>
     <li><a href="#records">Decision records (per stage)</a></li>
@@ -148,7 +148,9 @@ defined interface, so one piece can be changed or tested without touching the re
             └──▶ Guardrails                 Stage 13 ✅
             │
             ▼
-   Source-backed Answer</pre>
+   Source-backed Answer
+
+   Production architecture (design, §17)  Stage 14 ✅</pre>
 
 <div class="note">
   <strong>Reading the diagram.</strong> A question travels top to bottom.
@@ -191,7 +193,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>11</td><td>Testing &amp; evaluation framework - 49-question dataset, recall@5 / MRR / route accuracy, scorecard CLI</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>12</td><td>Containerisation - Dockerfile, Compose, baked model + index, health check, non-root user</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>13</td><td>Security &amp; production readiness - API key, rate limit, readiness probe, input limits, injection hardening, log redaction</td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>14</td><td>Production architecture</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>14</td><td>Production architecture - local vs production design (§17), runtime citation check, safe 422 bodies, <code>python -m app</code></td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>15</td><td>Final engineering review</td><td><span class="tag t-todo">PLANNED</span></td></tr>
 </table>
 
@@ -2466,24 +2468,263 @@ omit. A test caught that; see decision record 6.4 and section 21.</p>
 
 <!-- ================================================================== -->
 <section id="deployment">
-<h2>17. Deployment</h2>
+<h2>17. Production architecture</h2>
+<span class="tag t-done">BUILT</span> <span class="tag t-todo">PLANNED</span>
 
-<p>How the system runs today, side by side with how a production deployment would look. Only
-the left column is built; the right column is a design, written down now so that the move later
-is planned rather than improvised.</p>
+<p><strong>What this section is.</strong> A review of the whole system as if it were going to production
+(Stage 14). It shows two things side by side: <strong>local development</strong> - what is built and runs
+today - and <strong>production architecture</strong> - a design, written down so that a later move is
+planned rather than improvised. <strong>Only the local column is built.</strong> The plan rules out
+infrastructure the portfolio project does not need, so nothing in the production column exists as code.</p>
+
+<p><strong>Why it exists.</strong> Stages 1-13 built a working, guarded, containerised service. Every one
+of them left notes of the form "a real deployment would need...". Without one place that collects them,
+those notes stay scattered across §10, §13, §16 and §20, and nobody can see which ones depend on each
+other - for example, running several copies of the app is impossible until sessions leave process memory.
+It connects back to Stage 13 (§16, which listed the security gaps) and forward to Stage 15, the final
+review, which judges the system against this picture.</p>
+
+<h3>17.1 The two architectures</h3>
+
+<p><strong>Local development - built.</strong> One process does everything. Knowledge, index, tools and
+sessions all live inside it or beside it on disk.</p>
+
+<pre class="plain">Client  (browser page at /, or curl / tests)
+  │  HTTP, optional X-API-Key
+  ▼
+API       FastAPI in ONE uvicorn process      python -m app  (or Docker: same command)
+  │         rate limit → API key → input limits → request id / metrics / logs
+  ▼
+Agent     KnowledgeAgent + ConversationService  (sessions in process memory)
+  │
+  ├──── RAG   Retriever → InMemoryVectorStore   (NumPy matrix, data/vectorstore/ on disk)
+  │             embeddings computed LOCALLY     (all-MiniLM-L6-v2, no network)
+  │
+  ├──── MCP   ToolRegistry, in-process          (6 synthetic tools; stdio server for MCP clients)
+  │
+  └──── LLM   LLMService → provider             (mock by default; Anthropic / OpenAI adapters exist)
+  │
+  ▼
+Knowledge: data/knowledge/*.md (15 docs)   Tools: synthetic data   External: none unless a paid provider is set</pre>
+
+<p><strong>Production architecture - design only.</strong> The same layers, split so each can scale and fail
+on its own. Boxes marked <code>(new)</code> do not exist today.</p>
+
+<pre class="plain">Client  (browser, internal support tools)
+  │  HTTPS
+  ▼
+Edge                 load balancer + TLS + request size limit + WAF          (new)
+  │                  identity provider: OAuth2 / OIDC sign-in                 (new)
+  ▼
+API  × N replicas    same FastAPI app, stateless, behind the load balancer
+  │                  readiness /ready routes traffic; liveness /health restarts
+  ▼
+Agent (inside API)   KnowledgeAgent + ConversationService
+  │                  sessions → shared store (Redis)                          (new)
+  │                  rate-limit counters → same shared store                  (new)
+  │
+  ├──── RAG   Retriever → managed vector DB  (pgvector / Qdrant / OpenSearch)  (new)
+  │             index built by a separate INGESTION JOB, not at request time   (new)
+  │
+  ├──── MCP   tool registry in-process, or MCP servers over HTTP with auth    (new)
+  │             each tool → a real banking system, read-only credentials      (new)
+  │
+  └──── LLM   LLMService → provider behind a gateway: deadline, circuit
+  │             breaker, fallback provider, spend limits                       (new)
+  ▼
+Knowledge: document store + ingestion   Tools: core banking, switch, config service   External: LLM vendor
+Around everything: log aggregator · metrics (Prometheus) · traces · secrets manager   (new)</pre>
+
+<div class="note">
+  <strong>Reading the diagrams.</strong> The shape does not change between them - Client, API, Agent, and
+  the three branches RAG, MCP and LLM. What changes is <em>where each piece lives</em>. That is the point of
+  the seams built in earlier stages: <code>VectorStore</code>, <code>SessionStore</code>,
+  <code>LLMProvider</code> and <code>Tool</code> are <em>protocols</em> (a list of methods any class can
+  provide), so each production box is a new class behind an existing protocol, not a rewrite (§18).
+</div>
 
 <table>
-  <tr><th style="width:180px"></th><th>Local development</th><th>Production (design only)</th></tr>
-  <tr><td>Runtime</td><td>uvicorn with <code>--reload</code> (restarts when code changes)</td><td>Container behind a reverse proxy - a front server that receives all traffic and forwards it, handling HTTPS and limits</td></tr>
-  <tr><td>Logs</td><td>Console + <code>logs/*.log</code></td><td>JSON sent to a log aggregator - a central service that collects and searches the logs of every running copy</td></tr>
-  <tr><td>Vector store</td><td>Embedded, on disk</td><td>A managed (hosted) vector database, once the index outgrows one process (§10)</td></tr>
-  <tr><td>Secrets</td><td><code>.env</code> (git-ignored)</td><td>A secret manager - a secure vault service - injecting values as environment variables, so the app code does not change</td></tr>
-  <tr><td>Scale</td><td>Single process</td><td>Horizontal - several copies of the app behind the proxy. This first needs sessions moved to a shared store: today they live in one process's memory (§20.26), so a follow-up routed to a different copy would get 404</td></tr>
+  <tr><th style="width:150px">Concern</th><th>Local development (built)</th><th>Production (design only)</th></tr>
+  <tr><td>Start command</td><td><code>python -m app</code>, host and port from <code>BKA_HOST</code> / <code>BKA_PORT</code> (§20.58)</td><td>The same container image, several copies, started by an orchestrator such as Kubernetes or a managed container service</td></tr>
+  <tr><td>Traffic</td><td>Direct to uvicorn on one port</td><td>A load balancer (spreads requests across copies) that also ends HTTPS and caps request size</td></tr>
+  <tr><td>Identity</td><td>One shared optional API key; required when <code>BKA_ENVIRONMENT=production</code> (§20.50)</td><td>Per-user sign-in through an identity provider; each session owned by one user</td></tr>
+  <tr><td>Sessions</td><td>In process memory, bounded, expire after 30 minutes (§20.26)</td><td>A shared store (Redis), so any copy can answer a follow-up</td></tr>
+  <tr><td>Rate limit</td><td>Per process, per client address (§20.51)</td><td>Counters in the shared store; client address read from the proxy's trusted header</td></tr>
+  <tr><td>Index</td><td>115 chunks in a NumPy file, rebuilt from the documents</td><td>A managed vector database, filled by a separate ingestion job</td></tr>
+  <tr><td>Embeddings</td><td>Local model, baked into the image</td><td>The same local model, or a hosted embedding API if volume demands it</td></tr>
+  <tr><td>Tools</td><td>Six synthetic tools, in-process</td><td>The same six contracts, backed by real systems</td></tr>
+  <tr><td>LLM</td><td><code>mock</code> by default; no live call ever made</td><td>A chosen vendor behind a gateway with deadlines, fallback and spend limits</td></tr>
+  <tr><td>Logs and metrics</td><td>Console and <code>logs/*.log</code>; JSON <code>/metrics</code> per process</td><td>Log aggregator; Prometheus metrics; distributed traces</td></tr>
+  <tr><td>Secrets</td><td>Environment variables, <code>.env</code> git-ignored</td><td>A secrets manager injecting environment variables, with rotation - app code unchanged</td></tr>
 </table>
 
-<p>Stage 14 documents the production architecture in full and keeps the boundary between
-<strong>local development</strong> and <strong>production design</strong> explicit. No
-infrastructure is built that the portfolio project does not need.</p>
+<h3>17.2 Scaling considerations</h3>
+<p><em>Scaling</em> means handling more requests or more data. <em>Horizontal</em> scaling adds more copies
+(replicas) of the app; <em>vertical</em> scaling gives one copy a bigger machine.</p>
+<ul>
+  <li><strong>Where the time goes.</strong> Per question: embedding the question locally (milliseconds on a
+      CPU), a vector search (microseconds at 115 chunks, §10), tool calls (in-process today), then the LLM
+      call - by far the slowest step with a real model, typically seconds.</li>
+  <li><strong>What blocks horizontal scaling today.</strong> Three things live in process memory: sessions,
+      rate-limit counters and metrics. With two copies, a follow-up sent to the other copy gets 404, a
+      client gets double the rate limit, and each copy reports only its own numbers. Moving sessions and
+      counters to a shared store is the <em>first</em> production change; everything else depends on it.</li>
+  <li><strong>What does not block it.</strong> The index and the embedding model are read-only and baked
+      into the image, so every copy is identical. The app has no other shared writable state.</li>
+  <li><strong>Workers.</strong> A request holds a worker thread for the whole LLM wait. The wait is capped
+      at 480 s worst case (§20.60); in production a single request deadline, shorter than that, is the
+      better control.</li>
+  <li><strong>Memory.</strong> Each copy loads the embedding model (PyTorch, CPU build), so copies are
+      sized for that, not for the tiny index.</li>
+</ul>
+
+<h3>17.3 Vector database scaling</h3>
+<p>A <em>vector database</em> stores embeddings and finds the nearest ones to a question (§10).</p>
+<ul>
+  <li><strong>Today:</strong> brute force - every chunk is scored - which is exact and fast at this size.</li>
+  <li><strong>When to move:</strong> around 100,000-1,000,000 chunks, when the index no longer fits
+      comfortably in each copy's memory, or when documents change often enough that rebuilding the image
+      per change is too slow (§10).</li>
+  <li><strong>How:</strong> one new class implementing <code>VectorStore</code> (<code>add</code>,
+      <code>search</code>, <code>count</code>, <code>clear</code>). Candidates: <em>pgvector</em>
+      (PostgreSQL extension - fits if the bank already runs Postgres), <em>Qdrant</em> or
+      <em>OpenSearch</em>. They use an <em>approximate</em> index (HNSW), which checks only part of the
+      data and can occasionally miss the true best match - so the evaluation (§14) must be re-run to
+      measure recall after the switch.</li>
+  <li><strong>Ingestion becomes its own job.</strong> Today the index is built at image build time. In
+      production a separate job reads the document store, chunks, embeds and writes to the database. The
+      manifest guards (model id, dimension, corpus fingerprint, §10) move with it: the job writes them;
+      <code>/ready</code> already checks the model id and the index shape.</li>
+  <li><strong>Metadata filters</strong> (component, version) must be pushed into the database's own filter,
+      not applied afterwards, so filtered-out chunks cannot take result slots - the same rule as today.</li>
+</ul>
+
+<h3>17.4 LLM provider abstraction</h3>
+<ul>
+  <li><strong>Built:</strong> one <code>LLMProvider</code> protocol; <code>mock</code>, Anthropic and OpenAI
+      classes behind it; only the two adapter modules may import a vendor SDK (a test enforces it). Every
+      vendor error is translated into the app's own error types, which say whether a retry could help.</li>
+  <li><strong>Built:</strong> answers are withheld when truncated, refused, ended in error, empty, or
+      citing evidence never sent (§20.59). Timeouts and retries are bounded (§20.60).</li>
+  <li><strong>Production additions (design):</strong>
+    <ul>
+      <li>A <em>request deadline</em> - one time budget for the whole question, passed down to each call.</li>
+      <li>A <em>circuit breaker</em> - after repeated failures, stop calling the provider for a while and
+          fail fast, instead of making every user wait for a timeout.</li>
+      <li>A <em>fallback provider</em> - the second adapter already exists, so failover is a factory
+          change. Both must pass the evaluation first; answers differ between models.</li>
+      <li><em>Spend limits</em> and token accounting per user - the token counters exist per process today.</li>
+      <li>A <em>real-model evaluation</em> before launch (<code>python -m app.eval --paid</code>) - never run,
+          because it costs money and needs explicit approval.</li>
+    </ul></li>
+</ul>
+
+<h3>17.5 MCP architecture</h3>
+<p><em>MCP</em> (Model Context Protocol) is a standard way for an AI application to call tools (§8).</p>
+<ul>
+  <li><strong>Built:</strong> the <code>ToolRegistry</code> is the source of truth. The agent calls it
+      in-process; <code>app/mcp/server.py</code> wraps the same six tools for external MCP clients over
+      <em>stdio</em> (standard input/output - the client starts the server as a child process), so no
+      network port and no authentication are involved.</li>
+  <li><strong>Production (design):</strong> keep the agent's in-process path - it is the fastest and needs no
+      network security. If other teams need the tools, serve them over MCP's HTTP transport, which then
+      needs authentication, TLS and per-caller limits (§16). Only <code>serve()</code> changes (§18).</li>
+  <li><strong>Real systems:</strong> each tool module gets its own endpoint settings and read-only
+      credentials. <code>ToolUnavailableError</code> (retryable) already exists for "the system could not
+      be reached", and the fixed synthetic timestamp is replaced by a real clock.</li>
+  <li><strong>Tool results stay untrusted</strong> - fenced and escaped in the prompt exactly as today, since a
+      real system's text can contain anything.</li>
+</ul>
+
+<h3>17.6 Service boundaries</h3>
+<p>A <em>service boundary</em> is where one deployable program ends and another begins.</p>
+<table>
+  <tr><th style="width:200px">Unit</th><th>Deploy as</th><th>Why</th></tr>
+  <tr><td>API + agent + retrieval + conversation</td><td><strong>One service</strong> (as today)</td><td>They share one request and one time budget; splitting them adds network hops and failure points for no gain at this size.</td></tr>
+  <tr><td>Ingestion (chunk, embed, index)</td><td>Separate batch job</td><td>Different schedule and resources; must not slow down live answers.</td></tr>
+  <tr><td>MCP server for other clients</td><td>Separate service, only if needed</td><td>Different callers and security needs from the web API.</td></tr>
+  <tr><td>Evaluation</td><td>CI job</td><td>Runs on each change and before a model or index switch; never in the request path.</td></tr>
+  <tr><td>Session store, vector DB, LLM vendor</td><td>Managed dependencies</td><td>Reached only through the existing protocols.</td></tr>
+</table>
+
+<h3>17.7 Deployment strategy</h3>
+<ul>
+  <li><strong>Built:</strong> one image (<code>Dockerfile</code>, target <code>runtime</code>), non-root,
+      offline at runtime, model and index baked in; a separate <code>test</code> target runs the suite; a
+      smoke test checks a running container (§15).</li>
+  <li><strong>Pipeline (design):</strong> on each change - lint, types, tests, free evaluation,
+      <code>pip-audit</code> and an image scan; build the image once; pin the base image by digest; push to
+      a registry; deploy the <em>same</em> image to staging, then production.</li>
+  <li><strong>Rollout (design):</strong> a <em>rolling</em> update - new copies start, pass
+      <code>/ready</code>, receive traffic, then old copies stop. Because the index is inside the image, a
+      document change is a new image, so a bad document is rolled back like bad code.</li>
+  <li><strong>Configuration:</strong> all settings are <code>BKA_*</code> environment variables (§12), so
+      staging and production differ only in values. Production refuses to start without an API key.</li>
+</ul>
+
+<h3>17.8 Observability</h3>
+<p><em>Observability</em> is being able to tell, from outside, what the system is doing (§13).</p>
+<ul>
+  <li><strong>Built:</strong> structured logs (JSON or console) with a request id on every line and in the
+      <code>X-Request-ID</code> header; secrets and sensitive fields redacted; questions logged only as a
+      fingerprint and length; <code>@traced</code> timing on functions; per-process counters and latency
+      histograms at <code>/metrics</code> (JSON), including the new
+      <code>llm_invalid_citations_total</code>.</li>
+  <li><strong>Production (design):</strong> ship logs to an aggregator; expose metrics in Prometheus format
+      and add them up across copies; add distributed traces (OpenTelemetry) so one question can be followed
+      through API, vector database, tools and LLM; alert on error rate, 502 rate, LLM latency, withheld
+      answers and token spend.</li>
+</ul>
+
+<h3>17.9 Failure modes</h3>
+<p>What happens when each dependency fails. The rule throughout is <em>fail loud, never answer from
+nothing</em>.</p>
+<table>
+  <tr><th style="width:180px">Failure</th><th>Today (built)</th><th>Production addition (design)</th></tr>
+  <tr><td>LLM timeout, rate limit, outage</td><td>SDK retries (≤ 3), then 502 with a fixed message; counted and logged by type</td><td>Circuit breaker, fallback provider, request deadline</td></tr>
+  <tr><td>LLM answer unusable</td><td>Truncated, refused, errored, empty or invented citation → withheld, 502</td><td>Alert on the rate; review prompts</td></tr>
+  <tr><td>No evidence found</td><td>Fixed "insufficient evidence" answer, <em>no model call</em></td><td>Same</td></tr>
+  <tr><td>Tool system down</td><td>Tool error → 502, fixed message</td><td>Per-tool timeouts; answer from documents alone where safe</td></tr>
+  <tr><td>Embedding fails</td><td>502, fixed message; no turn stored</td><td>Same</td></tr>
+  <tr><td>Index missing or wrong model</td><td><code>/ready</code> returns 503; load refuses a mismatch</td><td>Orchestrator holds traffic until ready</td></tr>
+  <tr><td>Process stuck or crashed</td><td>Docker <code>HEALTHCHECK</code> on <code>/health</code> marks it unhealthy</td><td>Orchestrator restarts it; other copies keep serving</td></tr>
+  <tr><td>Unexpected bug</td><td>500 with request id, error logged, exception re-raised (§20.54)</td><td>Alert; trace by request id</td></tr>
+  <tr><td>Traffic flood</td><td>429 with <code>Retry-After</code>, per process</td><td>Shared limiter plus edge limits</td></tr>
+  <tr><td>Copy lost mid-conversation</td><td>Session lost (memory only)</td><td>Shared session store keeps it</td></tr>
+</table>
+
+<h3>17.10 Data privacy</h3>
+<ul>
+  <li><strong>Built:</strong> all content is synthetic. Embeddings are computed locally, so documents and
+      questions never leave the machine for search. Question text is not logged; 422 errors no longer echo
+      input (§20.61); the container turns off uvicorn's IP-address log (§20.57); log redaction removes
+      secret-shaped fields.</li>
+  <li><strong>The one outbound flow:</strong> with a paid provider, the question, selected passages and tool
+      results are sent to the LLM vendor. Earlier <em>answers</em> are never sent (§20.23).</li>
+  <li><strong>Production (design):</strong> a data processing agreement with the vendor, with no training
+      on submitted data; PII detection (finding personal data such as names and account numbers) before
+      text is sent; log retention limits; encryption at rest for the session store and vector database;
+      access to tools scoped to the signed-in user.</li>
+</ul>
+
+<h3>17.11 High availability</h3>
+<p><em>High availability</em> means the service keeps answering when one part fails.</p>
+<ul>
+  <li><strong>Today:</strong> a single process - if it stops, the service stops, and conversations are lost.</li>
+  <li><strong>Design:</strong> at least two copies across two availability zones (separate data centres);
+      a replicated session store; a managed vector database with replicas; a second LLM provider;
+      <code>/health</code> for restarts and <code>/ready</code> for traffic, as already built (§20.56).</li>
+  <li><strong>Graceful degradation:</strong> if the LLM is down, the API still fails fast with a clear
+      error rather than hanging; if a tool is down, a documentation-only question still works.</li>
+  <li><strong>Prerequisite:</strong> the shared session store (17.2). Without it, extra copies add capacity
+      but not continuity.</li>
+</ul>
+
+<h3>17.12 Deliberately not built</h3>
+<p>Per the plan, Stage 14 builds no infrastructure the portfolio project does not need. Not built:
+Kubernetes manifests, Redis, a hosted vector database, an identity provider, TLS, a CI pipeline, Prometheus
+export, tracing, a circuit breaker, a secrets manager. Stage 14 did fix five small gaps carried from
+Stage 13 (§20.58-§20.62, and LF line endings for container files).</p>
 </section>
 
 <!-- ================================================================== -->
@@ -4702,6 +4943,134 @@ request, without the address. Local <code>uvicorn app.main:app</code> runs are u
 </table>
 </div>
 
+<h3>20.58 Stage 14.1 - BKA_HOST and BKA_PORT are read by the app: <code>python -m app</code></h3>
+<div class="card">
+<p><strong>What.</strong> A new entry point, <code>python -m app</code>, starts <em>uvicorn</em> (the web
+server) with the host and port taken from the application's settings, <code>BKA_HOST</code> and
+<code>BKA_PORT</code>. The container starts the app this way too.</p>
+
+<p><strong>Why.</strong> Decided with the user at Stage 14 kickoff. Since Stage 12 (12.G) both settings were
+defined and validated - the port must be 1 to 65535 - but no code read them: only the Dockerfile's shell
+passed the raw environment values to uvicorn's own flags. So the check never ran on the values actually
+used, and a local run ignored them entirely. Reading them in one place means one source of truth and a
+clear error on a bad value.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Drop the two settings</strong></td><td>Fewer settings, but a bad port would only fail inside uvicorn, with no project-level validation.</td></tr>
+  <tr><td><strong>Leave them, document the gap</strong></td><td>Keeps a setting that looks effective but is not - the kind of drift Stage 14 is meant to remove.</td></tr>
+</table>
+</div>
+
+<h3>20.59 Stage 14.2 - An answer that cites evidence it was never given is withheld</h3>
+<div class="card">
+<p><strong>What.</strong> The prompt numbers each passage <code>[1]</code>, <code>[2]</code> and each tool
+result <code>[T1]</code>, <code>[T2]</code>. After the model replies, <code>LLMService</code> now checks every
+such <em>citation marker</em> in the answer. If one points outside what was sent - <code>[7]</code> when five
+passages went in, or any <code>[T1]</code> when no tool ran - the answer is not returned. The service raises
+<code>LLMResponseError</code>, the API answers 502, and the counter
+<code>llm_invalid_citations_total</code> goes up. The check lives in <code>app/llm/citations.py</code>,
+shared with the evaluation (§14), which used it offline since Stage 11.</p>
+
+<p><strong>Why.</strong> Decided with the user at Stage 14 kickoff. A citation to nothing is the mechanical
+sign of <em>hallucination</em> - the model stating something and pointing at a source that does not exist.
+The service already withholds a truncated answer because it reads as complete; an answer with a fake
+source reads as <em>verified</em>, which is worse. Until now only the offline evaluation noticed.</p>
+
+<p><strong>How the check works.</strong> It is a pattern match on the answer text, not a judgement of
+meaning. Every <code>[number]</code> or <code>[T+number]</code> in the reply is compared with two counts
+the service already knows: how many passages and how many tool results it numbered in the prompt. A
+passage marker is valid if it is 1 to the passage count; a tool marker if it is 1 to the tool count.
+Anything else - <code>[0]</code>, <code>[9]</code> with five passages, <code>[T1]</code> with no tools -
+is invalid. It does not check that <code>[2]</code> actually supports the sentence it follows; that needs
+a model or a human (§14).</p>
+
+<p><strong>Consequences.</strong> The evaluation keeps its own check as a second line of defence, and
+scores a withheld answer as a failed citation check (§20.62). A user question that itself contains a
+citation-shaped text such as <code>[9]</code>, repeated by the model in its answer, is also withheld,
+because the check cannot tell a quoted marker from an invented one - accepted as rare, and it fails safe.
+The same quote with a number in range (<code>[2]</code> with five passages) passes unnoticed.</p>
+
+<div class="warn">
+  <strong>Known limitation, kept on purpose.</strong> A question such as "what does <code>[9]</code> mean in
+  this log?" can get a 502 if the model repeats the marker. Exempting markers that also appear in the
+  user's question was considered at Stage 14 review and <em>rejected</em> by the user: text the user typed
+  is untrusted input, not a trust signal. The exemption would let anyone switch the check off by putting the
+  marker in the question - the same trick as <em>prompt injection</em>, where input text is used to change
+  how the system behaves. A wrongly blocked answer is an error the user can see and rephrase; a wrongly
+  allowed fake source is not.
+</div>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Flag it, still answer</strong></td><td>No visible failure, but the fake source reaches the reader.</td></tr>
+  <tr><td><strong>Strip the bad markers</strong></td><td>Cleaner text, but the claim the marker was attached to stays - now simply uncited.</td></tr>
+  <tr><td><strong>Exempt markers that appear in the question</strong></td><td>Rejected at review (14.F): user text is untrusted, so the exemption would be a way to switch the check off.</td></tr>
+</table>
+</div>
+
+<h3>20.60 Stage 14.3 - Upper limits on the LLM timeout and retries</h3>
+<div class="card">
+<p><strong>What.</strong> <code>BKA_LLM_TIMEOUT_SECONDS</code> (how long one provider call may take) is now at
+most 120, and <code>BKA_LLM_MAX_RETRIES</code> (how many times the SDK tries again) at most 3. A value above
+either refuses to start.</p>
+
+<p><strong>Why.</strong> Carried from the Stage 13 audit. While a request waits for the model it holds a
+web-server worker and its session's lock (§20.29), so a very large value lets a slow provider tie up
+the service. The worst case is now fixed: 120 s x 4 attempts = 480 s. The defaults (60 s, 2 retries) are
+unchanged.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>No upper bound</strong></td><td>A typo such as <code>6000</code> would be accepted silently.</td></tr>
+  <tr><td><strong>One total request deadline</strong></td><td>The better production control, but it cuts across the agent loop; recorded in §17 as design, not built.</td></tr>
+</table>
+</div>
+
+<h3>20.61 Stage 14.4 - Validation errors name the field, never the value</h3>
+<div class="card">
+<p><strong>What.</strong> When a request body is invalid, FastAPI answers 422 (Unprocessable Content). Its
+default body repeats the value that was sent (<code>input</code>) plus extra detail (<code>ctx</code>). A
+handler in <code>app/api/errors.py</code> now keeps only three fields per error: <code>type</code> (what kind
+of failure), <code>loc</code> (which field) and <code>msg</code> (the fixed wording).</p>
+
+<p><strong>Why.</strong> Carried from the Stage 13 audit. A caller's question or a malformed session id came
+straight back in the response - and into anything that records responses. Keeping an <em>allow-list</em>
+(fields that may stay) instead of a <em>deny-list</em> (fields to remove) means a field a future FastAPI adds
+stays out until someone decides it is safe.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Remove only <code>input</code> and <code>ctx</code></strong></td><td>Works today; lets a new field through after an upgrade.</td></tr>
+  <tr><td><strong>One generic "invalid request" message</strong></td><td>Safe, but a caller could no longer tell which field to fix.</td></tr>
+</table>
+</div>
+
+<h3>20.62 Stage 14.5 - The evaluation scores a withheld answer instead of stopping</h3>
+<div class="card">
+<p><strong>What.</strong> The withheld-answer error from §20.59 has its own type,
+<code>LLMInvalidCitationError</code>. It is still an <code>LLMResponseError</code>, so the API still answers
+502. It carries the invalid markers, and the agent adds the <em>route</em> it took (the decision path, §7)
+before passing the error on. The evaluation runner (§14) catches only this error: that question gets a
+passing or failing <code>path</code> check and a failed <code>citations</code> check naming the markers,
+and the run moves on to the next question.</p>
+
+<p><strong>Why.</strong> Asked for by the user at Stage 14 review. After §20.59, one invented citation made
+the whole evaluation stop with an error, so a run against a real model would report nothing for the other
+questions. <code>citations</code> is already an <em>invariant</em> - a check that must pass for every
+question - so the run still fails overall; it now also says which questions and which markers.</p>
+
+<p><strong>What still stops the run.</strong> Every other failure - a timeout, a truncated answer, a broken
+tool. Those mean the system could not answer, not that it answered badly, and scoring around them would
+report a better result than the system deserves.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Catch every <code>LLMResponseError</code></strong></td><td>Would turn truncated or empty replies into scores too, hiding a broken provider.</td></tr>
+  <tr><td><strong>Guess the route in the runner</strong></td><td>The route depends on tool results the runner never sees; a guess could make path accuracy wrong.</td></tr>
+</table>
+</div>
+
 </section>
 <!-- ================================================================== -->
 <section id="subagents">
@@ -4954,7 +5323,7 @@ started from untidy code.</p>
 
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 13 (Security &amp; Production Readiness) · Last updated 2026-09-16<br>
+  Stage 14 (Production Architecture) · Last updated 2026-09-17<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

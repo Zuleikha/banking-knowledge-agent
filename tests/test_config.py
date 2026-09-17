@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings, get_settings
+from app.core.config import (
+    LLM_MAX_RETRIES_MAX,
+    LLM_TIMEOUT_MAX_SECONDS,
+    Settings,
+    get_settings,
+)
 
 
 def test_defaults_are_local_and_safe():
@@ -74,6 +79,26 @@ def test_rate_limit_zero_disables_and_negative_is_rejected():
 def test_question_max_chars_must_be_positive():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, question_max_chars=0)
+
+
+@pytest.mark.parametrize(
+    ("field", "at_cap", "over_cap"),
+    [
+        ("llm_timeout_seconds", LLM_TIMEOUT_MAX_SECONDS, LLM_TIMEOUT_MAX_SECONDS + 1),
+        ("llm_max_retries", LLM_MAX_RETRIES_MAX, LLM_MAX_RETRIES_MAX + 1),
+    ],
+)
+def test_llm_timeout_and_retries_have_an_upper_bound(field, at_cap, over_cap):
+    # Stage 14 (carried from 13): an unbounded value could hold a worker and
+    # the session lock for minutes.
+    assert getattr(Settings(_env_file=None, **{field: at_cap}), field) == at_cap
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{field: over_cap})
+
+
+def test_worst_case_llm_wait_is_bounded():
+    worst = LLM_TIMEOUT_MAX_SECONDS * (LLM_MAX_RETRIES_MAX + 1)
+    assert worst <= 480
 
 
 def test_get_settings_is_cached():

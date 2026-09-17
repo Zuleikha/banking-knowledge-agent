@@ -14,7 +14,6 @@ from app.eval.dataset import EvalCase
 from app.eval.metrics import (
     check_answer,
     hit_at_k,
-    invalid_citations,
     mean_reciprocal_rank,
     missing_mentions,
     path_matches,
@@ -22,8 +21,8 @@ from app.eval.metrics import (
     recall_at_k,
     reciprocal_rank,
 )
+from app.llm.citations import invalid_citations
 from app.llm.mock import MockLLMProvider
-from app.llm.service import LLMService
 
 
 def _case(**fields) -> EvalCase:
@@ -158,12 +157,13 @@ class TestCheckAnswer:
         assert not checks["refusal"].passed
         assert not checks["path"].passed
 
-    def test_an_invented_citation_is_caught(self, retriever, llm_settings):
+    def test_an_invented_citation_is_caught(
+        self, retriever, llm_settings, unguarded_llm_service
+    ):
         # A "model" that cites passage 9 when at most 5 passages can be supplied.
+        # The service would withhold it (14.B); this checks the second line.
         provider = MockLLMProvider(responses=["The answer is in [1] and [9]."])
-        agent = KnowledgeAgent(
-            retriever, LLMService(provider, llm_settings), llm_settings
-        )
+        agent = KnowledgeAgent(retriever, unguarded_llm_service(provider), llm_settings)
         answer = agent.ask("card authentication")
         assert not answer.refused, "precondition: the hashing index matches this"
         case = _case(

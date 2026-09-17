@@ -51,10 +51,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['BKA_PORT'] + '/health', timeout=4)"
 
-# 12.G: BKA_HOST / BKA_PORT are applied here; the app itself does not read them.
+# 14.A: python -m app reads BKA_HOST / BKA_PORT through the validated settings.
 # 13.H: --no-access-log -- uvicorn's access log prints client IP and path and
 # bypasses log redaction; the request middleware already logs every request.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host \"$BKA_HOST\" --port \"$BKA_PORT\" --no-access-log"]
+CMD ["python", "-m", "app", "--no-access-log"]
 
 # ---------------------------------------------------------------------------
 # 12.E: the runtime image plus dev tools and tests. Never deployed.

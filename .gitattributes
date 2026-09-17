@@ -5,3 +5,10 @@
 *.html text eol=lf
 *.yaml text eol=lf
 *.txt  text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+# Read inside Linux containers.
+Dockerfile    text eol=lf
+.dockerignore text eol=lf
+.env.example  text eol=lf
+.gitattributes text eol=lf

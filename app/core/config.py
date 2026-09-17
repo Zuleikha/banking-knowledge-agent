@@ -20,6 +20,11 @@ Environment = Literal["local", "test", "production"]
 LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
+# Stage 14 (guide §20.60): a request holds a worker and its session's lock for
+# the whole provider wait, so the wait is capped -- at most 120 s x 4 attempts.
+LLM_TIMEOUT_MAX_SECONDS = 120.0
+LLM_MAX_RETRIES_MAX = 3
+
 
 class Settings(BaseSettings):
     """Typed application settings loaded from the environment."""
@@ -115,8 +120,8 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=4096, ge=256)
 
     # Transport behaviour, passed to whichever vendor SDK client is built.
-    llm_timeout_seconds: float = Field(default=60.0, gt=0.0)
-    llm_max_retries: int = Field(default=2, ge=0)
+    llm_timeout_seconds: float = Field(default=60.0, gt=0.0, le=LLM_TIMEOUT_MAX_SECONDS)
+    llm_max_retries: int = Field(default=2, ge=0, le=LLM_MAX_RETRIES_MAX)
 
     # Context budget. The LLM receives retrieved passages, never the knowledge
     # base; these two numbers are what "never" is enforced with. Passages are

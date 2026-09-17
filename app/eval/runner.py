@@ -17,6 +17,10 @@ path accuracy rather than as an invariant.
 
 An exception from the agent propagates. An evaluation that silently skipped the
 question that crashed would report a better score than the system deserves.
+**One exception is a score, not a crash (14.E):** an answer the service withheld
+for invented citations (:class:`~app.llm.base.LLMInvalidCitationError`) fails
+that question's ``citations`` check — itself an invariant, so the run still
+fails — and the remaining questions are still asked.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ import time
 from collections.abc import Sequence
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.agent.agent import KnowledgeAgent
 from app.agent.models import DecisionReason
@@ -37,6 +41,7 @@ from app.eval.metrics import (
     CheckName,
     CheckResult,
     check_answer,
+    check_withheld_answer,
     hit_at_k,
     mean_reciprocal_rank,
     path_matches,
@@ -44,11 +49,15 @@ from app.eval.metrics import (
     recall_at_k,
     reciprocal_rank,
 )
+from app.llm.base import LLMInvalidCitationError
 
 logger = get_logger(__name__)
 
 Mode = Literal["mock", "paid"]
 """``mock``: free, rule checks on the mock provider. ``paid``: a real model (11.B)."""
+
+_ROUTE: TypeAdapter[DecisionReason] = TypeAdapter(DecisionReason)
+"""Validates the route string a withheld-answer error carries (14.E)."""
 
 INVARIANT_CHECKS: frozenset[CheckName] = frozenset({"refusal_honest", "citations"})
 """Checks that must pass for every question, whatever the floors say."""
@@ -183,19 +192,31 @@ def run_case(
         evidence = "\n".join(scored.chunk.content for scored in retrieval.chunks)
 
     started = time.perf_counter()
-    answer = agent.ask(case.question)
+    actual: DecisionReason
+    try:
+        answer = agent.ask(case.question)
+    except LLMInvalidCitationError as exc:
+        # 14.E: a withheld answer is a failed citation check for this question,
+        # not the end of the run. Every other error still propagates.
+        if exc.route is None:
+            raise
+        actual = _ROUTE.validate_python(exc.route)
+        checks = check_withheld_answer(case, actual, exc.markers)
+    else:
+        actual = answer.decision.reason
+        mention_text = answer.text if mode == "paid" else evidence
+        checks = check_answer(case, answer, mention_text=mention_text)
     latency = elapsed_ms(started)
 
-    mention_text = answer.text if mode == "paid" else evidence
     result = CaseResult(
         case_id=case.id,
         category=case.category,
         expected_path=case.expected_path,
-        actual_path=answer.decision.reason,
+        actual_path=actual,
         ranked_documents=ranked,
         hit=hit,
         reciprocal_rank=rank_score,
-        checks=check_answer(case, answer, mention_text=mention_text),
+        checks=checks,
         latency_ms=latency,
     )
     # Ids, routes and numbers only: never the question or answer text (10.A).

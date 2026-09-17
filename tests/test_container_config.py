@@ -100,8 +100,12 @@ def test_runtime_stage_runs_as_a_non_root_user():
 def test_the_server_binds_all_interfaces_from_settings():
     joined = " ".join(stage_lines("runtime"))
     assert "BKA_HOST=0.0.0.0" in joined
+    # 14.A: the app reads BKA_HOST / BKA_PORT itself, through validated
+    # settings -- no shell, no uvicorn flags built from raw environment values.
     cmd = next(line for line in stage_lines("runtime") if line.startswith("CMD "))
-    assert "$BKA_HOST" in cmd and "$BKA_PORT" in cmd
+    assert cmd.startswith('CMD ["python", "-m", "app"')
+    assert "sh" not in cmd.split("[", 1)[1].split(",")[0]
+    assert "--host" not in cmd and "--port" not in cmd
 
 
 def test_the_server_disables_uvicorn_access_log():

@@ -18,7 +18,9 @@ from app.eval.__main__ import main
 from app.eval.dataset import EvalCase, EvalDataset, Thresholds, load_dataset
 from app.eval.report import render_report
 from app.eval.runner import INVARIANT_CHECKS, run_evaluation
+from app.llm.base import LLMResponseError
 from app.llm.mock import MockLLMProvider
+from app.llm.models import LLMResponse
 from app.llm.service import LLMService
 
 SMALL = EvalDataset(
@@ -134,15 +136,73 @@ class TestFloors:
         assert "path_accuracy" in failed
 
     def test_an_invented_citation_fails_even_with_zero_floors(
+        self, retriever, llm_settings, unguarded_llm_service
+    ):
+        # The service would withhold it (14.B); this checks the second line.
+        provider = MockLLMProvider(responses=["See [9]."])
+        agent = KnowledgeAgent(retriever, unguarded_llm_service(provider), llm_settings)
+        one = SMALL.model_copy(update={"cases": SMALL.cases[:1]})
+        report = run_evaluation(one, agent, k=5)
+        assert "citations" in report.failed_floors()
+
+    def test_a_withheld_answer_is_scored_as_a_citation_failure(
         self, retriever, llm_settings
     ):
-        provider = MockLLMProvider(responses=["See [9]."])
+        # 14.E: through the real service the answer is withheld (14.B); the
+        # run carries on and that question fails its citation check.
+        provider = MockLLMProvider(responses=["See [9].", "See [1]."])
+        agent = KnowledgeAgent(
+            retriever, LLMService(provider, llm_settings), llm_settings
+        )
+        two = SMALL.model_copy(
+            update={
+                "cases": (
+                    SMALL.cases[0],
+                    SMALL.cases[0].model_copy(update={"id": "know-002"}),
+                )
+            }
+        )
+        report = run_evaluation(two, agent, k=5)
+
+        withheld, answered = report.cases
+        assert "citations" in report.failed_floors()
+        assert not withheld.passed
+        citations = next(c for c in withheld.checks if c.name == "citations")
+        assert not citations.passed
+        assert "[9]" in citations.detail
+        assert "withheld" in citations.detail
+        assert answered.passed, "the run must continue past the withheld answer"
+
+    def test_a_withheld_answer_keeps_its_real_route(self, retriever, llm_settings):
+        provider = MockLLMProvider(responses=["See [1].", "See [9]."])
         agent = KnowledgeAgent(
             retriever, LLMService(provider, llm_settings), llm_settings
         )
         one = SMALL.model_copy(update={"cases": SMALL.cases[:1]})
-        report = run_evaluation(one, agent, k=5)
-        assert "citations" in report.failed_floors()
+        (answered,) = run_evaluation(one, agent, k=5).cases
+        (case,) = run_evaluation(one, agent, k=5).cases
+        assert case.actual_path == answered.actual_path
+        assert case.path_correct
+        assert case.hit is not None, "retrieval is still scored"
+
+    def test_any_other_llm_failure_still_stops_the_run(self, retriever, llm_settings):
+        # Only an invented citation is a score; a broken model is not.
+        provider = MockLLMProvider(
+            responses=[
+                LLMResponse(
+                    text="cut",
+                    provider_id="mock",
+                    model_id="m",
+                    stop_reason="max_tokens",
+                )
+            ]
+        )
+        agent = KnowledgeAgent(
+            retriever, LLMService(provider, llm_settings), llm_settings
+        )
+        one = SMALL.model_copy(update={"cases": SMALL.cases[:1]})
+        with pytest.raises(LLMResponseError, match="truncated"):
+            run_evaluation(one, agent, k=5)
 
     def test_a_wrong_refusal_is_a_score_not_an_invariant(self, tool_agent):
         # Whether an off-topic question is refused depends on retrieval scores,

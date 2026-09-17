@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -125,6 +125,27 @@ def mock_provider() -> MockLLMProvider:
 def llm_service(mock_provider: MockLLMProvider, llm_settings: Settings) -> LLMService:
     """An LLM service wired to the recording mock provider."""
     return LLMService(mock_provider, llm_settings)
+
+
+class UnguardedLLMService(LLMService):
+    """The service without Stage 14.B's runtime citation check.
+
+    Since 14.B an invented citation never leaves ``LLMService``. The
+    evaluation keeps its own citation check as a second line of defence; this
+    double is how its tests still reach it.
+    """
+
+    @staticmethod
+    def _check_citations(response: object, chunks: int, tools: int) -> None:
+        return None
+
+
+@pytest.fixture
+def unguarded_llm_service(
+    llm_settings: Settings,
+) -> Callable[[MockLLMProvider], LLMService]:
+    """Build an :class:`UnguardedLLMService` around a given provider."""
+    return lambda provider: UnguardedLLMService(provider, llm_settings)
 
 
 @pytest.fixture

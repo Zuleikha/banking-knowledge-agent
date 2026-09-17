@@ -7,7 +7,7 @@ the sequence that turns evidence into an answer::
         -> select_context   (apply the context budget)
         -> build_request    (frozen system prompt + fenced passages + question)
         -> provider.complete
-        -> validate         (truncation, refusal, empty body)
+        -> validate         (truncation, refusal, empty body, invented citations)
         -> GroundedAnswer   (text + sources + provenance)
 
 **What it deliberately does not do.** It does not retrieve. It is handed a
@@ -55,6 +55,7 @@ from app.core.observability import (
     LLM_CALLS_TOTAL,
     LLM_ERRORS_TOTAL,
     LLM_INPUT_TOKENS_TOTAL,
+    LLM_INVALID_CITATIONS_TOTAL,
     LLM_OUTPUT_TOKENS_TOTAL,
     elapsed_ms,
     get_metrics,
@@ -62,11 +63,13 @@ from app.core.observability import (
 from app.core.tracing import traced
 from app.llm.base import (
     LLMError,
+    LLMInvalidCitationError,
     LLMProvider,
     LLMProviderError,
     LLMRefusalError,
     LLMResponseError,
 )
+from app.llm.citations import invalid_citations
 from app.llm.models import CompletionRequest, GroundedAnswer, LLMResponse
 from app.llm.prompts import (
     INSUFFICIENT_EVIDENCE,
@@ -160,6 +163,7 @@ class LLMService:
         try:
             response = self._complete(request)
             self._validate(response)
+            self._check_citations(response, len(selected), len(tool_results))
         except LLMError as exc:
             latency = elapsed_ms(started)
             metrics.increment(LLM_ERRORS_TOTAL)
@@ -262,6 +266,27 @@ class LLMService:
                 f"Provider '{getattr(self._provider, 'provider_id', 'unknown')}' "
                 f"raised an untranslated {type(exc).__name__}."
             ) from exc
+
+    @staticmethod
+    def _check_citations(response: LLMResponse, chunks: int, tools: int) -> None:
+        """Withhold an answer that cites evidence it was never given (14.B).
+
+        The markers themselves are safe to name -- ``[7]`` carries no content --
+        and naming them is what makes the failure diagnosable.
+
+        Raises:
+            LLMInvalidCitationError: If any ``[n]`` / ``[Tn]`` is outside the
+                passages and tool results numbered in the prompt.
+        """
+        invented = invalid_citations(response.text, chunks, tools)
+        if invented:
+            get_metrics().increment(LLM_INVALID_CITATIONS_TOTAL)
+            raise LLMInvalidCitationError(
+                f"Model '{response.model_id}' cited evidence that was not supplied "
+                f"({' '.join(invented)}; {chunks} passage(s), {tools} tool "
+                "result(s) were sent). The answer is withheld.",
+                markers=invented,
+            )
 
     @staticmethod
     def _validate(response: LLMResponse) -> None:

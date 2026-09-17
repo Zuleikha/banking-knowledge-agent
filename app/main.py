@@ -6,9 +6,9 @@ static web page at ``/``. Stage 10 adds request middleware (a request id, a
 timing record and metrics per request) and ``GET /metrics``. Stage 13 adds an
 optional API key and a per-client rate limit on the API (guide §20.50-§20.51).
 
-Run locally with::
+Run locally with (Stage 14: host and port from ``BKA_HOST`` / ``BKA_PORT``)::
 
-    uvicorn app.main:app --reload
+    python -m app --reload
 """
 
 from __future__ import annotations
@@ -79,6 +79,9 @@ def create_app(
     app.state.conversation = conversation_service
     app.state.conversation_lock = threading.Lock()
 
+    from fastapi.exceptions import RequestValidationError
+
+    from app.api.errors import validation_error_handler
     from app.api.middleware import RequestContextMiddleware
     from app.api.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
     from app.api.routes import conversation, health, metrics
@@ -91,6 +94,8 @@ def create_app(
         else None
     )
 
+    # 422 bodies name the field, never the value sent (guide §20.61).
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_middleware(RequestContextMiddleware)
     # /health and /ready stay open: probes hold no key (guide §20.50).
     app.include_router(health.router)

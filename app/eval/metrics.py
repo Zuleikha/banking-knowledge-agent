@@ -21,7 +21,9 @@ refusal     refused exactly when a refusal was expected — a *score*: whether
 refusal_    an answer that did refuse used no model and says the fixed
 honest      insufficient-evidence sentence — an *invariant*
 citations   every ``[n]`` / ``[Tn]`` points at evidence actually supplied —
-            a citation to nothing is the mechanical sign of hallucination
+            a citation to nothing is the mechanical sign of hallucination.
+            Since 14.B the service withholds such an answer; the runner
+            scores it with :func:`check_withheld_answer` (14.E)
 mentions    each required fact appears in the text given (the retrieved
             evidence in free mode, the answer itself in paid mode)
 ==========  ==============================================================
@@ -29,16 +31,16 @@ mentions    each required fact appears in the text given (the retrieved
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agent.models import AgentAnswer
+from app.agent.models import AgentAnswer, DecisionReason
 from app.core.tracing import traced
 from app.eval.dataset import REFUSAL_PATHS, EvalCase
-from app.llm.prompts import INSUFFICIENT_EVIDENCE, TOOL_CITATION_PREFIX
+from app.llm.citations import invalid_citations
+from app.llm.prompts import INSUFFICIENT_EVIDENCE
 from app.rag.models import RetrievalResult
 
 CheckName = Literal[
@@ -54,9 +56,6 @@ KNOWLEDGE_ANSWER_PATHS: frozenset[str] = frozenset(
 Whether a search is refined depends on a measured score
 (``Settings.agent_confident_score``), so a dataset cannot fairly demand either.
 """
-
-CITATION_PATTERN = re.compile(r"\[(" + re.escape(TOOL_CITATION_PREFIX) + r")?(\d+)\]")
-"""A passage citation ``[n]`` or a tool-result citation ``[Tn]``."""
 
 
 class CheckResult(BaseModel):
@@ -113,18 +112,6 @@ def mean_reciprocal_rank(ranks: Sequence[float]) -> float:
     if not ranks:
         raise ValueError("MRR needs at least one scored question.")
     return sum(ranks) / len(ranks)
-
-
-@traced
-def invalid_citations(text: str, chunks_used: int, tools_used: int) -> tuple[str, ...]:
-    """Citations in ``text`` that point at no supplied passage or tool result."""
-    invalid: dict[str, None] = {}
-    for match in CITATION_PATTERN.finditer(text):
-        number = int(match.group(2))
-        limit = tools_used if match.group(1) else chunks_used
-        if not 1 <= number <= limit:
-            invalid.setdefault(match.group(0), None)
-    return tuple(invalid)
 
 
 @traced
@@ -227,6 +214,38 @@ def check_answer(
             )
         )
     return tuple(checks)
+
+
+@traced
+def check_withheld_answer(
+    case: EvalCase, actual: DecisionReason, markers: Sequence[str]
+) -> tuple[CheckResult, ...]:
+    """The checks for an answer the service withheld for invented citations.
+
+    Since 14.B there is no answer to inspect, only the route and the markers
+    (14.E). ``path`` is scored normally; ``citations`` fails and names the
+    markers. The other checks need answer content, so they are not run.
+
+    Args:
+        case: The expectations.
+        actual: The route the agent took before the answer was withheld.
+        markers: The invalid citation markers, e.g. ``("[9]",)``.
+    """
+    return (
+        CheckResult(
+            name="path",
+            passed=path_matches(case.expected_path, actual),
+            detail=f"expected {case.expected_path}, got {actual}",
+        ),
+        CheckResult(
+            name="citations",
+            passed=False,
+            detail=(
+                "answer withheld: cites evidence that was not supplied: "
+                f"{' '.join(markers)}"
+            ),
+        ),
+    )
 
 
 @traced
