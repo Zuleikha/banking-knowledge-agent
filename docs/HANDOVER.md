@@ -18,7 +18,9 @@ the Stage 13 step log were moved there too. Design decisions are also committed 
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Stage 15 — Final Engineering Review — is APPROVED (2026-09-18) and committed.**
+**Stage 15 — Final Engineering Review — is APPROVED (2026-09-18) and committed** as one
+`feat(stage-15)` commit `d738d6c` (22 files) — **pushed** `dc0b317..d738d6c`, verified
+`origin/main == local HEAD`.
 Decisions 15.A–15.B at kickoff, 15.C after the container suite was actually run. Findings and
 fixes in *Current Work*; full record in guide §22. **Docker verified this session** — see *Testing*.
 
@@ -35,7 +37,7 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 15 — Final Engineering Review** (2026-09-18) |
+| Last **approved** stage | **Stage 15 — Final Engineering Review** (2026-09-18), `d738d6c` |
 | Current stage | **None** — Stage 15 was the final stage, and it is approved and committed |
 | Tests | **1412 passed, 4 skipped** · ruff clean · format clean (118 files) · mypy strict clean (76 source files) · `app.eval` PASS |
 | Next | **Nothing outstanding.** Only `--paid` remains unrun, by design (needs explicit confirmation) |
@@ -104,6 +106,7 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 | Stage | Name | Status |
 |---|---|---|
+| 15 | Final Engineering Review | ✅ 2026-09-18, `d738d6c` |
 | 14 | Production Architecture | ✅ 2026-09-17, `e38f967` |
 | 13 | Security and Production Readiness | ✅ 2026-09-16, `bc9f69d` + `e29bbae` |
 | 12 | Containerisation | ✅ 2026-09-16, `27739f2` |
@@ -405,6 +408,8 @@ multi-question `demo` against a paid provider without `--paid`.
 |---|---|
 | **Branch** | `main` |
 | **Remote** | `origin` → `https://github.com/Zuleikha/banking-knowledge-agent.git` |
+| **Stage 15 commit** | `d738d6c` — `feat(stage-15): final engineering review - dedupe money guard, remove dead code, JSON container logs` — 22 files |
+| **Stage 15 push** | ✅ `dc0b317..d738d6c`; verified `origin/main == local HEAD` |
 | **Stage 14 commit** | `e38f967` — `feat(stage-14): production architecture - design doc, runtime citation check, safe 422s, python -m app` — 28 files | `bc9f69d` — `style: apply ruff format to the 24 files carried from Stage 12` — 24 files |
 | **Stage 13 commit** | `e29bbae` — `feat(stage-13): security and production readiness - API key, rate limit, readiness, input limits, log redaction` — 37 files |
 | **Stage 13 push** | ✅ `ed46ae1..e29bbae`; verified `origin/main == local HEAD` |
@@ -442,7 +447,7 @@ in guide §17, not built — per the plan. Stage 15 judged them and left them (g
 ```bash
 cd D:/PROJECTS/banking-knowledge-agent
 
-git log --oneline -5        # expect the Stage 15 commit on top of dc0b317
+git log --oneline -5        # expect d738d6c (stage 15) on top of dc0b317
 git status --short          # expect clean
 
 ./.venv/Scripts/python.exe -m pytest        # expect 1412 passed, 4 skipped
