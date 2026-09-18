@@ -21,6 +21,16 @@ is represented.
 The 15 planned stages are complete. Nothing is outstanding except a run against a real
 (paid) language model, which has deliberately never been done.
 
+### Licensing
+
+**No licence is granted.** Copyright © 2026 Zuleikha, all rights reserved. This is a
+demonstration project, published to be read and assessed, not offered for reuse.
+
+An MIT `LICENSE` file was briefly added on 2026-09-18 (`9854226`) and removed the same day.
+That MIT grant still applies to that one commit for anyone who obtained a copy while it was
+live — a published licence cannot be retroactively revoked. Every later commit carries no
+licence.
+
 ---
 
 ### Stage 15 — Final Engineering Review — 2026-09-18 · `d738d6c`

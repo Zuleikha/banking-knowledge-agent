@@ -358,7 +358,6 @@ banking-knowledge-agent/
 ├── tests/               Unit, integration, API and container tests
 ├── CHANGELOG.md         What changed in each of the 15 stages
 ├── CLAUDE.md            Working rules for AI-assisted development
-├── LICENSE              MIT
 ├── Dockerfile           Image build: runtime and test targets
 ├── compose.yaml         One-command local run (single app service)
 ├── .dockerignore        Keeps secrets and local state out of the image
@@ -386,5 +385,9 @@ banking-knowledge-agent/
 
 ## Licence
 
-[MIT](LICENSE). Personal portfolio project; all data is synthetic — no real banking system,
-customer or transaction is represented.
+**No licence is granted.** Copyright © 2026 Zuleikha, all rights reserved.
+
+This is a demonstration and portfolio project, published so it can be read and assessed. It is
+not offered for reuse: no permission is given to copy, modify or redistribute it. Ask first.
+
+All data is synthetic — no real banking system, customer or transaction is represented.

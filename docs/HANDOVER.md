@@ -135,11 +135,11 @@ with no file, i.e. all-rights-reserved by default) · the only run guide was
 
 | Added | What |
 |---|---|
-| `LICENSE` | **MIT** — user's choice at the audit. Copyright 2026 Zuleikha |
+| ~~`LICENSE`~~ | MIT was added in `9854226`, then **removed the same day** at the user's request — see *Licence reversal* below |
 | `CHANGELOG.md` | All 15 stages, grouped by stage rather than release (one version, `0.1.0`, no release). Every cited commit hash verified against `git cat-file` |
 | `docs/HOW_TO_RUN.md` | **Tracked** run + end-to-end verification guide: setup, the 4-rung verification ladder, what it still does not prove, using your own corpus, troubleshooting |
 | `docs/HOW_TO_RUN.html` | Rewritten (was stale by 4 stages — still told you to use `uvicorn app.main:app`, which ignores `BKA_HOST`/`BKA_PORT`). Git-ignored, personal copy |
-| `README.md` | Licence section → MIT; Run section → points at the run guide; Repository Structure → the three new files |
+| `README.md` | Licence section → **no licence granted, all rights reserved**; Run section → points at the run guide; Repository Structure → the new files |
 
 **Corpus portability, tested not assumed.** A non-banking corpus was built and run end to end.
 Retrieval is corpus-agnostic (a baking question scored 0.806 against a baking document, correct
@@ -147,6 +147,25 @@ passage first), but four gates block a drop-in corpus: front matter required; si
 fields; `domain` and `doc_type` are **hardcoded `Literal` sets** in `app/knowledge/models.py`;
 `document_id` must equal the filename. The six MCP tools, the nine component names and the 49
 evaluation questions do not transfer at all.
+
+### Licence reversal (2026-09-18) — decision D.1
+
+**The project grants no licence. Copyright reserved.** `LICENSE` (MIT) was added in `9854226`
+and removed in the next commit, at the user's request: this is a demonstration project and is
+not offered for reuse.
+
+**What the removal does and does not do** — the user stated this correctly and it is recorded
+so no future session re-adds a licence thinking it is a gap:
+
+| | |
+|---|---|
+| Going forward | New clones carry no licence, so default copyright applies: nobody may reuse it without asking |
+| **Not undone** | The MIT grant on commit `9854226` **cannot be retroactively revoked**. Anyone who took a copy while it was live keeps those rights for that version. Removing a file does not reach code already distributed |
+| Exposure at the time | Repository is **public**; `9854226` was live roughly 30 minutes. **0 forks, 0 stars.** Clone traffic was not readable with the available token, so zero clones is likely but not proven — GitHub *Insights → Traffic* shows it |
+| Deliberately not done | **No history rewrite.** Force-pushing `9854226` away would not revoke anything already granted, would break any existing clone, and would destroy the Stage 15 commit's parentage. The honest record is worth more than a cosmetically clean history |
+
+> ⚠️ **For future sessions: the absence of a `LICENSE` file is intentional.** It is not an
+> oversight to be "fixed". A documentation audit will flag it as missing; it should stay missing.
 
 ### Stage 15 — Final Engineering Review (2026-09-18, all tested)
 
