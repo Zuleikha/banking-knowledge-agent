@@ -18,7 +18,14 @@ the Stage 13 step log were moved there too. Design decisions are also committed 
 
 ## ⏱️ SESSION CHECKPOINT — start here
 
-**Stage 14 — Production Architecture — is APPROVED (2026-09-17) and committed** as one
+**Stage 15 — Final Engineering Review — is APPROVED (2026-09-18) and committed.**
+Decisions 15.A–15.B at kickoff, 15.C after the container suite was actually run. Findings and
+fixes in *Current Work*; full record in guide §22. **Docker verified this session** — see *Testing*.
+
+**Stage 15 was the last planned stage. The project is complete as specified in
+`docs/PROJECT_PLAN.md`.** There is no Stage 16.
+
+**Previous: Stage 14 — Production Architecture — is APPROVED (2026-09-17) and committed** as one
 `feat(stage-14)` commit `e38f967` — **pushed** `f109758..e38f967`, verified `origin/main == local HEAD`. Decisions 14.A–14.F below.
 
 **Previous: Stage 13 — Security and Production Readiness — APPROVED (2026-09-16) and committed**
@@ -28,10 +35,10 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 | | |
 |---|---|
-| Last **approved** stage | **Stage 14 — Production Architecture** (2026-09-17) |
-| Current stage | **None in progress** — Stage 15 not started |
-| Tests | **1396 passed, 4 skipped** · ruff clean · format clean (117 files) · mypy strict clean (75 source files) · `app.eval` PASS |
-| Next | **Stage 15 — Final Engineering Review** when the user asks |
+| Last **approved** stage | **Stage 15 — Final Engineering Review** (2026-09-18) |
+| Current stage | **None** — Stage 15 was the final stage, and it is approved and committed |
+| Tests | **1412 passed, 4 skipped** · ruff clean · format clean (118 files) · mypy strict clean (76 source files) · `app.eval` PASS |
+| Next | **Nothing outstanding.** Only `--paid` remains unrun, by design (needs explicit confirmation) |
 
 ### Stage 13 outcome
 
@@ -54,6 +61,14 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 | 14.D | **422 bodies keep an allow-list** — `type`, `loc`, `msg` only; `input`, `ctx`, `url` and any future field dropped. New `app/api/errors.py` (guide §20.61). Default choice, not asked. Rejected: deleting just `input`/`ctx` (a deny-list lets new fields through) |
 | 14.E | **Evaluation scores a withheld answer, does not crash** — new `LLMInvalidCitationError(LLMResponseError)` with `markers` + `route` (set by the agent); runner catches only it → `path` + failed `citations` check, run continues. Other errors still stop the run — user, at Stage 14 review (guide §20.62). Rejected: catch all `LLMResponseError`; guess the route in the runner |
 | 14.F | **No exemption for markers found in the user's question** — a `[9]` quoted from the question and repeated by the model stays withheld. User text is untrusted; an exemption would be exploitable like prompt injection. Documented as a known limitation (guide §20.59) — user, at approval |
+
+### Stage 15 decisions (2026-09-18)
+
+| # | Decision |
+|---|---|
+| 15.A | **The container defaults to JSON logs** — `ENV BKA_LOG_FORMAT=json` in the Dockerfile runtime stage and `BKA_LOG_FORMAT: ${BKA_LOG_FORMAT:-json}` in `compose.yaml`, still overridable from the shell — user, at kickoff (guide §20.63). `.env.example` and `README.md` both advised JSON "in Docker / production", but nothing applied it, so every container logged `console`. Rejected: auto-switch on `BKA_ENVIRONMENT=production` inside `config.py` (changes local production runs too, and hides the setting from the file that documents it); soften the docs instead |
+| 15.C | **Repository-hygiene tests skip when there is no git checkout** — the 12 `.gitattributes` LF cases and the 5 `.gitignore` secret-pattern cases are marked `skipif` on the file being absent. Found by actually building and running the image (guide §20.65). `.dockerignore` deliberately excludes `.git`, `.gitignore` and `.gitattributes`, so inside the container those tests asserted something correctly absent and **17 tests failed in the image**. Pre-existing since Stage 13/14, undetected because neither stage re-ran the image. Rejected: un-ignoring the git files so they reach the build context (weakens a deliberate, security-adjacent exclusion to satisfy a test); copying them into the test stage only (same weakening, and the test stage is meant to mirror runtime) |
+| 15.B | **Declared Python support tightened to `>=3.12`** — `requires-python = ">=3.12"` and ruff `target-version = "py312"`; mypy was already `3.12` — user, at kickoff (guide §20.64). The venv, the Dockerfile, the README and mypy are all 3.12, so 3.11 was never built, type-checked or tested: an unverified claim. Rejected: point mypy at 3.11 (the suite still would not run on 3.11, so the claim stays unverified); leave as a deliberate lower bound |
 
 ### Carried to Stage 14 — ✅ all five done in Stage 14 (see *Current Work*)
 
@@ -103,6 +118,39 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 ---
 
 ## Current Work
+
+### Stage 15 — Final Engineering Review (2026-09-18, all tested)
+
+Single reviewer, no sub-agents (`CLAUDE.md` §2). Full record: guide **§22**.
+
+**Verified before changing anything:** 1396 passed / 4 skipped, ruff, format and mypy strict clean ·
+37/37 settings in `.env.example`, no drift, README names no setting that does not exist · all five
+documented CLIs run · index rebuilds to 115 chunks · all six documented URLs answer · live ask flow
+returns 5 sources with citations · 422 allow-list, question limit and rate limit each fire · server log
+carries a query fingerprint and length, never the question text · no import cycles · no secrets · no
+nested directory · all 152 tracked files LF.
+
+**Ten findings — eight fixed, two were decisions (15.A/15.B, above).**
+
+| Finding | Fix |
+|---|---|
+| Dead code: `index_directory()` referenced by nothing | Deleted, with the `pathlib.Path` import that only typed it — `app/rag/pipeline.py` |
+| **Money guard duplicated** — `_warn_if_paid` in both CLIs, wording already drifted | One `warn_if_paid` in `app/llm/factory.py` beside `PAID_PROVIDERS`; a test asserts both CLIs reference that same function object |
+| `_retry_after` byte-identical in both adapters (it is HTTP, not vendor behaviour) | One `read_retry_after` in `app/llm/base.py` · 5 tests |
+| `RULE = "=" * 78` in four modules | New `app/core/cli.py` |
+| 15.A container log format | `BKA_LOG_FORMAT=json` in `Dockerfile` + `compose.yaml` · 2 tests |
+| 15.B declared Python | `requires-python = ">=3.12"`, ruff `py312` · 3 tests |
+| HANDOVER *Testing* table quoted Stage 13 numbers | Corrected to the measured run |
+| HANDOVER said records `20.1–20.57` | Now `20.1–20.64` |
+| HANDOVER pointed at a Stage 14 that had happened | Reworded |
+| `.gitattributes` missed `*.toml` and `.gitignore` | Both added · existing test parametrised |
+
+**Not changed, deliberately** (reasoning in guide §22.3): the adapters' `_translate` methods stay
+parallel (they name different vendors' exception types); the six MCP tools' repeated shape is the
+protocol being satisfied six times; `ValueError` stays for Pydantic validators, which require it;
+the mock's question-matching quirk stays cosmetic; everything §16/§17 mark as production work.
+
+**16 tests written first and watched to fail** before any code changed. New total **1412 passed, 4 skipped**.
 
 ### Stage 14 — what was built (2026-09-17, all tested)
 
@@ -204,7 +252,7 @@ guide edits are uncommitted.
 ## Architecture
 
 Full reference: **`docs/architecture-guide.html`** (§1 overview and diagram, §20 decision
-records 20.1–20.57). Subsystem summaries: `README.md`.
+records 20.1–20.64). Subsystem summaries: `README.md`.
 
 ```
 User → Web Interface (9) → API/FastAPI (1) → Agent/LLM (4,5,7)
@@ -224,6 +272,7 @@ Key properties, all load-bearing:
 - **Documents and tool results are untrusted input** — fenced, escaped, declared untrusted in the system prompt, question placed last outside the fence.
 - **Containerised (Stage 12)** — model and index baked in, non-root, offline at runtime, `--no-access-log`.
 - **Guarded (Stage 13)** — optional API key (required in production), per-process rate limit, `/ready`, input limits, log redaction. Full review: guide §16.
+- **Reviewed (Stage 15)** — dead code removed, the money guard and the `Retry-After` reader deduplicated, container logs JSON (15.A), declared Python tightened to 3.12 (15.B).
 
 ---
 
@@ -245,7 +294,7 @@ Repository layout: `README.md` → *Repository Structure*. Orientation only:
 | `data/eval/questions.yaml` | 49 evaluation cases (in git) |
 | `data/vectorstore/` | 115-chunk index — **git-ignored**, rebuilt by `python -m app.rag build` |
 | `Dockerfile` · `compose.yaml` · `.dockerignore` | Stage 12 containerisation |
-| `docs/stage13-contract.md` | The frozen contract Stage 13's sub-agents built against — reuse its shape for Stage 14 |
+| `docs/stage13-contract.md` | The frozen contract Stage 13's sub-agents built against — the shape to reuse if a future stage runs sub-agents |
 
 ---
 
@@ -253,10 +302,10 @@ Repository layout: `README.md` → *Repository Structure*. Orientation only:
 
 | Command | Expected |
 |---|---|
-| `./.venv/Scripts/python.exe -m pytest` | **1363 passed, 4 skipped** (~90–150 s) |
+| `./.venv/Scripts/python.exe -m pytest` | **1412 passed, 4 skipped** (~115–180 s) |
 | `./.venv/Scripts/python.exe -m ruff check .` | All checks passed! |
-| `./.venv/Scripts/python.exe -m ruff format --check .` | 112 files already formatted |
-| `./.venv/Scripts/python.exe -m mypy` | no issues in 72 source files |
+| `./.venv/Scripts/python.exe -m ruff format --check .` | 118 files already formatted |
+| `./.venv/Scripts/python.exe -m mypy` | no issues in 76 source files |
 | `./.venv/Scripts/python.exe -m app.eval` | Result: PASS (free, mock provider) |
 
 The 4 skips are `tests/test_docker_smoke.py` — skipped unless `BKA_SMOKE_BASE_URL` is set.
@@ -267,8 +316,18 @@ The 4 skips are `tests/test_docker_smoke.py` — skipped unless `BKA_SMOKE_BASE_
 **Measured 2026-09-15** (real `all-MiniLM-L6-v2`, mock provider, k=5): recall@5 **1.000** ·
 MRR **0.927** · path accuracy **0.959** (47/49) · citations 49/49 · median 12.9 ms/question.
 
-**In Docker:** `docker run --rm bka-test` → 1141 passed, 4 skipped. Live container via
-`BKA_HOST_PORT=8001 docker compose up -d --wait` → healthy; smoke 4 passed.
+**In Docker (re-measured 2026-09-18, Stage 15):** `docker build --target test -t bka-test .` then
+`docker run --rm bka-test` → **1395 passed, 21 skipped, 0 failed**. The totals agree with the host
+(1412 + 4 = 1395 + 21 = 1416); the extra 17 skips are the repository-hygiene tests that need a git
+checkout (15.C), plus the 4 smoke tests. Live container via
+`BKA_HOST_PORT=8001 docker compose up --build -d --wait` → healthy; smoke **4 passed**; a real ask
+returned 5 cited sources; `/ready` ok. Verified **inside** the container: `BKA_LOG_FORMAT=json`
+(15.A), `uid=999(app)` non-root, `HF_HUB_OFFLINE=1`, command `python -m app --no-access-log`.
+
+> ⚠️ **Always pass `--build` to `docker compose up`.** Without it Compose reuses the existing
+> `banking-knowledge-agent:local` tag: a Stage 12 image (still running `sh -c 'exec uvicorn…'`)
+> came up *healthy* in this session and would have "verified" nothing.
+
 **Host port 8000 is taken by another local project** — use `BKA_HOST_PORT=8001`.
 
 ---
@@ -363,25 +422,32 @@ credentials. Never commit or push an unapproved stage.
 
 ## Next Action
 
-**Stage 14 is approved and committed. The next action is Stage 15 — Final Engineering
-Review — when the user asks for it.** Do not start it unprompted. `CLAUDE.md` §2: Stage 15
-is a single build, no sub-agents. Read only the Stage 15 section of `docs/PROJECT_PLAN.md`.
+**Stage 15 — Final Engineering Review is approved, committed and pushed. The project is
+complete.** All 15 planned stages are done; `docs/PROJECT_PLAN.md` defines no further work.
 
-The *Stage 14 items recorded* list and Stage 11/13 open items are now **documented as design**
-in guide §17, not built — per the plan. They remain open for Stage 15 to judge.
-`--paid` still needs explicit confirmation.
+**Docker was verified in this session** (image rebuilt, suite run inside it, live container
+checked) — so nothing is left outstanding except:
+- **`--paid` has still never been run.** It needs explicit confirmation and costs money. This is
+  the one claim the project cannot make about itself: no real model has ever answered a question
+  here, so prompt quality remains unproven (see *Known limitations*).
+
+If work resumes, it is new work, not a remaining stage. The most likely candidates are in guide
+§18 (extension points) and §17 (production architecture, documented but deliberately not built).
+
+The *Stage 14 items recorded* list and Stage 11/13 open items stay **documented as design**
+in guide §17, not built — per the plan. Stage 15 judged them and left them (guide §22.3).
 
 ### To resume — run this before trusting anything in this file
 
 ```bash
 cd D:/PROJECTS/banking-knowledge-agent
 
-git log --oneline -5        # expect docs(handover) commits on top of e29bbae, bc9f69d
+git log --oneline -5        # expect the Stage 15 commit on top of dc0b317
 git status --short          # expect clean
 
-./.venv/Scripts/python.exe -m pytest        # expect 1363 passed, 4 skipped
+./.venv/Scripts/python.exe -m pytest        # expect 1412 passed, 4 skipped
 ./.venv/Scripts/python.exe -m ruff check .  # expect All checks passed!
-./.venv/Scripts/python.exe -m mypy          # expect no issues in 72 source files
+./.venv/Scripts/python.exe -m mypy          # expect no issues in 76 source files
 ./.venv/Scripts/python.exe -m app.eval      # expect Result: PASS (free)
 
 # Rebuild the index if data/vectorstore/ is missing (git-ignored)

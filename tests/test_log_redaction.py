@@ -220,5 +220,10 @@ def test_dockerignore_excludes_secret_files_at_any_depth(pattern):
 @pytest.mark.parametrize(
     "pattern", [".env", ".env.*", "!.env.example", "*.pem", "*.key"]
 )
+@pytest.mark.skipif(
+    not (PROJECT_ROOT / ".gitignore").exists(),
+    # 15.C: .dockerignore keeps git metadata out of the image by design.
+    reason="no .gitignore: not a git checkout (e.g. inside the image)",
+)
 def test_gitignore_excludes_env_files_but_keeps_the_example(pattern):
     assert pattern in _entries(PROJECT_ROOT / ".gitignore")

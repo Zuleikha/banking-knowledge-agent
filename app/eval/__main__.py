@@ -26,11 +26,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from app.agent.agent import KnowledgeAgent
+from app.core.cli import RULE
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.tracing import traced
 from app.eval.dataset import check_references, load_dataset
-from app.eval.report import RULE, render_report
+from app.eval.report import render_report
 from app.eval.runner import Mode, run_evaluation
 from app.knowledge.loader import load_knowledge_base
 from app.llm.factory import PAID_PROVIDERS, get_llm_service, is_paid_provider

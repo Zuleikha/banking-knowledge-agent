@@ -16,9 +16,9 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 | | |
 |---|---|
-| **Current stage** | **Stage 14 — Production Architecture** complete · Stage 15 next |
-| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) · API key, rate limit, readiness probe, input limits, log redaction · production architecture documented; runtime citation check, safe 422 bodies, `python -m app` |
-| **Next** | Final engineering review (15) |
+| **Current stage** | **Stage 15 — Final Engineering Review** complete · the final stage |
+| **Implemented** | Config, logging, tracing · knowledge base · RAG pipeline · LLM abstraction + Anthropic/OpenAI adapters · knowledge agent with rule-based decisions · six MCP tools + MCP server · conversation sessions · conversation API + web page · request ids, latency logging and in-process metrics · evaluation dataset, scored metrics and CLI scorecard · Docker image and Compose (offline, non-root, health-checked) · API key, rate limit, readiness probe, input limits, log redaction · production architecture documented; runtime citation check, safe 422 bodies, `python -m app` · full engineering review: dead code removed, money guard and `Retry-After` reader deduplicated, JSON container logs |
+| **Next** | Nothing outstanding — the 15 planned stages are complete |
 
 Stages 6 and 13 were built with parallel sub-agents against a shared contract frozen first — see the architecture guide §21.
 
@@ -128,7 +128,7 @@ cp .env.example .env                               # optional — every setting 
 .venv/Scripts/python.exe -m mypy
 ```
 
-**1400 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
+**1416 tests**, none of which call a paid API; 77 are marked `integration` and load the real embedding model; 4 are the Docker smoke test, skipped unless `BKA_SMOKE_BASE_URL` is set.
 
 ---
 
@@ -262,6 +262,7 @@ docker compose up ─▶ app (user: app, offline) ─▶ :8000 ◀── HEALTHC
 - **Non-root:** runs as `app`; owns only the model cache, index and `logs/`.
 - **Free by default:** Compose sets `BKA_LLM_PROVIDER=mock`; no API key appears in any container file.
 - **Probes:** `HEALTHCHECK` uses `/health` (liveness); `/ready` is there for orchestrators. The image runs `python -m app --no-access-log`.
+- **Logs:** the image sets `BKA_LOG_FORMAT=json` — one object per line for a log collector to parse into fields. Override with `-e BKA_LOG_FORMAT=console` to read them yourself.
 - **Two build targets:** `runtime` (what Compose runs) and `test` (runtime + dev tools + the full suite).
 
 ```bash
@@ -334,7 +335,7 @@ banking-knowledge-agent/
 │   ├── agent/           Knowledge agent: decisions, tool selection, answering
 │   ├── __main__.py      `python -m app` — starts the web app from the settings
 │   ├── conversation/    Sessions, follow-up rules, conversation service
-│   ├── core/            Settings, logging, tracing, observability (request ids, metrics)
+│   ├── core/            Settings, logging, tracing, observability (request ids, metrics), CLI constants
 │   ├── eval/            Evaluation: dataset, metrics, runner, scorecard CLI
 │   ├── knowledge/       Document models and the strict loader
 │   ├── llm/             Provider protocol, prompts, citation check, mock and vendor adapters
@@ -372,7 +373,7 @@ banking-knowledge-agent/
 - **Observable** — a request id on every log line, per-step latency, and in-process metrics.
 - **Cost safety** — free mock by default; paid calls need two deliberate settings.
 - **Real protocols** — a genuine MCP server alongside the in-process registry.
-- **Quality gates** — 1400 tests with no paid call, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
+- **Quality gates** — 1416 tests with no paid call, strict mypy, ruff; retrieval and routing scored on a reviewed evaluation set with the real model.
 - **Documented reasoning** — every design decision recorded with what was chosen, why and what was rejected.
 
 ---

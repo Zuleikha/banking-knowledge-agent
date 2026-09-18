@@ -61,7 +61,7 @@
     <p>A personal technical reference for the system: what each component does, why each
        technology is here, and how data flows through it. This is developer documentation,
        <strong>not</strong> the application's user interface.</p>
-    <div class="pill">Stage 14 - Production Architecture &nbsp;·&nbsp; Last updated 2026-09-17</div>
+    <div class="pill">Stage 15 - Final Engineering Review &nbsp;·&nbsp; Last updated 2026-09-18</div>
   </div>
 </header>
 
@@ -91,6 +91,7 @@
     <li><a href="#decisions">Design decisions</a></li>
     <li><a href="#records">Decision records (per stage)</a></li>
     <li><a href="#subagents">How Stage 6 was built: parallel sub-agents</a></li>
+    <li><a href="#review">Final engineering review</a></li>
   </ol>
 </nav>
 
@@ -150,7 +151,8 @@ defined interface, so one piece can be changed or tested without touching the re
             ▼
    Source-backed Answer
 
-   Production architecture (design, §17)  Stage 14 ✅</pre>
+   Production architecture (design, §17)  Stage 14 ✅
+   Final engineering review (§22)         Stage 15 ✅</pre>
 
 <div class="note">
   <strong>Reading the diagram.</strong> A question travels top to bottom.
@@ -194,7 +196,7 @@ defined interface, so one piece can be changed or tested without touching the re
   <tr><td>12</td><td>Containerisation - Dockerfile, Compose, baked model + index, health check, non-root user</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>13</td><td>Security &amp; production readiness - API key, rate limit, readiness probe, input limits, injection hardening, log redaction</td><td><span class="tag t-done">BUILT</span></td></tr>
   <tr><td>14</td><td>Production architecture - local vs production design (§17), runtime citation check, safe 422 bodies, <code>python -m app</code></td><td><span class="tag t-done">BUILT</span></td></tr>
-  <tr><td>15</td><td>Final engineering review</td><td><span class="tag t-todo">PLANNED</span></td></tr>
+  <tr><td>15</td><td>Final engineering review - dead code removed, money guard and <code>Retry-After</code> reader deduplicated, JSON container logs, declared Python tightened to 3.12</td><td><span class="tag t-done">BUILT</span></td></tr>
 </table>
 
 <div class="warn">
@@ -5071,7 +5073,89 @@ report a better result than the system deserves.</p>
 </table>
 </div>
 
+<h3>20.63 Stage 15.1 - The container logs JSON by default</h3>
+<div class="card">
+<p><strong>What.</strong> The runtime image sets <code>BKA_LOG_FORMAT=json</code>, and
+<code>compose.yaml</code> passes <code>${BKA_LOG_FORMAT:-json}</code>, so a container writes one JSON
+object per log line instead of the human-readable <em>console</em> format. Setting the variable in the
+shell still overrides it, in either direction.</p>
+
+<p><strong>Why.</strong> Found in the Stage 15 review. <code>.env.example</code> and
+<code>README.md</code> both said to use JSON "in Docker / production", but nothing ever applied it: the
+setting defaults to <code>console</code> and neither the Dockerfile nor Compose set it. So every container
+logged the format the project's own documentation told you not to use there, and following the advice meant
+remembering to pass the variable by hand every time.</p>
+
+<p><strong>What JSON format buys.</strong> Console format is aligned and coloured for a human reading a
+terminal. JSON format is one object per line, which is what a <em>log collector</em> - the service that
+gathers logs from many containers into one searchable place - can parse into fields. Without it, the
+structured key/value pairs this project already attaches to every line (the request id, the latency, the
+query fingerprint) arrive as one flat string and have to be re-parsed with pattern matching, which is
+exactly the fragility structured logging exists to remove.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Switch on <code>BKA_ENVIRONMENT=production</code> inside <code>config.py</code></strong></td><td>Would change a local <code>production</code> run too, not just containers, and hides the behaviour from <code>.env.example</code> - the file whose job is to document what each setting does. A setting that silently rewrites itself is harder to reason about than one the image sets plainly.</td></tr>
+  <tr><td><strong>Soften the documentation instead</strong></td><td>Keeps <code>docker compose logs</code> readable, but leaves the deployed image producing the format that is hardest to collect - optimising the demo over the deployment.</td></tr>
+</table>
+</div>
+
+<h3>20.64 Stage 15.2 - Declared Python support tightened to 3.12</h3>
+<div class="card">
+<p><strong>What.</strong> <code>pyproject.toml</code> now declares <code>requires-python = "&gt;=3.12"</code>
+and ruff targets <code>py312</code>. mypy already checked against 3.12.</p>
+
+<p><strong>Why.</strong> Found in the Stage 15 review. The project declared <code>&gt;=3.11</code>, but the
+virtual environment is 3.12, the image is <code>python:3.12-slim</code>, the README says 3.12 and mypy
+type-checked against 3.12. Nothing anywhere built, type-checked or ran the suite on 3.11, so support for it
+was a claim with no evidence behind it. <code>requires-python</code> is what a packaging tool reads to
+decide whether this project can be installed at all, so an untested lower bound invites an install that
+then fails at run time.</p>
+
+<p><strong>The general rule.</strong> A version range is a promise that something verifies. Widening it
+without a build that exercises the low end does not add support; it adds an untested claim. Narrowing it to
+what is actually tested is the honest version, and it can be widened later by the same change that adds a
+3.11 build.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Point mypy at 3.11 and keep <code>&gt;=3.11</code></strong></td><td>Type-checking against 3.11 catches syntax and typing that 3.11 lacks, but nothing would still <em>run</em> the 1400 tests on 3.11. The claim would be better evidenced and still unverified.</td></tr>
+  <tr><td><strong>Leave it as a deliberate lower bound</strong></td><td>Defensible for a library with a 3.11 build in CI. This project has no CI matrix and ships as an image pinned to 3.12, so the bound describes nothing that exists.</td></tr>
+</table>
+</div>
+
 </section>
+<h3>20.65 Stage 15.3 - Repository-hygiene tests skip when there is no git checkout</h3>
+<div class="card">
+<p><strong>What.</strong> The twelve cases that read <code>.gitattributes</code> and the five that read
+<code>.gitignore</code> are marked <code>skipif</code> on those files being absent. In a normal checkout they
+run exactly as before; inside the container image they skip.</p>
+
+<p><strong>Why.</strong> Found by actually building the image in Stage 15 and running its suite -
+<strong>17 tests failed there</strong>. <code>.dockerignore</code> deliberately excludes <code>.git</code>,
+<code>.gitignore</code> and <code>.gitattributes</code>, so those tests were asserting the contents of files
+that are <em>correctly</em> missing. The image was right and the tests were wrong.</p>
+
+<p><strong>How it went unnoticed.</strong> These tests arrived in Stages 13 and 14, and neither stage
+re-ran the image afterwards - the last real in-image measurement was Stage 12's <em>1141 passed</em>, taken
+before either existed. So <code>docs/HANDOVER.md</code> carried a Docker result that had been stale for two
+stages. A number that is never re-measured stops being evidence; this is the argument for re-running the
+slow check at the end even when nothing looks like it touched that area.</p>
+
+<p><strong>Why skipping is the honest fix.</strong> These assert <em>repository</em> hygiene - what git
+stores and what git ignores. A container image is deliberately not a repository. Skipping says "this
+environment cannot answer this question", which is true, and it is the pattern the project already uses for
+the four Docker smoke tests that skip unless <code>BKA_SMOKE_BASE_URL</code> names a running container. A
+host run still reports zero skips for these, so the coverage is not quietly lost.</p>
+
+<table>
+  <tr><th style="width:230px">Rejected</th><th>Why</th></tr>
+  <tr><td><strong>Un-ignore the git files so they reach the build context</strong></td><td>Weakens a deliberate exclusion - and a security-adjacent one, since the same rule keeps <code>.git</code> and its history out of images - purely so a test can pass.</td></tr>
+  <tr><td><strong>Copy them into the test stage only</strong></td><td>Less bad, and it is what Stage 12 did for <code>Dockerfile</code> and <code>compose.yaml</code>, but those describe the image itself. Git metadata does not, and the test stage is meant to mirror the runtime image rather than drift from it.</td></tr>
+  <tr><td><strong>Delete the tests</strong></td><td>They catch a real problem on the host: a Windows checkout silently rewriting line endings in files that Linux containers read.</td></tr>
+</table>
+</div>
+
 <!-- ================================================================== -->
 <section id="subagents">
 <h2>21. How Stages 6 and 13 were built: parallel sub-agents</h2>
@@ -5321,9 +5405,113 @@ started from untidy code.</p>
 </ul>
 </section>
 
+<!-- ================================================================== -->
+<section id="review">
+<h2>22. Final engineering review</h2>
+<span class="tag t-done">BUILT</span>
+
+<p>Stage 15 is a <em>review</em> stage: no new capability, one reviewer reading the whole system
+against a fixed checklist - architecture, separation of concerns, type hints, error handling,
+logging, testing, configuration, security, dependencies, documentation, Docker, code quality,
+naming, dead code, duplicate code, repository structure, accidental secrets and nested
+directories. It is the last stage because consistency is the thing being judged, and consistency
+is only visible once everything else exists.</p>
+
+<p><strong>Why one reviewer and not parallel sub-agents.</strong> Stages 6 and 13 split cleanly
+into independent units (&sect;21). This one does not: "does the naming agree across the whole
+codebase?" and "does the documentation still match the code?" are questions that cannot be
+answered from inside one module. Splitting them would produce reviewers who each see a
+consistent fragment.</p>
+
+<h3>22.1 What the review verified</h3>
+
+<p>Verification came before any change, so the findings below are differences from a system
+already known to be green - not a system being fixed into shape.</p>
+
+<table>
+  <tr><th style="width:250px">Checked</th><th>Result</th></tr>
+  <tr><td>Test suite, lint, format, types</td><td>1396 passed / 4 skipped, ruff clean, format clean, mypy <strong>strict</strong> clean across 75 source files.</td></tr>
+  <tr><td>Configuration documentation</td><td>All <strong>37</strong> settings on <code>Settings</code> appear in <code>.env.example</code>, and it names none that do not exist - checked by reading the model, not by eye. The README names no setting that is not real.</td></tr>
+  <tr><td>Documented commands</td><td>Every command in the README was run: the five CLIs, the index rebuild (115 chunks), and the six documented URLs, which all answered.</td></tr>
+  <tr><td>The API, end to end</td><td>A live server answered a question from five retrieved passages with citations, and the Stage 13/14 guards each fired: a 422 body carrying only <code>type</code>/<code>loc</code>/<code>msg</code>, an over-length question refused, and rate limiting returning 429 past the per-minute ceiling.</td></tr>
+  <tr><td>Logging and privacy</td><td>The running server's own log was read back: the question appears as a fingerprint and a length, never as text, and the client as a hash. Every line carries a request id.</td></tr>
+  <tr><td>Import layering</td><td>No cycles. The one edge that looks like a cycle - <code>agent</code> importing <code>conversation</code> - exists only in <code>app/agent/__main__.py</code>, a command-line entry point, which is a composition point rather than library code.</td></tr>
+  <tr><td>Secrets and structure</td><td>No key, token or credential in any tracked file; no real <code>.env</code>; no nested <code>banking-knowledge-agent/</code> directory; all 152 tracked files LF in both the index and the working tree.</td></tr>
+</table>
+
+<h3>22.2 What the review found, and what was done</h3>
+
+<p>Eleven findings. Eight were fixed outright; two were design choices put to the user and recorded as
+&sect;20.63 and &sect;20.64 before anything was written; the eleventh (&sect;20.65) surfaced only when the
+container image was actually built and its suite run.</p>
+
+<table>
+  <tr><th style="width:150px">Finding</th><th>What was wrong</th><th>What was done</th></tr>
+  <tr><td><strong>Dead code</strong></td>
+      <td><code>index_directory()</code> in <code>app/rag/pipeline.py</code> - a one-line wrapper over a setting, referenced by nothing: not exported, not tested, not documented.</td>
+      <td>Deleted, along with the <code>pathlib.Path</code> import that existed only to type it.</td></tr>
+  <tr><td><strong>Duplicate money guard</strong></td>
+      <td><code>_warn_if_paid</code> was copy-pasted into both the agent and LLM command-line entry points - and the two copies' <em>wording had already drifted apart</em>, which is the failure mode in miniature: a correction applied to one would leave the other stale. This is the guard that stands between an exported API key and a bill.</td>
+      <td>One <code>warn_if_paid</code> in <code>app/llm/factory.py</code>, beside <code>PAID_PROVIDERS</code> and <code>is_paid_provider</code>, which is where the paid/free distinction already lived. A test asserts both CLIs reference that one function object, so a third copy cannot quietly reappear.</td></tr>
+  <tr><td><strong>Duplicate <code>Retry-After</code> reader</strong></td>
+      <td>Both vendor adapters held a byte-identical <code>_retry_after</code>. Reading a <code>Retry-After</code> header is HTTP behaviour, not vendor behaviour, so neither copy was earning its place.</td>
+      <td>One <code>read_retry_after</code> in <code>app/llm/base.py</code>, beside <code>LLMRateLimitError</code> - the only error that carries the value. Tested once, including that an HTTP-date header yields <code>None</code> rather than a guess.</td></tr>
+  <tr><td><strong>What was deliberately <em>not</em> deduplicated</strong></td>
+      <td>The adapters' <code>_translate</code> methods are structurally identical too.</td>
+      <td>Left alone. They name different vendors' exception types; merging them would need a mapping table and would couple the two adapters to each other. Parallel structure between adapters is the point of the seam, not an accident.</td></tr>
+  <tr><td><strong>Repeated constant</strong></td>
+      <td><code>RULE = "=" * 78</code> defined separately in four modules that print banners around each other's output.</td>
+      <td>One definition in a new <code>app/core/cli.py</code>.</td></tr>
+  <tr><td><strong>Container log format</strong> (&sect;20.63)</td>
+      <td><code>.env.example</code> and the README both advised JSON "in Docker / production", but nothing applied it - so every container logged the format the documentation told you not to use there.</td>
+      <td><code>BKA_LOG_FORMAT=json</code> in the image and in Compose, still overridable. <em>User decision.</em></td></tr>
+  <tr><td><strong>Declared Python version</strong> (&sect;20.64)</td>
+      <td><code>requires-python = "&gt;=3.11"</code> while the virtual environment, the image, the README and mypy were all 3.12 - support for 3.11 was never built, type-checked or tested.</td>
+      <td>Tightened to <code>&gt;=3.12</code>, ruff target <code>py312</code>. <em>User decision.</em></td></tr>
+  <tr><td><strong>Stale documentation</strong></td>
+      <td><code>docs/HANDOVER.md</code> still quoted the Stage 13 test numbers in its <em>Testing</em> table, gave the decision records as 20.1-20.57 when 20.62 existed, and pointed at a Stage 14 that had already happened.</td>
+      <td>All three corrected against the code, per the accuracy rule in <code>CLAUDE.md</code> &sect;4.</td></tr>
+  <tr><td><strong>Line-ending coverage</strong></td>
+      <td><code>.gitattributes</code> did not cover <code>*.toml</code> or <code>.gitignore</code> - the same gap Stage 14 closed for the container files.</td>
+      <td>Both added, and the existing test parametrised over them.</td></tr>
+  <tr><td><strong>17 tests failed inside the image</strong> (&sect;20.65)</td>
+      <td>Repository-hygiene tests added in Stages 13 and 14 read <code>.gitignore</code> and <code>.gitattributes</code>, which <code>.dockerignore</code> deliberately keeps out of every image. Neither stage re-ran the image, so the handover carried a Docker result that had been stale for two stages.</td>
+      <td>Those cases now <code>skipif</code> the file is absent. A host run still reports zero skips for them.</td></tr>
+</table>
+
+<div class="note">
+  <strong>The slow check earned its place.</strong> Everything in this review up to this point came from
+  reading code and running the fast suite, and all of it agreed. The one finding that only a real
+  <code>docker build</code> could produce - seventeen failing tests, stale for two stages - was also the
+  only one that contradicted a number the project had been reporting about itself. A check that is skipped
+  because "nothing in that area changed" stops being evidence at the moment it is skipped.
+</div>
+
+<div class="note">
+  <strong>Every fix arrived test-first.</strong> Sixteen tests were written and watched to fail
+  before any of this code changed - including the two that pin the user's decisions
+  (<code>BKA_LOG_FORMAT=json</code> in the image and in Compose) and the one that asserts the two
+  CLIs share a single money-guard function. A review that fixes things without leaving tests
+  behind has only postponed the same findings.
+</div>
+
+<h3>22.3 What the review deliberately left</h3>
+
+<p>A review stage is also a decision about what <em>not</em> to change. These were seen, judged,
+and left - listed here so the next reader knows they were considered rather than missed.</p>
+
+<table>
+  <tr><th style="width:250px">Left as it is</th><th>Why</th></tr>
+  <tr><td>The six MCP tool modules repeat a similar shape</td><td>Each implements the same protocol against different synthetic data. The repetition is the protocol being satisfied six times, which is what &sect;18 says adding a seventh tool should look like.</td></tr>
+  <tr><td><code>ValueError</code> raised for programmer errors and Pydantic validation, rather than a project type</td><td>Pydantic validators are <em>required</em> to raise <code>ValueError</code>. The typed taxonomies exist where callers branch on failure - the LLM layer, the tool layer, retrieval - which is where they earn their cost.</td></tr>
+  <tr><td>The mock provider's question-matching quirk</td><td>Cosmetic, in a deterministic stub that exists to prove wiring. Recorded in <code>docs/HANDOVER.md</code> rather than fixed, because changing the mock's behaviour to look better would make it a worse wiring check.</td></tr>
+  <tr><td>Everything in &sect;16 and &sect;17 marked as production work</td><td>Per-user identity, TLS, a shared rate-limit store, a secrets manager, circuit breakers. The plan documents these as design rather than building them; a review is not the place to quietly expand scope.</td></tr>
+</table>
+</section>
+
 <footer>
   <strong>Banking Knowledge Agent</strong> - architecture guide ·
-  Stage 14 (Production Architecture) · Last updated 2026-09-17<br>
+  Stage 15 (Final Engineering Review) · Last updated 2026-09-18<br>
   Keep this document updated whenever the architecture changes.
   Progress and the next action are tracked in <code>docs/HANDOVER.md</code>.
 </footer>

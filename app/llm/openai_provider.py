@@ -50,6 +50,7 @@ from app.llm.base import (
     LLMRateLimitError,
     LLMResponseError,
     LLMTimeoutError,
+    read_retry_after,
 )
 from app.llm.models import CompletionRequest, LLMResponse, StopReason, TokenUsage
 
@@ -236,7 +237,7 @@ class OpenAIProvider:
         if isinstance(exc, openai.RateLimitError):
             return LLMRateLimitError(
                 f"OpenAI rate limit reached ({kind}, {exc.status_code}).",
-                retry_after_seconds=_retry_after(exc),
+                retry_after_seconds=read_retry_after(exc),
             )
         if isinstance(exc, openai.AuthenticationError | openai.PermissionDeniedError):
             return LLMConfigurationError(
@@ -260,18 +261,3 @@ class OpenAIProvider:
                 f"OpenAI rejected the request ({kind}, {exc.status_code})."
             )
         return LLMProviderError(f"OpenAI call failed with an unmapped {kind}.")
-
-
-def _retry_after(exc: Exception) -> float | None:
-    """Read the provider's advertised cool-off, when it sent one."""
-    response = getattr(exc, "response", None)
-    headers = getattr(response, "headers", None)
-    if headers is None:
-        return None
-    raw = headers.get("retry-after")
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return None

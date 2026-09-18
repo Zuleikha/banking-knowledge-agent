@@ -28,6 +28,7 @@ model — and the only evidence would be a wording change nobody reads.
 
 from __future__ import annotations
 
+from app.core.cli import RULE
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.core.tracing import traced
@@ -56,6 +57,32 @@ def is_paid_provider(settings: Settings | None = None) -> bool:
     adapter cannot be added to one list and forgotten in the other.
     """
     return (settings or get_settings()).llm_provider in PAID_PROVIDERS
+
+
+def warn_if_paid(settings: Settings | None = None) -> bool:
+    """Print a cost warning when a billed provider is configured.
+
+    Lives beside :data:`PAID_PROVIDERS` because it is the money guard, and a
+    money guard with two copies is a money guard that can be corrected in one
+    place and left stale in the other. Both CLIs held their own copy until
+    Stage 15, and their wording had already drifted apart.
+
+    Args:
+        settings: Application settings. Defaults to the cached singleton.
+
+    Returns:
+        Whether the configured provider costs money. Callers use this to decide
+        whether to refuse outright -- a warning alone never stops a run.
+    """
+    if not is_paid_provider(settings):
+        return False
+    resolved = settings or get_settings()
+    print(RULE)
+    print(f"!! BKA_LLM_PROVIDER={resolved.llm_provider} - this is a PAID API.")
+    print("!! Every answered question is a billed call. Unset the variable, or")
+    print("!! set BKA_LLM_PROVIDER=mock, to run free.")
+    print(RULE)
+    return True
 
 
 @traced

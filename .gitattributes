@@ -7,8 +7,10 @@
 *.txt  text eol=lf
 *.js   text eol=lf
 *.css  text eol=lf
+*.toml text eol=lf
 # Read inside Linux containers.
 Dockerfile    text eol=lf
 .dockerignore text eol=lf
 .env.example  text eol=lf
 .gitattributes text eol=lf
+.gitignore     text eol=lf

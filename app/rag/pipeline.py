@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
-from pathlib import Path
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
@@ -202,8 +201,3 @@ def get_retriever(settings: Settings | None = None) -> Retriever:
         # broken model must still fail loudly rather than be papered over.
         logger.info("rag.index_rebuilding", reason=type(exc).__name__, detail=str(exc))
         return build_index(resolved)
-
-
-def index_directory(settings: Settings | None = None) -> Path:
-    """Where the persisted index lives."""
-    return (settings or get_settings()).vectorstore_dir

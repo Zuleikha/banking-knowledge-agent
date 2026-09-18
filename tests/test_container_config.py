@@ -108,6 +108,17 @@ def test_the_server_binds_all_interfaces_from_settings():
     assert "--host" not in cmd and "--port" not in cmd
 
 
+def test_the_runtime_image_logs_json():
+    """15.A: a container writes one JSON object per line, not console format."""
+    assert "BKA_LOG_FORMAT=json" in " ".join(stage_lines("runtime"))
+
+
+def test_compose_defaults_the_log_format_to_json(compose):
+    """15.A: overridable from the shell, but JSON unless you say otherwise."""
+    environment = compose["services"]["app"]["environment"]
+    assert environment["BKA_LOG_FORMAT"] == "${BKA_LOG_FORMAT:-json}"
+
+
 def test_the_server_disables_uvicorn_access_log():
     # 13.H: uvicorn's access log prints client IP and path and bypasses log
     # redaction; the request middleware already logs every request.

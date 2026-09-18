@@ -20,6 +20,7 @@ services:
       BKA_ENVIRONMENT: ${BKA_ENVIRONMENT:-local}
       BKA_LLM_PROVIDER: ${BKA_LLM_PROVIDER:-mock}
       BKA_LOG_LEVEL: ${BKA_LOG_LEVEL:-INFO}
+      BKA_LOG_FORMAT: ${BKA_LOG_FORMAT:-json}
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped

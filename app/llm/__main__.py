@@ -27,9 +27,10 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from app.core.cli import RULE
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
-from app.llm.factory import get_llm_service, is_paid_provider
+from app.llm.factory import get_llm_service, warn_if_paid
 from app.llm.models import GroundedAnswer
 from app.llm.prompts import build_request, select_context
 from app.llm.service import LLMService
@@ -47,8 +48,6 @@ DEMO_QUESTIONS: tuple[str, ...] = (
     "What is the capital of France?",
 )
 """The five seed questions from the project brief, plus one the corpus cannot answer."""
-
-RULE = "=" * 78
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -95,18 +94,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _demo(settings, allow_paid=args.paid)
 
 
-def _warn_if_paid(settings: Settings) -> bool:
-    """Print a cost warning when a billed provider is configured."""
-    if not is_paid_provider(settings):
-        return False
-    print(RULE)
-    print(f"!! BKA_LLM_PROVIDER={settings.llm_provider} - this is a PAID API.")
-    print("!! Every answered question is a billed call. Set BKA_LLM_PROVIDER=mock")
-    print("!! (or unset it) to run free.")
-    print(RULE)
-    return True
-
-
 def _prompt(question: str, settings: Settings) -> int:
     """Print the complete request that would be sent for ``question``."""
     retriever = get_retriever()
@@ -138,7 +125,7 @@ def _prompt(question: str, settings: Settings) -> int:
 
 def _ask(question: str, settings: Settings) -> int:
     """Retrieve, answer and print one question."""
-    _warn_if_paid(settings)
+    warn_if_paid(settings)
     service = get_llm_service(settings)
     retriever = get_retriever()
     _answer_one(service, retriever, question)
@@ -147,7 +134,7 @@ def _ask(question: str, settings: Settings) -> int:
 
 def _demo(settings: Settings, allow_paid: bool = False) -> int:
     """Answer every demo question end to end."""
-    paid = _warn_if_paid(settings)
+    paid = warn_if_paid(settings)
     if paid and not allow_paid:
         print(
             f"REFUSED: demo would make up to {len(DEMO_QUESTIONS)} paid calls. "

@@ -34,9 +34,10 @@ from app.agent.factory import get_agent
 from app.agent.models import AgentAnswer
 from app.conversation.factory import get_conversation_service
 from app.conversation.models import ConversationAnswer
+from app.core.cli import RULE
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
-from app.llm.factory import is_paid_provider
+from app.llm.factory import warn_if_paid
 
 SEED_QUESTIONS: tuple[str, ...] = (
     "Why would an ATM transaction fail after card authentication?",
@@ -100,8 +101,6 @@ CONVERSATION_QUESTIONS: tuple[str, ...] = (
 )
 """One conversation exercising every Stage 8 resolution rule, in one session."""
 
-RULE = "=" * 78
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
@@ -159,25 +158,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _demo(settings, allow_paid=args.paid)
 
 
-def _warn_if_paid(settings: Settings) -> bool:
-    """Print a cost warning when a billed provider is configured.
-
-    Returns:
-        Whether the configured provider costs money.
-    """
-    if not is_paid_provider(settings):
-        return False
-    print(RULE)
-    print(f"!! BKA_LLM_PROVIDER={settings.llm_provider} - this is a PAID API.")
-    print("!! Every answered question is a billed call. Unset the variable, or")
-    print("!! set BKA_LLM_PROVIDER=mock, to run free.")
-    print(RULE)
-    return True
-
-
 def _ask(question: str, settings: Settings) -> int:
     """Answer and print a single question."""
-    _warn_if_paid(settings)
+    warn_if_paid(settings)
     agent = get_agent(settings)
     _print_answer(agent.ask(question))
     return 0
@@ -188,7 +171,7 @@ def _demo(settings: Settings, allow_paid: bool = False) -> int:
     questions = (
         SEED_QUESTIONS + TOOL_QUESTIONS + RETRIEVE_MORE_QUESTIONS + CONTROL_QUESTIONS
     )
-    if _warn_if_paid(settings) and not allow_paid:
+    if warn_if_paid(settings) and not allow_paid:
         # Refused rather than warned: this command asks every question above, so
         # the cost of getting it wrong is that many calls, and the user cannot
         # take it back once it has run.
@@ -214,7 +197,7 @@ def _demo(settings: Settings, allow_paid: bool = False) -> int:
 
 def _chat(settings: Settings) -> int:
     """Hold one conversation over standard input."""
-    _warn_if_paid(settings)
+    warn_if_paid(settings)
     service = get_conversation_service(settings)
     session = service.start()
     print("Conversation started. A blank line, 'exit' or end of input stops it.")
@@ -234,7 +217,7 @@ def _chat(settings: Settings) -> int:
 
 def _conversation_demo(settings: Settings, allow_paid: bool = False) -> int:
     """Run :data:`CONVERSATION_QUESTIONS` as one session."""
-    if _warn_if_paid(settings) and not allow_paid:
+    if warn_if_paid(settings) and not allow_paid:
         print(
             f"REFUSED: conversation-demo would make up to "
             f"{len(CONVERSATION_QUESTIONS)} paid calls. "

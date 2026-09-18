@@ -2,7 +2,7 @@
 name = "banking-knowledge-agent"
 version = "0.1.0"
 description = "Source-backed knowledge and support agent for a banking technology platform."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -35,7 +35,7 @@ markers = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "ANN", "D"]

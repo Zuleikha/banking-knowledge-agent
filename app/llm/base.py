@@ -189,3 +189,35 @@ class LLMProvider(Protocol):
             LLMError: On any failure. The concrete subclass tells the caller
                 whether a retry is worthwhile.
         """
+
+
+def read_retry_after(exc: Exception) -> float | None:
+    """Read the provider's advertised cool-off from an SDK exception.
+
+    Reading a ``Retry-After`` header is HTTP, not vendor behaviour: both
+    adapters held a byte-identical copy of this until Stage 15, which is two
+    places for one rule to be corrected in. It lives beside
+    :class:`LLMRateLimitError` because that is the only error that carries the
+    value.
+
+    Args:
+        exc: The SDK exception, which may or may not carry an HTTP response.
+
+    Returns:
+        The advertised wait in seconds, or ``None`` when the provider did not
+        say -- deliberately kept distinguishable from "retry immediately".
+    """
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    raw = headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        # Retry-After may legitimately be an HTTP date. Not parsing it here is
+        # a deliberate omission: the caller treats None as "no advice given",
+        # which is the safe reading.
+        return None

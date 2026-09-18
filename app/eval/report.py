@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from statistics import median
 
+from app.core.cli import RULE
 from app.core.tracing import traced
 from app.eval.runner import EvalReport
 
-RULE = "=" * 78
 _CHECK_ORDER = (
     "path",
     "tools",

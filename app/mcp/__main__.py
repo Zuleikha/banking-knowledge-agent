@@ -27,13 +27,12 @@ import json
 import sys
 from collections.abc import Sequence
 
+from app.core.cli import RULE
 from app.core.logging import configure_logging
 from app.mcp.base import ToolError
 from app.mcp.factory import get_tool_registry
 from app.mcp.models import ToolResult
 from app.mcp.registry import ToolRegistry
-
-RULE = "=" * 78
 
 DEMO_CALLS: tuple[tuple[str, dict[str, str], str], ...] = (
     (

@@ -40,9 +40,12 @@ USER app
 # container needs no network. No log files are left in the image.
 RUN BKA_LOG_TO_FILE=false python -m app.rag build
 
+# 15.A: JSON logs by default -- one object per line for a log collector to
+# parse into fields. Overridable: -e BKA_LOG_FORMAT=console for a human.
 ENV HF_HUB_OFFLINE=1 \
     BKA_HOST=0.0.0.0 \
-    BKA_PORT=8000
+    BKA_PORT=8000 \
+    BKA_LOG_FORMAT=json
 
 EXPOSE 8000
 

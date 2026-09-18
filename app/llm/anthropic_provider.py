@@ -51,6 +51,7 @@ from app.llm.base import (
     LLMRateLimitError,
     LLMResponseError,
     LLMTimeoutError,
+    read_retry_after,
 )
 from app.llm.models import CompletionRequest, LLMResponse, StopReason, TokenUsage
 
@@ -231,7 +232,7 @@ class AnthropicProvider:
         if isinstance(exc, anthropic.RateLimitError):
             return LLMRateLimitError(
                 f"Anthropic rate limit reached ({kind}, {exc.status_code}).",
-                retry_after_seconds=_retry_after(exc),
+                retry_after_seconds=read_retry_after(exc),
             )
         if isinstance(
             exc, anthropic.AuthenticationError | anthropic.PermissionDeniedError
@@ -259,25 +260,3 @@ class AnthropicProvider:
                 f"Anthropic rejected the request ({kind}, {exc.status_code})."
             )
         return LLMProviderError(f"Anthropic call failed with an unmapped {kind}.")
-
-
-def _retry_after(exc: Exception) -> float | None:
-    """Read the provider's advertised cool-off, when it sent one.
-
-    ``None`` means the provider did not say -- which is deliberately kept
-    distinguishable from "retry immediately".
-    """
-    response = getattr(exc, "response", None)
-    headers = getattr(response, "headers", None)
-    if headers is None:
-        return None
-    raw = headers.get("retry-after")
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        # Retry-After may legitimately be an HTTP date. Not parsing it here is
-        # a deliberate omission: the caller treats None as "no advice given",
-        # which is the safe reading.
-        return None

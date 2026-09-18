@@ -760,6 +760,34 @@ class TestTheCostGuard:
         assert llm_cli.main(["demo"]) == 2
         assert "REFUSED" in capsys.readouterr().out
 
+    @pytest.mark.parametrize("provider", ["anthropic", "openai"])
+    def test_both_clis_warn_through_one_shared_implementation(
+        self, monkeypatch, capsys, provider
+    ):
+        """Stage 15: the guard was copy-pasted and its wording had already drifted.
+
+        Two copies mean a correction to one can silently miss the other, so the
+        warning is asserted to come from a single function both CLIs call.
+        """
+        from app.agent import __main__ as agent_cli
+        from app.llm import __main__ as llm_cli
+        from app.llm.factory import warn_if_paid
+
+        assert agent_cli.warn_if_paid is warn_if_paid
+        assert llm_cli.warn_if_paid is warn_if_paid
+
+        settings = Settings(llm_provider=provider)
+        assert warn_if_paid(settings) is True
+        output = capsys.readouterr().out
+        assert "PAID" in output
+        assert f"BKA_LLM_PROVIDER={provider}" in output
+
+    def test_the_shared_warning_stays_silent_for_the_mock(self, capsys):
+        from app.llm.factory import warn_if_paid
+
+        assert warn_if_paid(Settings(llm_provider="mock")) is False
+        assert capsys.readouterr().out == ""
+
     def test_the_refusal_happens_before_the_index_or_the_client_is_built(
         self, monkeypatch, capsys
     ):
@@ -924,3 +952,56 @@ class TestTheSeamIsProved:
         answer = agent.ask("What component handles card authentication?")
         assert answer.is_grounded
         assert answer.text == "Answer [1]."
+
+
+# --- The shared Retry-After reader (Stage 15) ------------------------------
+
+
+class TestTheSharedRetryAfterReader:
+    """Reading a Retry-After header is HTTP, not vendor-specific.
+
+    It was duplicated verbatim in both adapters. One copy, tested once.
+    """
+
+    def test_a_numeric_header_is_read_as_seconds(self):
+        from app.llm.base import read_retry_after
+
+        exc = _HeaderBearingError({"retry-after": "30"})
+        assert read_retry_after(exc) == 30.0
+
+    def test_no_response_means_no_advice(self):
+        from app.llm.base import read_retry_after
+
+        assert read_retry_after(Exception("plain")) is None
+
+    def test_a_missing_header_means_no_advice(self):
+        from app.llm.base import read_retry_after
+
+        assert read_retry_after(_HeaderBearingError({})) is None
+
+    def test_an_http_date_is_not_guessed_at(self):
+        """None means "the provider did not say", which is the safe reading."""
+        from app.llm.base import read_retry_after
+
+        exc = _HeaderBearingError({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"})
+        assert read_retry_after(exc) is None
+
+    @pytest.mark.parametrize(
+        "module_name",
+        ["app.llm.anthropic_provider", "app.llm.openai_provider"],
+    )
+    def test_both_adapters_use_the_shared_reader(self, module_name):
+        import importlib
+
+        from app.llm.base import read_retry_after
+
+        module = importlib.import_module(module_name)
+        assert module.read_retry_after is read_retry_after
+
+
+class _HeaderBearingError(Exception):
+    """An SDK error shaped like the ones both vendors raise."""
+
+    def __init__(self, headers: dict[str, str]) -> None:
+        super().__init__("rate limited")
+        self.response = type("_Response", (), {"headers": headers})()
