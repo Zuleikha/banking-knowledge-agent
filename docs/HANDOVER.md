@@ -122,6 +122,32 @@ keep `HEALTHCHECK` on `/health` (**13.G**), add `--no-access-log` (**13.H**), tw
 
 ## Current Work
 
+### Post-Stage-15 — project documentation (2026-09-18)
+
+Not a stage. Asked for by the user after Stage 15 was committed, following a documentation
+audit against the set expected of an AI-assisted project from scratch.
+
+**Audit result:** README ✅ · `CLAUDE.md` ✅ · architecture + decision records ✅ (guide, 65
+records) · **CHANGELOG ❌ missing** · **testing/verification doc ⚠️ scattered** across README,
+handover and guide §15 · **LICENSE ❌ missing** (README claimed "personal portfolio project"
+with no file, i.e. all-rights-reserved by default) · the only run guide was
+`docs/HOW_TO_RUN.html`, which is **git-ignored** and so shipped to nobody.
+
+| Added | What |
+|---|---|
+| `LICENSE` | **MIT** — user's choice at the audit. Copyright 2026 Zuleikha |
+| `CHANGELOG.md` | All 15 stages, grouped by stage rather than release (one version, `0.1.0`, no release). Every cited commit hash verified against `git cat-file` |
+| `docs/HOW_TO_RUN.md` | **Tracked** run + end-to-end verification guide: setup, the 4-rung verification ladder, what it still does not prove, using your own corpus, troubleshooting |
+| `docs/HOW_TO_RUN.html` | Rewritten (was stale by 4 stages — still told you to use `uvicorn app.main:app`, which ignores `BKA_HOST`/`BKA_PORT`). Git-ignored, personal copy |
+| `README.md` | Licence section → MIT; Run section → points at the run guide; Repository Structure → the three new files |
+
+**Corpus portability, tested not assumed.** A non-banking corpus was built and run end to end.
+Retrieval is corpus-agnostic (a baking question scored 0.806 against a baking document, correct
+passage first), but four gates block a drop-in corpus: front matter required; six required
+fields; `domain` and `doc_type` are **hardcoded `Literal` sets** in `app/knowledge/models.py`;
+`document_id` must equal the filename. The six MCP tools, the nine component names and the 49
+evaluation questions do not transfer at all.
+
 ### Stage 15 — Final Engineering Review (2026-09-18, all tested)
 
 Single reviewer, no sub-agents (`CLAUDE.md` §2). Full record: guide **§22**.

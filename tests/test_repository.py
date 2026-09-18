@@ -53,6 +53,7 @@ def lf_patterns() -> set[str]:
         ".env.example",
         "*.toml",
         ".gitignore",
+        "LICENSE",
     ],
 )
 @needs_a_git_checkout

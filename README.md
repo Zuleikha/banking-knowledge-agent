@@ -22,7 +22,7 @@ an agent loop, MCP tools, conversation context, testing and clean, swappable bou
 
 Stages 6 and 13 were built with parallel sub-agents against a shared contract frozen first — see the architecture guide §21.
 
-Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md).
+Detailed progress, decisions and the exact next action: [`docs/HANDOVER.md`](docs/HANDOVER.md). What changed in each stage: [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
@@ -98,6 +98,9 @@ cp .env.example .env                               # optional — every setting 
 ---
 
 ## Run
+
+Step-by-step, with what you should see at each point and how to verify the system end to end:
+[`docs/HOW_TO_RUN.md`](docs/HOW_TO_RUN.md).
 
 ```bash
 .venv/Scripts/python.exe -m app --reload                 # web app on BKA_HOST:BKA_PORT (default 127.0.0.1:8000)
@@ -347,12 +350,15 @@ banking-knowledge-agent/
 │   ├── knowledge/       15 synthetic banking documents, by domain
 │   └── vectorstore/     Built search index (git-ignored)
 ├── docs/
+│   ├── HOW_TO_RUN.md            Step-by-step run and end-to-end verification guide
 │   ├── HANDOVER.md              Progress, decisions, next action
 │   ├── PROJECT_PLAN.md          Stage requirements
 │   ├── stage13-contract.md      Shared contract the Stage 13 sub-agents built against
 │   └── architecture-guide.html  Architecture reference and decision records
 ├── tests/               Unit, integration, API and container tests
+├── CHANGELOG.md         What changed in each of the 15 stages
 ├── CLAUDE.md            Working rules for AI-assisted development
+├── LICENSE              MIT
 ├── Dockerfile           Image build: runtime and test targets
 ├── compose.yaml         One-command local run (single app service)
 ├── .dockerignore        Keeps secrets and local state out of the image
@@ -380,4 +386,5 @@ banking-knowledge-agent/
 
 ## Licence
 
-Personal portfolio project. Synthetic data only.
+[MIT](LICENSE). Personal portfolio project; all data is synthetic — no real banking system,
+customer or transaction is represented.
